@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { magnitudeSpectrum, waveformPeaks } from './dsp';
+import { magnitudeSpectrum, seededNoise, waveformPeaks } from './dsp';
 
 const SR = 44100;
 
@@ -33,6 +33,22 @@ describe('magnitudeSpectrum', () => {
     const { mags, size } = magnitudeSpectrum(sine(2000, 0.05));
     expect(size).toBeLessThanOrEqual(Math.round(0.05 * SR));
     expect(mags.length).toBe(size / 2);
+  });
+});
+
+describe('seededNoise', () => {
+  it('is deterministic for the same seed', () => {
+    expect(seededNoise(1234, 512)).toEqual(seededNoise(1234, 512));
+  });
+
+  it('differs across seeds and stays within [-1, 1]', () => {
+    const a = seededNoise(1, 512);
+    const b = seededNoise(2, 512);
+    expect(a).not.toEqual(b);
+    for (const v of a) {
+      expect(v).toBeGreaterThanOrEqual(-1);
+      expect(v).toBeLessThanOrEqual(1);
+    }
   });
 });
 

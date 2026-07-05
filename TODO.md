@@ -3,12 +3,19 @@
 Mark in progress 🕜 and then move to done ✅ when complete and merge branch into main
 Once a task is done, show the user the dev URL, confirm with the user they are happy before marking done
 
-- feat: Add a new wave type "White Noise" which generates a random signal instead of a wave but that random signal is persisted 🕜
+- bug: changing sample length should shorten the x-axis of left viz live and not just envelope 🕜
 - feat: Export tone should export .json settings of that tone
-- the metronome is the clock for playback: when samples play in a loop, align with metronome and BPM
+- feat: The Sample frequency should be moved to the layer so it's layer-specific
+- feat: Add a solo button next to mute for tone layers so they play on their own
+- feat: Add a small toggle to enable/disable LPF/HPF completely
+- feat: Add an option to increase slope of LPF/HPF
+- feat: Add a BPF (band pass filter) in yellow
+- feat: Add a dropdown to the "Sample" box which let's the user choose a note (88 notes)
+- the metronome is the clock for playback: when samples play in a loop, align with metronome and BPM 🕜
 
 # DONE
 
+- feat: Add a new wave type "White Noise" which generates a random signal instead of a wave but that random signal is persisted ✅
 - bug: Renaming tone should update dropdown in sampler ✅
 - bug: Vizualizations are not displayed at startup ✅
 - Change wave type dropdown to an icon selector ✅

@@ -1,7 +1,10 @@
 import * as Tone from './tone';
 import { engine } from './audio-engine';
+import { seededNoise } from './dsp';
 import type { TonePatch } from './model';
 import { defaultFilter, SAMPLE_FREQ_DEFAULT, SAMPLE_SECONDS_DEFAULT, sampleHold } from './model';
+
+const NOISE_LOOP_SECONDS = 2;
 
 /**
  * One playable voice of a Tone-tab patch: oscillator layers -> layer gains
@@ -15,6 +18,7 @@ export class PatchVoice {
   private hpFilter: Tone.Filter;
   private lpFilter: Tone.Filter;
   private oscs: Tone.Oscillator[] = [];
+  private noises: Tone.ToneBufferSource[] = [];
   private gains: Tone.Gain[] = [];
   private lfo: Tone.LFO | null = null;
   private releaseSeconds: number;
@@ -29,13 +33,21 @@ export class PatchVoice {
     for (const layer of patch.layers) {
       if (layer.muted) continue;
       const g = new Tone.Gain(layer.gain).connect(this.mix);
-      const osc = new Tone.Oscillator({
-        type: layer.type,
-        detune: layer.detune,
-        phase: layer.phase,
-      }).connect(g);
-      this.oscs.push(osc);
       this.gains.push(g);
+      if (layer.type === 'noise') {
+        // deterministic looped white noise, reproducible from the seed
+        const samples = seededNoise(layer.noiseSeed ?? 1, NOISE_LOOP_SECONDS * Tone.getContext().sampleRate);
+        const src = new Tone.ToneBufferSource(Tone.ToneAudioBuffer.fromArray(samples)).connect(g);
+        src.loop = true;
+        this.noises.push(src);
+      } else {
+        const osc = new Tone.Oscillator({
+          type: layer.type,
+          detune: layer.detune,
+          phase: layer.phase,
+        }).connect(g);
+        this.oscs.push(osc);
+      }
     }
     const { target, rate, depth } = patch.lfo;
     if (target !== 'off' && depth > 0) {
@@ -58,6 +70,7 @@ export class PatchVoice {
       osc.frequency.value = freq;
       osc.start(t);
     }
+    for (const noise of this.noises) noise.start(t);
     this.lfo?.start(t);
     this.env.triggerAttack(t, velocity);
   }
@@ -67,6 +80,7 @@ export class PatchVoice {
     this.env.triggerRelease(t);
     const stopAt = t + this.releaseSeconds + 0.05;
     for (const osc of this.oscs) osc.stop(stopAt);
+    for (const noise of this.noises) noise.stop(stopAt);
     this.lfo?.stop(stopAt);
   }
 
@@ -77,7 +91,8 @@ export class PatchVoice {
   }
 
   dispose(): void {
-    for (const n of [...this.oscs, ...this.gains, this.mix, this.hpFilter, this.lpFilter, this.env]) n.dispose();
+    for (const n of [...this.oscs, ...this.noises, ...this.gains, this.mix, this.hpFilter, this.lpFilter, this.env])
+      n.dispose();
     this.lfo?.dispose();
   }
 }

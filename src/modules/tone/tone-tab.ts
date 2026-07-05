@@ -21,7 +21,7 @@ import {
   LPF_TRACE,
 } from './scope-view';
 
-const OSC_TYPES = ['sine', 'sawtooth', 'triangle', 'square'] as const;
+const OSC_TYPES = ['sine', 'sawtooth', 'triangle', 'square', 'noise'] as const;
 const LFO_TARGETS = ['off', 'pitch', 'volume'] as const;
 
 /** One waveform cycle per oscillator type, drawn as a 24x24 stroke icon. */
@@ -30,6 +30,7 @@ const WAVE_ICONS: Record<typeof OSC_TYPES[number], string> = {
   sawtooth: '<path d="M2 18 L 12 6 V 18 L 22 6"/>',
   triangle: '<path d="M2 18 L 7 6 L 17 18 L 22 12"/>',
   square: '<path d="M2 18 V 6 H 12 V 18 H 22 V 6"/>',
+  noise: '<path d="M2 12 L 4 7 L 6 15 L 8 5 L 10 17 L 12 9 L 14 14 L 16 6 L 18 16 L 20 10 L 22 12"/>',
 };
 
 export class ToneTab extends HTMLElement {
@@ -356,6 +357,8 @@ export class ToneTab extends HTMLElement {
             ${WAVE_ICONS[t]}</svg>`,
           () => {
             layer.type = t;
+            // the seed IS the persisted random signal — assigned once, kept forever
+            if (t === 'noise') layer.noiseSeed ??= Math.floor(Math.random() * 0x7fffffff);
             for (const sib of wavePicker.children) sib.classList.toggle('active', sib === b);
             this.save();
           },
