@@ -1,6 +1,6 @@
 export type TabId = 'tone' | 'sample' | 'sequence' | 'arrange' | 'produce';
 
-export type OscType = 'sine' | 'sawtooth' | 'triangle' | 'square';
+export type OscType = 'sine' | 'sawtooth' | 'triangle' | 'square' | 'noise';
 
 export interface ToneLayer {
   type: OscType;
@@ -8,6 +8,8 @@ export interface ToneLayer {
   detune: number;  // cents
   phase: number;   // degrees
   muted?: boolean;
+  /** White-noise layers persist their PRNG seed so the signal is reproducible. */
+  noiseSeed?: number;
 }
 
 export interface PatchFilter {

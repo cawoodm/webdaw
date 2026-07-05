@@ -70,6 +70,23 @@ export function magnitudeSpectrum(signal: Float32Array, maxSize = 32768): Spectr
   return { mags, size };
 }
 
+/**
+ * Deterministic white noise from a seed (mulberry32 PRNG): the same seed
+ * always produces the same signal, so a noise layer persists as just its
+ * seed in project.json.
+ */
+export function seededNoise(seed: number, length: number): Float32Array {
+  let a = seed >>> 0;
+  const out = new Float32Array(length);
+  for (let i = 0; i < length; i++) {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    out[i] = (((t ^ (t >>> 14)) >>> 0) / 4294967296) * 2 - 1;
+  }
+  return out;
+}
+
 /** Min/max amplitude per column — audio-editor style waveform overview. */
 export function waveformPeaks(data: Float32Array, columns: number): { min: Float32Array; max: Float32Array } {
   const min = new Float32Array(columns);
