@@ -24,7 +24,15 @@ export class AppShell extends HTMLElement {
         <nav class="tab-bar"></nav>
         <div class="transport">
           <label>BPM <input type="number" class="bpm" min="40" max="240" value="120"></label>
-          <button class="metro">Metronome</button>
+          <button class="metro icon-btn" title="Metronome" aria-label="Toggle metronome">
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+              <path d="M9.2 3.5h5.6L19 20.5H5L9.2 3.5z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+              <g class="pendulum">
+                <line x1="12" y1="17" x2="12" y2="6.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                <circle cx="12" cy="6.5" r="1.5" fill="currentColor"/>
+              </g>
+            </svg>
+          </button>
           <button class="stop-all">⏹ Stop</button>
         </div>
         <div class="project-menu">
@@ -62,7 +70,7 @@ export class AppShell extends HTMLElement {
     const metro = this.querySelector<HTMLButtonElement>('.metro')!;
     metro.onclick = async (): Promise<void> => {
       await engine.ensureStarted();
-      engine.setMetronome(!engine.metronomeOn);
+      await engine.setMetronome(!engine.metronomeOn);
       metro.classList.toggle('active', engine.metronomeOn);
     };
     this.querySelector<HTMLButtonElement>('.stop-all')!.onclick = (): void => engine.stop();
