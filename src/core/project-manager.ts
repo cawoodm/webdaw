@@ -123,9 +123,9 @@ class ProjectManager {
   }
 
   /**
-   * Full flush: project.json, ui.json, keymap.json, pending WAVs, and all
-   * IndexedDB mirrors. Single-flight — calls during a save collapse into
-   * one trailing save.
+   * Full flush: tone WAVs, project.json, ui.json, keymap.json, pending
+   * WAVs, and all IndexedDB mirrors. Single-flight — calls during a save
+   * collapse into one trailing save.
    */
   saveAll(): Promise<void> {
     if (this.saving) {
@@ -143,6 +143,7 @@ class ProjectManager {
   }
 
   private async doSave(): Promise<void> {
+    await store.saveTones(); // before save() so updated wavFile refs persist
     await store.save();
     await flushUiState();
     await store.writeJson('keymap.json', getKeyMap());
