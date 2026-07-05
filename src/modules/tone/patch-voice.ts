@@ -19,6 +19,7 @@ export class PatchVoice {
     this.mix = new Tone.Gain(1).connect(this.env);
     this.releaseSeconds = patch.env.release;
     for (const layer of patch.layers) {
+      if (layer.muted) continue;
       const g = new Tone.Gain(layer.gain).connect(this.mix);
       const osc = new Tone.Oscillator({
         type: layer.type,

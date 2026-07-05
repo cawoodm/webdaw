@@ -22,6 +22,8 @@ export class ToneTab extends HTMLElement {
   private live = false;
   private staticTimer: number | undefined;
   private staticSeq = 0;
+  private looping = false;
+  private previewTimers: number[] = [];
 
   connectedCallback(): void {
     this.className = 'tab-panel tone-tab';
@@ -65,6 +67,28 @@ export class ToneTab extends HTMLElement {
     setTimeout(() => voice.dispose(), (this.patch().env.release + 0.3) * 1000);
   }
 
+  /** Preview C4: 1s hold + release; retriggers while loop is on. */
+  private async playPreview(): Promise<void> {
+    await engine.ensureStarted();
+    this.stopPreview();
+    const cycle = (): void => {
+      void this.noteOn('C4', 0.9);
+      const holdMs = 1000;
+      this.previewTimers.push(window.setTimeout(() => this.noteOff('C4'), holdMs));
+      if (this.looping) {
+        const gapMs = holdMs + this.patch().env.release * 1000 + 150;
+        this.previewTimers.push(window.setTimeout(cycle, gapMs));
+      }
+    };
+    cycle();
+  }
+
+  private stopPreview(): void {
+    for (const t of this.previewTimers) clearTimeout(t);
+    this.previewTimers = [];
+    this.noteOff('C4');
+  }
+
   private save(): void {
     store.scheduleSave();
     // patch parameters changed — refresh the static views once edits settle
@@ -96,6 +120,48 @@ export class ToneTab extends HTMLElement {
     scopesBlock.className = 'tone-scopes-block';
     const scopesHead = document.createElement('div');
     scopesHead.className = 'tone-scopes-head';
+
+    const transport = document.createElement('div');
+    transport.className = 'tone-transport';
+    const iconBtn = (title: string, svg: string, fn: () => void): HTMLButtonElement => {
+      const b = document.createElement('button');
+      b.className = 'icon-btn';
+      b.title = title;
+      b.setAttribute('aria-label', title);
+      b.innerHTML = svg;
+      b.onclick = fn;
+      return b;
+    };
+    const loopBtn = iconBtn(
+      'Loop preview',
+      `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/>
+        <polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>`,
+      () => {
+        this.looping = !this.looping;
+        loopBtn.classList.toggle('active', this.looping);
+        if (!this.looping) {
+          for (const t of this.previewTimers) clearTimeout(t);
+          this.previewTimers = [];
+        }
+      },
+    );
+    loopBtn.classList.toggle('active', this.looping);
+    transport.append(
+      iconBtn(
+        'Play preview (C4)',
+        `<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>`,
+        () => void this.playPreview(),
+      ),
+      iconBtn(
+        'Stop preview',
+        `<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>`,
+        () => this.stopPreview(),
+      ),
+      loopBtn,
+    );
+    scopesHead.appendChild(transport);
+
     const liveToggle = document.createElement('label');
     liveToggle.className = 'hint live-toggle';
     const liveCheck = document.createElement('input');
@@ -193,6 +259,7 @@ export class ToneTab extends HTMLElement {
     patch.layers.forEach((layer, i) => {
       const card = document.createElement('div');
       card.className = 'card';
+      card.classList.toggle('muted', !!layer.muted);
       const head = document.createElement('div');
       head.className = 'card-head';
       const typeSel = document.createElement('select');
@@ -207,9 +274,17 @@ export class ToneTab extends HTMLElement {
         layer.type = typeSel.value as typeof OSC_TYPES[number];
         this.save();
       };
+      const muteBtn = btn('Mute', () => {
+        layer.muted = !layer.muted;
+        muteBtn.classList.toggle('active', !!layer.muted);
+        card.classList.toggle('muted', !!layer.muted);
+        this.save();
+      });
+      muteBtn.classList.toggle('active', !!layer.muted);
       head.append(
         Object.assign(document.createElement('span'), { textContent: `Layer ${i + 1}`, className: 'card-title' }),
         typeSel,
+        muteBtn,
         btn('Duplicate', () => {
           store.update(() => patch.layers.splice(i + 1, 0, { ...layer, phase: (layer.phase + 90) % 360 }));
           this.render();
@@ -305,11 +380,6 @@ export class ToneTab extends HTMLElement {
     const actions = document.createElement('div');
     actions.className = 'toolbar';
     actions.append(
-      btn('▶ Preview C4', async () => {
-        await engine.ensureStarted();
-        void this.noteOn('C4', 0.9);
-        setTimeout(() => this.noteOff('C4'), 600);
-      }),
       btn('Export WAV', async () => {
         const buffer = await renderPatch(patch);
         const path = `tones/${patch.name.replace(/[^\w-]+/g, '_')}.wav`;

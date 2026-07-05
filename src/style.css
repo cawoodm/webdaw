@@ -236,8 +236,14 @@ daw-knob {
 
 .tone-scopes-head {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
   margin-bottom: 4px;
+}
+
+.tone-transport {
+  display: flex;
+  gap: 6px;
 }
 
 .live-toggle {
@@ -274,9 +280,14 @@ daw-knob {
 
 .tone-layers {
   display: flex;
+  flex-direction: column;
   gap: 12px;
-  flex-wrap: wrap;
   margin-bottom: 12px;
+}
+
+.tone-layers .card.muted .knob-row,
+.tone-layers .card.muted .card-title {
+  opacity: 0.45;
 }
 
 .tone-mod-row {

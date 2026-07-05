@@ -27,7 +27,7 @@ Three singletons under `src/core/`; five tab modules that talk **only** to the s
 
 **Rendering convention:** no virtual DOM — modules rebuild their own DOM imperatively via `render()` on `project:loaded` and after their own structural edits. Styling is global (`src/style.css`), no shadow DOM.
 
-**Offline rendering pattern (important):** every WAV export uses `Tone.Offline(callback, seconds)`. Nodes constructed inside the callback bind to the offline context, so the same code (e.g. `PatchVoice`, `scheduleSequenceAt`, `connectChain`) runs live and offline. Resolve `AudioBuffer`s from the store *before* entering the callback (the store/cache belongs to the live context); schedule with absolute seconds computed from BPM. Never call `Tone.Offline` inside another `Tone.Offline`— pre-render dependencies first (see `arrange-tab.ts` `resolveClips`).
+**Offline rendering pattern (important):** every WAV export uses `Tone.Offline(callback, seconds)`. Nodes constructed inside the callback bind to the offline context, so the same code (e.g. `PatchVoice`, `scheduleSequenceAt`, `connectChain`) runs live and offline. Resolve `AudioBuffer`s from the store _before_ entering the callback (the store/cache belongs to the live context); schedule with absolute seconds computed from BPM. Never call `Tone.Offline` inside another `Tone.Offline`— pre-render dependencies first (see `arrange-tab.ts` `resolveClips`).
 
 **Plugins** (`src/plugins/`): implement `DawPlugin` (`api.ts`) — `input`/`output` Tone nodes, `createUI()`, `getState()/setState()` (plain `Record<string, number>`, persisted in `project.json`). Register in `PLUGIN_REGISTRY` (`builtins.ts`). `<plugin-chain>` (`chain.ts`) provides host chrome (bypass/remove) and rewiring; `connectChain()` is the context-agnostic variant used in offline exports. Plugin UIs report edits by dispatching a bubbling `plugin-state-changed` event.
 
@@ -40,3 +40,7 @@ Three singletons under `src/core/`; five tab modules that talk **only** to the s
 - TypeScript type declarations for File System Access APIs missing from lib.dom live in `src/types/fs-access.d.ts`.
 - IDs come from `uid()` in `model.ts`; new persisted fields belong on `ProjectData` and must survive a JSON round-trip (there is a test for this).
 - Custom element class fields must not shadow `HTMLElement` members (e.g. `part` is taken).
+
+## UI
+
+- Prefer svg icons over text where possible (title/tooltip should explain what the button does and show the hotkey)

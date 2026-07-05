@@ -7,6 +7,7 @@ export interface ToneLayer {
   gain: number;    // 0..1
   detune: number;  // cents
   phase: number;   // degrees
+  muted?: boolean;
 }
 
 export interface TonePatch {
