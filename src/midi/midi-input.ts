@@ -1,10 +1,19 @@
-import * as Tone from 'tone';
 import { bus } from '../core/event-bus';
 import { noteForKey } from './keymap';
+
+const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+
+/** MIDI note number -> note name, e.g. 60 -> "C4". */
+function midiToNote(key: number): string {
+  return `${NOTE_NAMES[key % 12]}${Math.floor(key / 12) - 1}`;
+}
 
 /**
  * Note input: Web MIDI devices plus computer-keyboard fallback.
  * Both paths emit 'midi:noteon' / 'midi:noteoff' on the bus.
+ * Deliberately Tone-free: MIDI messages can arrive before the first user
+ * gesture, and creating the audio context then triggers Chrome's autoplay
+ * warning.
  */
 class MidiInput {
   deviceNames: string[] = [];
@@ -35,7 +44,7 @@ class MidiInput {
     if (!data || data.length < 3) return;
     const [status, key, velocity] = data;
     const cmd = status & 0xf0;
-    const note = Tone.Frequency(key, 'midi').toNote();
+    const note = midiToNote(key);
     if (cmd === 0x90 && velocity > 0) {
       bus.emit('midi:noteon', { note, velocity: velocity / 127 });
     } else if (cmd === 0x80 || (cmd === 0x90 && velocity === 0)) {

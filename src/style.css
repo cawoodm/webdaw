@@ -556,3 +556,11 @@ dialog td {
 .produce-stub {
   max-width: 480px;
 }
+
+.legend-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}

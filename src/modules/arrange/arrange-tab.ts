@@ -14,6 +14,7 @@ const MIN_BARS = 32;
 export class ArrangeTab extends HTMLElement {
   private palette = '';
   private openFx = new Set<string>();
+  private fxRenderQueued = false;
   private playing: Tone.ToneBufferSource[] = [];
   private seqRenderCache = new Map<string, AudioBuffer>();
   private liveChains = new Map<string, { inGain: Tone.Gain; chain: PluginChainEl }>();
@@ -298,8 +299,17 @@ export class ArrangeTab extends HTMLElement {
       lane.appendChild(row);
 
       if (this.openFx.has(track.id)) {
-        const { chain } = this.trackNodes(track);
-        lane.appendChild(chain);
+        // plugin chains need the audio context — defer mounting until the
+        // first gesture when FX panels are restored at boot
+        if (engine.started) {
+          lane.appendChild(this.trackNodes(track).chain);
+        } else if (!this.fxRenderQueued) {
+          this.fxRenderQueued = true;
+          engine.whenReady(() => {
+            this.fxRenderQueued = false;
+            this.render();
+          });
+        }
       }
       lanes.appendChild(lane);
     }

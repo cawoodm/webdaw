@@ -2,10 +2,20 @@ import * as Tone from 'tone';
 import metronomeMp3 from '../assets/metronome-85688.mp3';
 import { extractClick } from './click-trim';
 
-/** Wraps Tone.js: transport, metronome, master bus. */
+/**
+ * Wraps Tone.js: transport, metronome, master bus.
+ *
+ * No audio node (and hence no AudioContext) is created until the first
+ * user gesture — Chrome logs an autoplay warning for any AudioContext
+ * created before one. Boot-time audio work goes through whenReady(),
+ * which flushes once the context starts (a window-level one-time gesture
+ * listener triggers ensureStarted automatically).
+ */
 class AudioEngine {
-  readonly master: Tone.Gain = new Tone.Gain(0.9).toDestination();
-  private started = false;
+  private _master: Tone.Gain | null = null;
+  private _started = false;
+  private readyQueue: (() => void)[] = [];
+  private bpmValue = 120;
   private metroGain: Tone.Gain | null = null;
   private metroLoop: Tone.Loop | null = null;
   private metroClock: Tone.Clock | null = null;
@@ -14,30 +24,53 @@ class AudioEngine {
   metronomeOn = false;
 
   constructor() {
+    const onFirstGesture = (): void => {
+      void this.ensureStarted();
+    };
+    window.addEventListener('pointerdown', onFirstGesture, { once: true });
+    window.addEventListener('keydown', onFirstGesture, { once: true });
+  }
+
+  get master(): Tone.Gain {
+    if (!this._master) this._master = new Tone.Gain(0.9).toDestination();
+    return this._master;
+  }
+
+  get started(): boolean {
+    return this._started;
+  }
+
+  /** Run now if the context is live, otherwise once the first gesture starts it. */
+  whenReady(fn: () => void): void {
+    if (this._started) fn();
+    else this.readyQueue.push(fn);
+  }
+
+  async ensureStarted(): Promise<void> {
+    if (this._started) return;
+    await Tone.start();
+    if (this._started) return; // concurrent caller won the race
+    this._started = true;
+    const transport = Tone.getTransport();
+    transport.bpm.value = this.bpmValue;
     // The metronome must tick standalone AND stay beat-aligned during
     // playback, so it switches mode whenever the transport starts/stops.
-    const transport = Tone.getTransport();
     transport.on('start', () => {
       if (this.metronomeOn) this.startTicker();
     });
     transport.on('stop', () => {
       if (this.metronomeOn) this.startTicker();
     });
-  }
-
-  async ensureStarted(): Promise<void> {
-    if (!this.started) {
-      await Tone.start();
-      this.started = true;
-    }
+    for (const fn of this.readyQueue.splice(0)) fn();
   }
 
   get bpm(): number {
-    return Math.round(Tone.getTransport().bpm.value);
+    return Math.round(this.bpmValue);
   }
 
   set bpm(value: number) {
-    Tone.getTransport().bpm.value = value;
+    this.bpmValue = value;
+    if (this._started) Tone.getTransport().bpm.value = value;
     if (this.metroClock) this.metroClock.frequency.value = value / 60;
   }
 
@@ -147,17 +180,19 @@ class AudioEngine {
    * queued and fires on the first user gesture.
    */
   warmUp(buffer: AudioBuffer): void {
-    const mute = new Tone.Gain(0).toDestination();
-    const src = new Tone.ToneBufferSource(new Tone.ToneAudioBuffer(buffer)).connect(mute);
-    src.onended = (): void => {
-      src.dispose();
-      mute.dispose();
-    };
-    src.start(Tone.now(), 0, Math.min(0.05, buffer.duration));
+    this.whenReady(() => {
+      const mute = new Tone.Gain(0).toDestination();
+      const src = new Tone.ToneBufferSource(new Tone.ToneAudioBuffer(buffer)).connect(mute);
+      src.onended = (): void => {
+        src.dispose();
+        mute.dispose();
+      };
+      src.start(Tone.now(), 0, Math.min(0.05, buffer.duration));
+    });
   }
 
   secondsPerBeat(): number {
-    return 60 / Tone.getTransport().bpm.value;
+    return 60 / this.bpmValue;
   }
 
   secondsPerStep(): number {

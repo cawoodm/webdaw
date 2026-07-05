@@ -43,6 +43,12 @@ export class SampleTab extends HTMLElement {
 
   /** Render buffers for tone-linked pads that don't have one yet (project load). */
   private async ensureToneBuffers(): Promise<void> {
+    // renderPatch (Tone.Offline) would create the audio context — wait for
+    // the first gesture instead of triggering Chrome's autoplay warning
+    if (!engine.started) {
+      engine.whenReady(() => void this.ensureToneBuffers());
+      return;
+    }
     let rendered = false;
     for (const pad of store.data.pads) {
       if (!pad?.toneId || store.getBuffer(toneBufferKey(pad.toneId))) continue;

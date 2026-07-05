@@ -99,7 +99,9 @@ export class AppShell extends HTMLElement {
     bus.on('ui:loaded', () => {
       this.activate(uiState().activeTab);
       if (uiState().metronomeOn) {
-        void engine.setMetronome(true).then(() => metro.classList.add('active'));
+        metro.classList.add('active');
+        // clicking starts once the first gesture unlocks the audio context
+        engine.whenReady(() => void engine.setMetronome(true));
       }
     });
     bus.on('project:loaded', () => {

@@ -26,6 +26,19 @@ class ProjectStore {
 
   private buffers = new Map<string, AudioBuffer>();
   private saveTimer: number | undefined;
+  private decodeCtx: OfflineAudioContext | null = null;
+
+  /**
+   * Decode audio without forcing the live AudioContext into existence
+   * before a user gesture (Chrome logs an autoplay warning for that).
+   */
+  private async decode(raw: ArrayBuffer): Promise<AudioBuffer> {
+    if (engine.started) {
+      return (Tone.getContext().rawContext as AudioContext).decodeAudioData(raw);
+    }
+    this.decodeCtx ??= new OfflineAudioContext(1, 1, 44100);
+    return this.decodeCtx.decodeAudioData(raw);
+  }
 
   async chooseFolder(): Promise<void> {
     this.dir = await window.showDirectoryPicker({ id: 'webdaw', mode: 'readwrite' });
@@ -125,8 +138,7 @@ class ProjectStore {
     const raw = await this.readFile(path);
     if (!raw) return null;
     try {
-      const ctx = Tone.getContext().rawContext as AudioContext;
-      const buffer = await ctx.decodeAudioData(raw);
+      const buffer = await this.decode(raw);
       this.cacheBuffer(path, buffer);
       return buffer;
     } catch (err) {
@@ -138,8 +150,7 @@ class ProjectStore {
   /** Decode a user-picked file and copy it into the project folder. */
   async importAudioFile(file: File, destPath: string): Promise<AudioBuffer> {
     const raw = await file.arrayBuffer();
-    const ctx = Tone.getContext().rawContext as AudioContext;
-    const buffer = await ctx.decodeAudioData(raw.slice(0));
+    const buffer = await this.decode(raw.slice(0));
     await this.saveWav(destPath, buffer);
     return buffer;
   }

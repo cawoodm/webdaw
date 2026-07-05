@@ -11,10 +11,13 @@ import {
   drawEnvelopeOverlay,
   drawFft,
   drawFilterOverlay,
+  drawLfoOverlay,
   drawScope,
   drawSpectrumStatic,
   drawWaveformStatic,
+  ENV_TRACE,
   HPF_TRACE,
+  LFO_TRACE,
   LPF_TRACE,
 } from './scope-view';
 
@@ -25,21 +28,21 @@ export class ToneTab extends HTMLElement {
   private patchId = '';
   private active = false;
   private voices = new Map<string, PatchVoice>();
-  // sum of all voices (and their layers) — analysed for the live scope views
-  private tap = new Tone.Gain(1);
-  private waveAnalyser = new Tone.Analyser('waveform', 1024);
-  private fftAnalyser = new Tone.Analyser('fft', 1024);
+  // sum of all voices (and their layers) — analysed for the live scope views;
+  // created lazily so no AudioContext exists before the first user gesture
+  private tap: Tone.Gain | null = null;
+  private waveAnalyser: Tone.Analyser | null = null;
+  private fftAnalyser: Tone.Analyser | null = null;
   private live = false;
   private staticTimer: number | undefined;
   private staticSeq = 0;
   private looping = false;
   private previewTimers: number[] = [];
+  private staticRenderQueued = false;
+  private lastRender: { data: Float32Array; sampleRate: number; duration: number } | null = null;
 
   connectedCallback(): void {
     this.className = 'tab-panel tone-tab';
-    this.tap.connect(engine.master);
-    this.tap.connect(this.waveAnalyser);
-    this.tap.connect(this.fftAnalyser);
     bus.on('project:loaded', () => this.render());
     bus.on('ui:loaded', () => {
       const s = uiState().tone;
@@ -73,10 +76,21 @@ export class ToneTab extends HTMLElement {
     updateUi((s) => (s.tone.patchId = id));
   }
 
+  private getTap(): Tone.Gain {
+    if (!this.tap) {
+      this.tap = new Tone.Gain(1).connect(engine.master);
+      this.waveAnalyser = new Tone.Analyser('waveform', 1024);
+      this.fftAnalyser = new Tone.Analyser('fft', 1024);
+      this.tap.connect(this.waveAnalyser);
+      this.tap.connect(this.fftAnalyser);
+    }
+    return this.tap;
+  }
+
   private async noteOn(note: string, velocity: number): Promise<void> {
     await engine.ensureStarted();
     this.noteOff(note);
-    const voice = new PatchVoice(this.patch(), this.tap);
+    const voice = new PatchVoice(this.patch(), this.getTap());
     this.voices.set(note, voice);
     voice.triggerAttack(note, undefined, velocity);
   }
@@ -113,7 +127,9 @@ export class ToneTab extends HTMLElement {
 
   private save(): void {
     store.scheduleSave();
-    // patch parameters changed — refresh render (static views + linked pads) once edits settle
+    // overlays track the dial instantly from the cached render; the audio
+    // re-render (and its fresh waveform/spectrum) follows once edits settle
+    this.redrawStatic();
     clearTimeout(this.staticTimer);
     this.staticTimer = window.setTimeout(() => void this.updateStatic(), 400);
   }
@@ -123,18 +139,39 @@ export class ToneTab extends HTMLElement {
    * pads play the latest version, and draw the static time/freq views.
    */
   private async updateStatic(): Promise<void> {
+    // Tone.Offline touches the global context — rendering before the first
+    // gesture would trigger Chrome's autoplay warning
+    if (!engine.started) {
+      if (!this.staticRenderQueued) {
+        this.staticRenderQueued = true;
+        engine.whenReady(() => {
+          this.staticRenderQueued = false;
+          void this.updateStatic();
+        });
+      }
+      return;
+    }
     const patch = this.patch();
     const seq = ++this.staticSeq;
     const buffer = await renderPatch(patch);
     if (seq !== this.staticSeq) return; // superseded by a newer edit
     store.setBuffer(toneBufferKey(patch.id), buffer);
+    this.lastRender = { data: buffer.getChannelData(0), sampleRate: buffer.sampleRate, duration: buffer.duration };
+    this.redrawStatic();
+  }
+
+  /** Draw the static views from the cached render with current dial values. */
+  private redrawStatic(): void {
+    if (!this.lastRender) return;
     const timeCanvas = this.querySelector<HTMLCanvasElement>('canvas.scope-static-time');
     const freqCanvas = this.querySelector<HTMLCanvasElement>('canvas.scope-static-freq');
     if (!timeCanvas || !freqCanvas) return;
-    const data = buffer.getChannelData(0);
-    drawWaveformStatic(timeCanvas, data, buffer.sampleRate);
-    drawEnvelopeOverlay(timeCanvas, patch.env, buffer.duration);
-    drawSpectrumStatic(freqCanvas, data, buffer.sampleRate);
+    const patch = this.patch();
+    const { data, sampleRate, duration } = this.lastRender;
+    drawWaveformStatic(timeCanvas, data, sampleRate);
+    drawEnvelopeOverlay(timeCanvas, patch.env, duration);
+    drawLfoOverlay(timeCanvas, patch.lfo, duration);
+    drawSpectrumStatic(freqCanvas, data, sampleRate);
     drawFilterOverlay(freqCanvas, this.filter(patch));
   }
 
@@ -226,9 +263,20 @@ export class ToneTab extends HTMLElement {
       return wrap;
     };
     if (this.live) {
+      // analysers need the audio context — start the draw loops on first gesture
       scopes.append(
-        scope('Time (live)', 'scope-live-time', (c) => drawScope(c, this.waveAnalyser, isActive)),
-        scope('Freq (live)', 'scope-live-freq', (c) => drawFft(c, this.fftAnalyser, isActive)),
+        scope('Time (live)', 'scope-live-time', (c) =>
+          engine.whenReady(() => {
+            this.getTap();
+            if (c.isConnected) drawScope(c, this.waveAnalyser!, isActive);
+          }),
+        ),
+        scope('Freq (live)', 'scope-live-freq', (c) =>
+          engine.whenReady(() => {
+            this.getTap();
+            if (c.isConnected) drawFft(c, this.fftAnalyser!, isActive);
+          }),
+        ),
       );
     } else {
       scopes.append(
@@ -363,7 +411,8 @@ export class ToneTab extends HTMLElement {
     row.className = 'tone-mod-row';
     const envCard = document.createElement('div');
     envCard.className = 'card';
-    envCard.innerHTML = '<div class="card-head"><span class="card-title">Envelope</span></div>';
+    const legendDot = (color: string): string => `<span class="legend-dot" style="background:${color}"></span>`;
+    envCard.innerHTML = `<div class="card-head">${legendDot(ENV_TRACE)}<span class="card-title">Envelope</span></div>`;
     const envKnobs = document.createElement('div');
     envKnobs.className = 'knob-row';
     const envParams = [
@@ -386,7 +435,7 @@ export class ToneTab extends HTMLElement {
     lfoCard.className = 'card';
     const lfoHead = document.createElement('div');
     lfoHead.className = 'card-head';
-    lfoHead.innerHTML = '<span class="card-title">LFO</span>';
+    lfoHead.innerHTML = `${legendDot(LFO_TRACE)}<span class="card-title">LFO</span>`;
     const targetSel = document.createElement('select');
     for (const t of LFO_TARGETS) {
       const opt = document.createElement('option');
@@ -417,7 +466,7 @@ export class ToneTab extends HTMLElement {
 
     const filterCard = document.createElement('div');
     filterCard.className = 'card';
-    filterCard.innerHTML = '<div class="card-head"><span class="card-title">Filter</span></div>';
+    filterCard.innerHTML = `<div class="card-head">${legendDot(HPF_TRACE)}${legendDot(LPF_TRACE)}<span class="card-title">Filter</span></div>`;
     const filterKnobs = document.createElement('div');
     filterKnobs.className = 'knob-row';
     const filter = this.filter(patch);
