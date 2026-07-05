@@ -320,7 +320,11 @@ export class ToneTab extends HTMLElement {
       btn('Rename', () => {
         const name = prompt('Patch name', patch.name);
         if (name) {
-          store.update(() => (patch.name = name));
+          store.update((d) => {
+            patch.name = name;
+            // pads linked to this tone carry a copy of its name
+            for (const pad of d.pads) if (pad?.toneId === patch.id) pad.name = name;
+          });
           this.render();
         }
       }),

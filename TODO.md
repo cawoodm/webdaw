@@ -3,12 +3,13 @@
 Mark in progress 🕜 and then move to done ✅ when complete and merge branch into main
 Once a task is done, show the user the dev URL, confirm with the user they are happy before marking done
 
-- bug: Renaming tone should update dropdown in sampler 🕜
+- feat: Add a new wave type "White Noise" which generates a random signal instead of a wave but that random signal is persisted 🕜
 - feat: Export tone should export .json settings of that tone
 - the metronome is the clock for playback: when samples play in a loop, align with metronome and BPM
 
 # DONE
 
+- bug: Renaming tone should update dropdown in sampler ✅
 - bug: Vizualizations are not displayed at startup ✅
 - Change wave type dropdown to an icon selector ✅
 - User should be able to set frequency and duration of sample ✅
