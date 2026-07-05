@@ -4,6 +4,7 @@ import { bus } from '../../core/event-bus';
 import type { PatchFilter, TonePatch } from '../../core/model';
 import { defaultFilter, defaultPatch, SAMPLE_FREQ_DEFAULT, SAMPLE_SECONDS_DEFAULT, sampleHold, toneBufferKey, uid } from '../../core/model';
 import { store } from '../../core/project-store';
+import { beatsToTransportTime } from '../../core/time';
 import { uiState, updateUi } from '../../core/ui-state';
 import { knob } from '../../ui/knob';
 import { PatchVoice, renderPatch } from '../../core/patch-voice';
@@ -47,6 +48,8 @@ export class ToneTab extends HTMLElement {
   private staticSeq = 0;
   private looping = false;
   private previewTimers: number[] = [];
+  private previewLoop: Tone.Loop | null = null;
+  private previewStartedTransport = false;
   private lastRender: { data: Float32Array; sampleRate: number } | null = null;
 
   connectedCallback(): void {
@@ -111,26 +114,45 @@ export class ToneTab extends HTMLElement {
     setTimeout(() => voice.dispose(), (this.patch().env.release + 0.3) * 1000);
   }
 
-  /** Preview at the patch's sample freq/duration; retriggers while loop is on. */
+  /**
+   * Preview at the patch's sample freq/duration. With loop on, retriggers
+   * ride the transport on a whole-beat interval — the metronome is the
+   * clock, so clicks and retriggers stay locked through BPM changes.
+   */
   private async playPreview(): Promise<void> {
     await engine.ensureStarted();
     this.stopPreview();
-    const cycle = (): void => {
-      const patch = this.patch();
+    const patch = this.patch();
+    const hold = sampleHold(patch);
+    if (this.looping) {
+      const intervalBeats = Math.max(1, Math.ceil(hold / engine.secondsPerBeat()));
+      this.previewLoop = new Tone.Loop((time) => {
+        const p = this.patch();
+        const holdNow = sampleHold(p);
+        const voice = new PatchVoice(p, this.getTap());
+        voice.triggerAttackRelease(p.sampleFreq ?? SAMPLE_FREQ_DEFAULT, holdNow, time);
+        this.previewTimers.push(
+          window.setTimeout(() => voice.dispose(), (holdNow + p.env.release + 0.5) * 1000),
+        );
+      }, beatsToTransportTime(intervalBeats)).start(0);
+      this.previewStartedTransport = !engine.playing;
+      engine.play();
+    } else {
       void this.noteOn(patch.sampleFreq ?? SAMPLE_FREQ_DEFAULT, 0.9, 'preview');
-      this.previewTimers.push(window.setTimeout(() => this.noteOff('preview'), sampleHold(patch) * 1000));
-      if (this.looping) {
-        const gapMs = (patch.sampleSeconds ?? SAMPLE_SECONDS_DEFAULT) * 1000 + 150;
-        this.previewTimers.push(window.setTimeout(cycle, gapMs));
-      }
-    };
-    cycle();
+      this.previewTimers.push(window.setTimeout(() => this.noteOff('preview'), hold * 1000));
+    }
   }
 
   private stopPreview(): void {
     for (const t of this.previewTimers) clearTimeout(t);
     this.previewTimers = [];
     this.noteOff('preview');
+    this.previewLoop?.dispose();
+    this.previewLoop = null;
+    if (this.previewStartedTransport) {
+      engine.stop(); // only stop the transport if the preview started it
+      this.previewStartedTransport = false;
+    }
   }
 
   private save(): void {
@@ -221,10 +243,7 @@ export class ToneTab extends HTMLElement {
         this.looping = !this.looping;
         updateUi((s) => (s.tone.loop = this.looping));
         loopBtn.classList.toggle('active', this.looping);
-        if (!this.looping) {
-          for (const t of this.previewTimers) clearTimeout(t);
-          this.previewTimers = [];
-        }
+        if (!this.looping) this.stopPreview();
       },
     );
     loopBtn.classList.toggle('active', this.looping);
