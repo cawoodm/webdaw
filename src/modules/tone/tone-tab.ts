@@ -295,7 +295,7 @@ export class ToneTab extends HTMLElement {
       const muteBtn = iconBtn(
         'Mute layer',
         `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M11 5 6 9H2v6h4l5 4V5z"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>`,
+          <path d="M11 5 6 9H2v6h4l5 4V5z"/></svg>`,
         () => {
           layer.muted = !layer.muted;
           muteBtn.classList.toggle('active', !!layer.muted);
@@ -303,6 +303,7 @@ export class ToneTab extends HTMLElement {
           this.save();
         },
       );
+      muteBtn.classList.add('mute-btn');
       muteBtn.classList.toggle('active', !!layer.muted);
       head.append(
         Object.assign(document.createElement('span'), { textContent: `Layer ${i + 1}`, className: 'card-title' }),

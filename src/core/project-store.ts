@@ -7,11 +7,16 @@ import { encodeWav } from './wav';
 
 const DIR_KEY = 'projectDir';
 const PROJECT_FILE = 'project.json';
+const PROJECT_IDB_KEY = 'projectData';
 
 /**
  * In-memory project model with autosave to a File System Access folder.
  * The directory handle is persisted in IndexedDB so the project reopens
  * automatically on reload (a permission re-grant may be required).
+ *
+ * Every save also mirrors the project JSON to IndexedDB, so edits survive
+ * reloads even before a folder is chosen (or while permission is pending).
+ * The folder's project.json is authoritative once available.
  */
 class ProjectStore {
   data: ProjectData = defaultProject();
@@ -31,15 +36,19 @@ class ProjectStore {
 
   async tryRestore(): Promise<void> {
     const handle = await idbGet<FileSystemDirectoryHandle>(DIR_KEY);
-    if (!handle) return;
-    this.dir = handle;
-    const perm = await handle.queryPermission({ mode: 'readwrite' });
-    if (perm === 'granted') {
-      await this.loadOrInit();
-    } else {
+    if (handle) {
+      this.dir = handle;
+      const perm = await handle.queryPermission({ mode: 'readwrite' });
+      if (perm === 'granted') {
+        await this.loadOrInit();
+        return;
+      }
       this.needsPermission = true;
-      bus.emit('project:loaded');
     }
+    // no folder access (yet) — fall back to the IndexedDB mirror
+    const cached = await idbGet<ProjectData>(PROJECT_IDB_KEY);
+    if (cached) this.data = { ...defaultProject(), ...cached };
+    bus.emit('project:loaded');
   }
 
   async reconnect(): Promise<void> {
@@ -81,6 +90,7 @@ class ProjectStore {
   }
 
   async save(): Promise<void> {
+    await idbSet(PROJECT_IDB_KEY, this.data);
     if (!this.dir || this.needsPermission) return;
     await this.writeFile(PROJECT_FILE, JSON.stringify(this.data, null, 2));
   }

@@ -290,6 +290,12 @@ daw-knob {
   opacity: 0.45;
 }
 
+.mute-btn.active {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #2a1215;
+}
+
 .tone-mod-row {
   display: flex;
   gap: 12px;
