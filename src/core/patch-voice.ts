@@ -1,4 +1,5 @@
 import * as Tone from './tone';
+import { engine } from './audio-engine';
 import type { TonePatch } from './model';
 import { defaultFilter, SAMPLE_FREQ_DEFAULT, SAMPLE_SECONDS_DEFAULT, sampleHold } from './model';
 
@@ -89,9 +90,11 @@ export async function renderPatch(patch: TonePatch, note?: string | number): Pro
   const freq = note ?? patch.sampleFreq ?? SAMPLE_FREQ_DEFAULT;
   const duration = patch.sampleSeconds ?? SAMPLE_SECONDS_DEFAULT;
   const hold = sampleHold(patch);
-  const result = await Tone.Offline(() => {
-    const voice = new PatchVoice(patch, Tone.getDestination());
-    voice.triggerAttackRelease(freq, hold, 0.01);
-  }, duration);
-  return result.get() as AudioBuffer;
+  return engine.runExclusive(async () => {
+    const result = await Tone.Offline(() => {
+      const voice = new PatchVoice(patch, Tone.getDestination());
+      voice.triggerAttackRelease(freq, hold, 0.01);
+    }, duration);
+    return result.get() as AudioBuffer;
+  });
 }

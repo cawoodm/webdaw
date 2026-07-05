@@ -14,6 +14,8 @@ import { extractClick } from './click-trim';
 class AudioEngine {
   private _master: Tone.Gain | null = null;
   private _started = false;
+  private offlineStub = false;
+  private exclusiveChain: Promise<unknown> = Promise.resolve();
   private readyQueue: (() => void)[] = [];
   private bpmValue = 120;
   private metroGain: Tone.Gain | null = null;
@@ -46,14 +48,50 @@ class AudioEngine {
     else this.readyQueue.push(fn);
   }
 
+  /**
+   * Serialize Tone.Offline renders against the first-gesture context swap:
+   * Tone.Offline restores whatever global context it started with, so a
+   * render still in flight during the swap would clobber the live context.
+   */
+  runExclusive<T>(fn: () => Promise<T>): Promise<T> {
+    const run = this.exclusiveChain.then(fn, fn);
+    this.exclusiveChain = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  }
+
+  /**
+   * Make Tone.Offline renders possible before the first gesture: point the
+   * global Tone context at a throwaway OfflineContext — creating one does
+   * NOT trigger Chrome's autoplay warning, unlike a live AudioContext.
+   * ensureStarted swaps in the real context on the first gesture.
+   */
+  allowOfflineRender(): void {
+    if (this._started || this.offlineStub) return;
+    Tone.setContext(new Tone.OfflineContext(1, 0.01, 44100));
+    this.offlineStub = true;
+  }
+
   async ensureStarted(): Promise<void> {
     if (this._started) return;
-    // Until the real AudioContext exists, Tone's global context is a
-    // DummyContext and Tone.start() would "resume" that no-op. Materialize
-    // the real context now, inside the user gesture, then resume it.
-    Tone.getContext();
-    await Tone.start();
+    await this.runExclusive(async () => this.start());
+  }
+
+  private async start(): Promise<void> {
     if (this._started) return; // concurrent caller won the race
+    // Until the real AudioContext exists, Tone's global context is a
+    // DummyContext (or the pre-gesture offline render stub) and Tone.start()
+    // would "resume" that no-op. Materialize the real context now, inside
+    // the user gesture, then resume it.
+    if (this.offlineStub) {
+      Tone.setContext(new Tone.Context());
+      this.offlineStub = false;
+    } else {
+      Tone.getContext();
+    }
+    await Tone.start();
     this._started = true;
     const transport = Tone.getTransport();
     transport.bpm.value = this.bpmValue;

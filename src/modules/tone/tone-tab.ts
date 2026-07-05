@@ -24,6 +24,14 @@ import {
 const OSC_TYPES = ['sine', 'sawtooth', 'triangle', 'square'] as const;
 const LFO_TARGETS = ['off', 'pitch', 'volume'] as const;
 
+/** One waveform cycle per oscillator type, drawn as a 24x24 stroke icon. */
+const WAVE_ICONS: Record<typeof OSC_TYPES[number], string> = {
+  sine: '<path d="M2 12 Q 7 3 12 12 T 22 12"/>',
+  sawtooth: '<path d="M2 18 L 12 6 V 18 L 22 6"/>',
+  triangle: '<path d="M2 18 L 7 6 L 17 18 L 22 12"/>',
+  square: '<path d="M2 18 V 6 H 12 V 18 H 22 V 6"/>',
+};
+
 export class ToneTab extends HTMLElement {
   private patchId = '';
   private active = false;
@@ -38,7 +46,6 @@ export class ToneTab extends HTMLElement {
   private staticSeq = 0;
   private looping = false;
   private previewTimers: number[] = [];
-  private staticRenderQueued = false;
   private lastRender: { data: Float32Array; sampleRate: number; duration: number } | null = null;
 
   connectedCallback(): void {
@@ -139,18 +146,9 @@ export class ToneTab extends HTMLElement {
    * pads play the latest version, and draw the static time/freq views.
    */
   private async updateStatic(): Promise<void> {
-    // Tone.Offline touches the global context — rendering before the first
-    // gesture would trigger Chrome's autoplay warning
-    if (!engine.started) {
-      if (!this.staticRenderQueued) {
-        this.staticRenderQueued = true;
-        engine.whenReady(() => {
-          this.staticRenderQueued = false;
-          void this.updateStatic();
-        });
-      }
-      return;
-    }
+    // pre-gesture renders run against an offline stub context, so the
+    // views are populated at startup without an autoplay warning
+    if (!engine.started) engine.allowOfflineRender();
     const patch = this.patch();
     const seq = ++this.staticSeq;
     const buffer = await renderPatch(patch);
@@ -345,18 +343,22 @@ export class ToneTab extends HTMLElement {
       card.classList.toggle('muted', !!layer.muted);
       const head = document.createElement('div');
       head.className = 'card-head';
-      const typeSel = document.createElement('select');
+      const wavePicker = document.createElement('span');
+      wavePicker.className = 'wave-picker';
       for (const t of OSC_TYPES) {
-        const opt = document.createElement('option');
-        opt.value = t;
-        opt.textContent = t;
-        opt.selected = layer.type === t;
-        typeSel.appendChild(opt);
+        const b = iconBtn(
+          t,
+          `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            ${WAVE_ICONS[t]}</svg>`,
+          () => {
+            layer.type = t;
+            for (const sib of wavePicker.children) sib.classList.toggle('active', sib === b);
+            this.save();
+          },
+        );
+        b.classList.toggle('active', layer.type === t);
+        wavePicker.appendChild(b);
       }
-      typeSel.onchange = (): void => {
-        layer.type = typeSel.value as typeof OSC_TYPES[number];
-        this.save();
-      };
       const muteBtn = iconBtn(
         'Mute layer',
         `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -372,7 +374,7 @@ export class ToneTab extends HTMLElement {
       muteBtn.classList.toggle('active', !!layer.muted);
       head.append(
         Object.assign(document.createElement('span'), { textContent: `Layer ${i + 1}`, className: 'card-title' }),
-        typeSel,
+        wavePicker,
         muteBtn,
         btn('Duplicate', () => {
           store.update(() => patch.layers.splice(i + 1, 0, { ...layer, phase: (layer.phase + 90) % 360 }));

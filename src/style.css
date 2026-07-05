@@ -564,3 +564,8 @@ dialog td {
   border-radius: 2px;
   flex-shrink: 0;
 }
+
+.wave-picker {
+  display: inline-flex;
+  gap: 2px;
+}

@@ -1,14 +1,17 @@
 # TODO
 
-Mark in progress 🕜 and then move to done ✅ when complete
+Mark in progress 🕜 and then move to done ✅ when complete and merge branch into main
+Once a task is done, show the user the dev URL, confirm with the user they are happy before marking done
 
-- User should be able to set frequency and duration of sample 🕜
-- Change wave type dropdown to an icon selector
-- bug: Vizualizations are not displayed at startup
-- bug: Renaming tone should update dropdown in sampler
+- bug: Renaming tone should update dropdown in sampler 🕜
+- feat: Export tone should export .json settings of that tone
+- the metronome is the clock for playback: when samples play in a loop, align with metronome and BPM
 
 # DONE
 
+- bug: Vizualizations are not displayed at startup ✅
+- Change wave type dropdown to an icon selector ✅
+- User should be able to set frequency and duration of sample ✅
 - bug: BPM is not persisting ✅ (could not reproduce — works)
 - Live update viz as user drags dials ✅
 - Create a vizualisation for the envelope showing how attack/delay is attenuating the signal over time ✅
