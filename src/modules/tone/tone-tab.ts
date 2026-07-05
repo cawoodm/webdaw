@@ -7,6 +7,7 @@ import { store } from '../../core/project-store';
 import { uiState, updateUi } from '../../core/ui-state';
 import { knob } from '../../ui/knob';
 import { PatchVoice, renderPatch } from '../../core/patch-voice';
+import { encodeWav } from '../../core/wav';
 import {
   drawEnvelopeOverlay,
   drawFft,
@@ -20,6 +21,15 @@ import {
   LFO_TRACE,
   LPF_TRACE,
 } from './scope-view';
+
+/** Trigger a browser download of a generated file. */
+function download(filename: string, blob: Blob): void {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
 
 const OSC_TYPES = ['sine', 'sawtooth', 'triangle', 'square', 'noise'] as const;
 const LFO_TARGETS = ['off', 'pitch', 'volume'] as const;
@@ -539,10 +549,12 @@ export class ToneTab extends HTMLElement {
     actions.append(
       btn('Export WAV', async () => {
         const buffer = await renderPatch(patch);
-        const path = `tones/${patch.name.replace(/[^\w-]+/g, '_')}.wav`;
-        const written = await store.saveWav(path, buffer);
-        store.update(() => (patch.wavFile = path));
-        this.flash(written ? `Saved ${path}` : `Rendered ${path} in memory — connect a project folder to write files`);
+        const base = patch.name.replace(/[^\w-]+/g, '_');
+        download(`${base}.wav`, new Blob([encodeWav(buffer)], { type: 'audio/wav' }));
+        // settings sidecar (internal id and file refs stripped)
+        const { id, wavFile, ...settings } = patch;
+        download(`${base}.json`, new Blob([JSON.stringify(settings, null, 2)], { type: 'application/json' }));
+        this.flash(`Downloaded ${base}.wav + ${base}.json`);
       }),
       btn('Send to pad →', async () => {
         const buffer = await renderPatch(patch);

@@ -1,7 +1,8 @@
 import * as Tone from './tone';
 import { engine } from './audio-engine';
 import { bus } from './event-bus';
-import { defaultProject, type ProjectData } from './model';
+import { defaultProject, toneBufferKey, type ProjectData } from './model';
+import { renderPatch } from './patch-voice';
 import { idbSet } from './persistence';
 import { encodeWav } from './wav';
 
@@ -111,6 +112,22 @@ class ProjectStore {
       const buffer = this.buffers.get(path);
       if (buffer) await this.writeFile(path, encodeWav(buffer));
       this.pendingWavs.delete(path);
+    }
+  }
+
+  /**
+   * Write every patch's current render into tones/ — part of a full save,
+   * so the project folder always carries playable WAVs of its tones.
+   */
+  async saveTones(): Promise<void> {
+    if (!this.dir) return;
+    if (!engine.started) engine.allowOfflineRender();
+    for (const patch of this.data.patches) {
+      const buffer = this.buffers.get(toneBufferKey(patch.id)) ?? (await renderPatch(patch));
+      const path = `tones/${patch.name.replace(/[^\w-]+/g, '_')}.wav`;
+      this.cacheBuffer(path, buffer);
+      await this.writeFile(path, encodeWav(buffer));
+      patch.wavFile = path;
     }
   }
 
