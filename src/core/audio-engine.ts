@@ -8,8 +8,22 @@ class AudioEngine {
   private started = false;
   private metroGain: Tone.Gain | null = null;
   private metroLoop: Tone.Loop | null = null;
+  private metroClock: Tone.Clock | null = null;
+  private clockBeat = 0;
   private clickBuffer: Tone.ToneAudioBuffer | null = null;
   metronomeOn = false;
+
+  constructor() {
+    // The metronome must tick standalone AND stay beat-aligned during
+    // playback, so it switches mode whenever the transport starts/stops.
+    const transport = Tone.getTransport();
+    transport.on('start', () => {
+      if (this.metronomeOn) this.startTicker();
+    });
+    transport.on('stop', () => {
+      if (this.metronomeOn) this.startTicker();
+    });
+  }
 
   async ensureStarted(): Promise<void> {
     if (!this.started) {
@@ -24,6 +38,7 @@ class AudioEngine {
 
   set bpm(value: number) {
     Tone.getTransport().bpm.value = value;
+    if (this.metroClock) this.metroClock.frequency.value = value / 60;
   }
 
   get playing(): boolean {
@@ -73,26 +88,56 @@ class AudioEngine {
 
   async setMetronome(on: boolean): Promise<void> {
     this.metronomeOn = on;
-    if (on && !this.metroLoop) {
-      const click = await this.loadClick();
-      if (!this.metronomeOn || this.metroLoop) return; // toggled off/on again while loading
-      this.metroGain = new Tone.Gain(0.8).connect(this.master);
+    if (on) {
+      await this.loadClick();
+      if (!this.metronomeOn) return; // toggled off again while loading
+      if (!this.metroGain) this.metroGain = new Tone.Gain(0.8).connect(this.master);
+      this.startTicker();
+    } else {
+      this.stopTicker();
+      this.metroGain?.dispose();
+      this.metroGain = null;
+    }
+  }
+
+  private playClick(time: number, accent: boolean): void {
+    if (!this.clickBuffer || !this.metroGain) return;
+    const src = new Tone.ToneBufferSource(this.clickBuffer).connect(this.metroGain);
+    src.playbackRate.value = accent ? 1.25 : 1; // accent the downbeat
+    src.onended = (): void => {
+      src.dispose();
+    };
+    src.start(time);
+  }
+
+  /**
+   * Transport running: transport-synced Loop (clicks land on beats).
+   * Transport stopped: free-running Clock so the metronome is audible
+   * immediately when toggled on.
+   */
+  private startTicker(): void {
+    this.stopTicker();
+    if (Tone.getTransport().state === 'started') {
       this.metroLoop = new Tone.Loop((time) => {
         const t = Tone.getTransport();
         const beat = Math.round(t.getTicksAtTime(time) / t.PPQ) % 4;
-        const src = new Tone.ToneBufferSource(click).connect(this.metroGain!);
-        src.playbackRate.value = beat === 0 ? 1.25 : 1; // accent the downbeat
-        src.onended = (): void => {
-          src.dispose();
-        };
-        src.start(time);
+        this.playClick(time, beat === 0);
       }, '4n').start(0);
-    } else if (!on && this.metroLoop) {
-      this.metroLoop.dispose();
-      this.metroGain?.dispose();
-      this.metroLoop = null;
-      this.metroGain = null;
+    } else {
+      this.clockBeat = 0;
+      this.metroClock = new Tone.Clock((time) => {
+        this.playClick(time, this.clockBeat % 4 === 0);
+        this.clockBeat++;
+      }, Tone.getTransport().bpm.value / 60);
+      this.metroClock.start();
     }
+  }
+
+  private stopTicker(): void {
+    this.metroLoop?.dispose();
+    this.metroLoop = null;
+    this.metroClock?.dispose();
+    this.metroClock = null;
   }
 
   /**
