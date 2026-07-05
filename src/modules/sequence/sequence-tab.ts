@@ -3,6 +3,7 @@ import { bus } from '../../core/event-bus';
 import type { SeqTrack, Sequence, SynthKind } from '../../core/model';
 import { STEPS_PER_BAR, uid } from '../../core/model';
 import { store } from '../../core/project-store';
+import { uiState, updateUi } from '../../core/ui-state';
 import { knob } from '../../ui/knob';
 import { makeSynth, playSequenceLive, renderSequence, type LivePlayback } from './sequence-playback';
 import * as Tone from 'tone';
@@ -25,8 +26,13 @@ export class SequenceTab extends HTMLElement {
   connectedCallback(): void {
     this.className = 'tab-panel sequence-tab';
     bus.on('project:loaded', () => this.render());
+    bus.on('ui:loaded', () => {
+      this.seqId = uiState().sequence.seqId;
+      this.selectedTrackId = uiState().sequence.trackId;
+      this.render();
+    });
     bus.on('sample:editInSequencer', ({ sequenceId }) => {
-      this.seqId = sequenceId;
+      this.selectSeq(sequenceId);
       this.render();
     });
     bus.on('tab:activate', (tab) => {
@@ -39,6 +45,16 @@ export class SequenceTab extends HTMLElement {
 
   private isActive(): boolean {
     return this.classList.contains('active-tab');
+  }
+
+  private selectSeq(id: string): void {
+    this.seqId = id;
+    updateUi((s) => (s.sequence.seqId = id));
+  }
+
+  private selectTrack(id: string): void {
+    this.selectedTrackId = id;
+    updateUi((s) => (s.sequence.trackId = id));
   }
 
   private seq(): Sequence | null {
@@ -134,7 +150,7 @@ export class SequenceTab extends HTMLElement {
       select.appendChild(opt);
     }
     select.onchange = (): void => {
-      this.seqId = select.value;
+      this.selectSeq(select.value);
       this.render();
     };
     bar.append(
@@ -142,7 +158,7 @@ export class SequenceTab extends HTMLElement {
       btn('New', () => {
         const s: Sequence = { id: uid(), name: `Sequence ${store.data.sequences.length + 1}`, bars: 2, tracks: [] };
         store.update((d) => d.sequences.push(s));
-        this.seqId = s.id;
+        this.selectSeq(s.id);
         this.render();
       }),
     );
@@ -170,7 +186,7 @@ export class SequenceTab extends HTMLElement {
         }),
         btn('Delete', () => {
           store.update((d) => (d.sequences = d.sequences.filter((s) => s.id !== seq.id)));
-          this.seqId = '';
+          this.selectSeq('');
           this.render();
         }),
         barsSel,
@@ -221,7 +237,7 @@ export class SequenceTab extends HTMLElement {
       ...(kind === 'audio' ? { source: {}, steps: [] } : { synth: 'synth' as SynthKind, notes: [] }),
     };
     store.update(() => seq.tracks.push(track));
-    this.selectedTrackId = track.id;
+    this.selectTrack(track.id);
     this.render();
   }
 
@@ -242,7 +258,7 @@ export class SequenceTab extends HTMLElement {
       title.className = 'card-title';
       title.textContent = `${track.name} (${track.kind})`;
       title.onclick = (): void => {
-        this.selectedTrackId = track.id;
+        this.selectTrack(track.id);
         this.monitorSynth?.dispose();
         this.monitorSynth = null;
         this.renderGrid();

@@ -5,6 +5,7 @@ import type { PadConfig } from '../../core/model';
 import { PAD_COUNT, STEPS_PER_BAR, toneBufferKey, uid } from '../../core/model';
 import { renderPatch } from '../../core/patch-voice';
 import { store } from '../../core/project-store';
+import { uiState, updateUi } from '../../core/ui-state';
 import { knob } from '../../ui/knob';
 
 export class SampleTab extends HTMLElement {
@@ -14,6 +15,10 @@ export class SampleTab extends HTMLElement {
 
   connectedCallback(): void {
     this.className = 'tab-panel sample-tab';
+    bus.on('ui:loaded', () => {
+      this.selected = Math.min(PAD_COUNT - 1, Math.max(0, uiState().sample.selectedPad));
+      this.render();
+    });
     bus.on('project:loaded', () => {
       this.render();
       void this.ensureToneBuffers();
@@ -32,6 +37,7 @@ export class SampleTab extends HTMLElement {
       d.pads[index] = { name, toneId: patchId, gain: 1, trimStart: 0, trimEnd: 0 };
     });
     this.selected = index;
+    updateUi((s) => (s.sample.selectedPad = index));
     this.render();
   }
 
@@ -230,6 +236,7 @@ export class SampleTab extends HTMLElement {
       el.textContent = pad?.name ?? String(i + 1);
       el.onpointerdown = (): void => {
         this.selected = i;
+        updateUi((s) => (s.sample.selectedPad = i));
         this.onPadHit(i);
         grid.querySelectorAll('.pad').forEach((p, j) => p.classList.toggle('selected', j === i));
         this.renderEditor(editor);

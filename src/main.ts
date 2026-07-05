@@ -7,12 +7,16 @@ import './modules/arrange/arrange-tab';
 import './modules/produce/produce-tab';
 import './shell/app-shell';
 
+import { bus } from './core/event-bus';
+import { store } from './core/project-store';
+import { loadUiState } from './core/ui-state';
 import { loadKeyMap } from './midi/keymap';
 import { midiInput } from './midi/midi-input';
-import { store } from './core/project-store';
 
 async function boot(): Promise<void> {
   await loadKeyMap();
+  await loadUiState();
+  bus.emit('ui:loaded');
   await midiInput.init();
   await store.tryRestore();
 }

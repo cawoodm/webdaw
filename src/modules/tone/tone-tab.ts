@@ -4,6 +4,7 @@ import { bus } from '../../core/event-bus';
 import type { TonePatch } from '../../core/model';
 import { defaultPatch, toneBufferKey, uid } from '../../core/model';
 import { store } from '../../core/project-store';
+import { uiState, updateUi } from '../../core/ui-state';
 import { knob } from '../../ui/knob';
 import { PatchVoice, renderPatch } from '../../core/patch-voice';
 import { drawFft, drawScope, drawSpectrumStatic, drawWaveformStatic } from './scope-view';
@@ -31,6 +32,13 @@ export class ToneTab extends HTMLElement {
     this.tap.connect(this.waveAnalyser);
     this.tap.connect(this.fftAnalyser);
     bus.on('project:loaded', () => this.render());
+    bus.on('ui:loaded', () => {
+      const s = uiState().tone;
+      this.patchId = s.patchId;
+      this.live = s.live;
+      this.looping = s.loop;
+      this.render();
+    });
     bus.on('tab:activate', (tab) => {
       this.active = tab === 'tone';
     });
@@ -47,8 +55,13 @@ export class ToneTab extends HTMLElement {
     const found = store.data.patches.find((p) => p.id === this.patchId);
     if (found) return found;
     if (store.data.patches.length === 0) store.data.patches.push(defaultPatch());
-    this.patchId = store.data.patches[0].id;
+    this.selectPatch(store.data.patches[0].id);
     return store.data.patches[0];
+  }
+
+  private selectPatch(id: string): void {
+    this.patchId = id;
+    updateUi((s) => (s.tone.patchId = id));
   }
 
   private async noteOn(note: string, velocity: number): Promise<void> {
@@ -142,6 +155,7 @@ export class ToneTab extends HTMLElement {
         <polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>`,
       () => {
         this.looping = !this.looping;
+        updateUi((s) => (s.tone.loop = this.looping));
         loopBtn.classList.toggle('active', this.looping);
         if (!this.looping) {
           for (const t of this.previewTimers) clearTimeout(t);
@@ -172,6 +186,7 @@ export class ToneTab extends HTMLElement {
     liveCheck.checked = this.live;
     liveCheck.onchange = (): void => {
       this.live = liveCheck.checked;
+      updateUi((s) => (s.tone.live = this.live));
       this.render();
     };
     liveToggle.append(liveCheck, document.createTextNode(' Live'));
@@ -220,7 +235,7 @@ export class ToneTab extends HTMLElement {
       select.appendChild(opt);
     }
     select.onchange = (): void => {
-      this.patchId = select.value;
+      this.selectPatch(select.value);
       this.render();
     };
     const btn = (label: string, fn: () => void): HTMLButtonElement => {
@@ -236,7 +251,7 @@ export class ToneTab extends HTMLElement {
         p.id = uid();
         p.name = `Patch ${store.data.patches.length + 1}`;
         store.update((d) => d.patches.push(p));
-        this.patchId = p.id;
+        this.selectPatch(p.id);
         this.render();
       }),
       btn('Rename', () => {
@@ -250,7 +265,7 @@ export class ToneTab extends HTMLElement {
         store.update((d) => {
           d.patches = d.patches.filter((p) => p.id !== patch.id);
         });
-        this.patchId = '';
+        this.selectPatch('');
         this.render();
       }),
     );
@@ -277,12 +292,17 @@ export class ToneTab extends HTMLElement {
         layer.type = typeSel.value as typeof OSC_TYPES[number];
         this.save();
       };
-      const muteBtn = btn('Mute', () => {
-        layer.muted = !layer.muted;
-        muteBtn.classList.toggle('active', !!layer.muted);
-        card.classList.toggle('muted', !!layer.muted);
-        this.save();
-      });
+      const muteBtn = iconBtn(
+        'Mute layer',
+        `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M11 5 6 9H2v6h4l5 4V5z"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>`,
+        () => {
+          layer.muted = !layer.muted;
+          muteBtn.classList.toggle('active', !!layer.muted);
+          card.classList.toggle('muted', !!layer.muted);
+          this.save();
+        },
+      );
       muteBtn.classList.toggle('active', !!layer.muted);
       head.append(
         Object.assign(document.createElement('span'), { textContent: `Layer ${i + 1}`, className: 'card-title' }),

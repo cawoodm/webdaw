@@ -4,6 +4,7 @@ import { bus } from '../../core/event-bus';
 import type { ArrangeTrack, Sequence } from '../../core/model';
 import { uid } from '../../core/model';
 import { store } from '../../core/project-store';
+import { uiState, updateUi } from '../../core/ui-state';
 import { connectChain, PluginChainEl } from '../../plugins/chain';
 import { knob } from '../../ui/knob';
 import { renderSequence } from '../sequence/sequence-playback';
@@ -19,6 +20,11 @@ export class ArrangeTab extends HTMLElement {
 
   connectedCallback(): void {
     this.className = 'tab-panel arrange-tab';
+    bus.on('ui:loaded', () => {
+      this.palette = uiState().arrange.palette;
+      this.openFx = new Set(uiState().arrange.openFx);
+      this.render();
+    });
     bus.on('project:loaded', () => {
       this.seqRenderCache.clear();
       this.render();
@@ -185,6 +191,7 @@ export class ArrangeTab extends HTMLElement {
     }
     palette.onchange = (): void => {
       this.palette = palette.value;
+      updateUi((s) => (s.arrange.palette = palette.value));
     };
 
     bar.append(
@@ -235,6 +242,7 @@ export class ArrangeTab extends HTMLElement {
         btn(this.openFx.has(track.id) ? 'Hide FX' : 'FX', () => {
           if (this.openFx.has(track.id)) this.openFx.delete(track.id);
           else this.openFx.add(track.id);
+          updateUi((s) => (s.arrange.openFx = [...this.openFx]));
           this.render();
         }),
         btn('✕', () => {

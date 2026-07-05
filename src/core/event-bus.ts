@@ -1,6 +1,8 @@
 import type { TabId } from './model';
 
 export interface BusEvents {
+  /** UI state restored from IndexedDB at boot — modules re-apply their bits. */
+  'ui:loaded': void;
   'project:loaded': void;
   'project:changed': void;
   'tone:sendToPad': { patchId: string; name: string; buffer: AudioBuffer };

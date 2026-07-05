@@ -3,6 +3,7 @@ import { engine } from '../core/audio-engine';
 import { bus } from '../core/event-bus';
 import type { TabId } from '../core/model';
 import { store } from '../core/project-store';
+import { uiState, updateUi } from '../core/ui-state';
 import type { PluginChainEl } from '../plugins/chain';
 import { openKeymapDialog } from '../ui/keymap-dialog';
 
@@ -72,6 +73,7 @@ export class AppShell extends HTMLElement {
       await engine.ensureStarted();
       await engine.setMetronome(!engine.metronomeOn);
       metro.classList.toggle('active', engine.metronomeOn);
+      updateUi((s) => (s.metronomeOn = engine.metronomeOn));
     };
     this.querySelector<HTMLButtonElement>('.stop-all')!.onclick = (): void => engine.stop();
     this.querySelector<HTMLButtonElement>('.keys')!.onclick = (): void => openKeymapDialog();
@@ -90,7 +92,16 @@ export class AppShell extends HTMLElement {
     };
     this.querySelector<HTMLButtonElement>('.close-master')!.onclick = (): void => masterDialog.close();
 
-    bus.on('tab:activate', (tab) => this.activate(tab));
+    bus.on('tab:activate', (tab) => {
+      this.activate(tab);
+      updateUi((s) => (s.activeTab = tab));
+    });
+    bus.on('ui:loaded', () => {
+      this.activate(uiState().activeTab);
+      if (uiState().metronomeOn) {
+        void engine.setMetronome(true).then(() => metro.classList.add('active'));
+      }
+    });
     bus.on('project:loaded', () => {
       engine.bpm = store.data.bpm;
       bpm.value = String(store.data.bpm);

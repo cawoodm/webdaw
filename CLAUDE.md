@@ -31,6 +31,8 @@ Three singletons under `src/core/`; five tab modules that talk **only** to the s
 
 **Plugins** (`src/plugins/`): implement `DawPlugin` (`api.ts`) — `input`/`output` Tone nodes, `createUI()`, `getState()/setState()` (plain `Record<string, number>`, persisted in `project.json`). Register in `PLUGIN_REGISTRY` (`builtins.ts`). `<plugin-chain>` (`chain.ts`) provides host chrome (bypass/remove) and rewiring; `connectChain()` is the context-agnostic variant used in offline exports. Plugin UIs report edits by dispatching a bubbling `plugin-state-changed` event.
 
+**UI state** (`src/core/ui-state.ts`): all transient UI state (active tab, selections, toggles) persists to IndexedDB via `updateUi(fn)` and is restored at boot — `main.ts` emits `ui:loaded` after loading it, and each module re-applies its slice in a `bus.on('ui:loaded', …)` handler. When adding new UI state (a selection, a toggle), route it through `UiState`, don't keep it only in a class field.
+
 **Note input** (`src/midi/`): Web MIDI devices and the computer keyboard both funnel into the same `midi:noteon/noteoff` bus events. Key→note mapping is user-editable (Keys dialog) and stored in IndexedDB, not in the project file.
 
 **Timing model:** musical time is stored in beats (pad events) or 16th steps (`STEPS_PER_BAR = 16`); convert to seconds only at scheduling time via `engine.secondsPerBeat()/secondsPerStep()`.
