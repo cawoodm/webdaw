@@ -5,6 +5,7 @@ Mark in progress 🕜 and then move to done ✅ when complete
 - User should be able to set frequency and duration of sample 🕜
 - Change wave type dropdown to an icon selector
 - bug: Vizualizations are not displayed at startup
+- bug: Renaming tone should update dropdown in sampler
 
 # DONE
 

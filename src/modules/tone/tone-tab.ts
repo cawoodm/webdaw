@@ -2,7 +2,7 @@ import * as Tone from '../../core/tone';
 import { engine } from '../../core/audio-engine';
 import { bus } from '../../core/event-bus';
 import type { PatchFilter, TonePatch } from '../../core/model';
-import { defaultFilter, defaultPatch, SAMPLE_FREQ_DEFAULT, SAMPLE_SECONDS_DEFAULT, toneBufferKey, uid } from '../../core/model';
+import { defaultFilter, defaultPatch, SAMPLE_FREQ_DEFAULT, SAMPLE_SECONDS_DEFAULT, sampleHold, toneBufferKey, uid } from '../../core/model';
 import { store } from '../../core/project-store';
 import { uiState, updateUi } from '../../core/ui-state';
 import { knob } from '../../ui/knob';
@@ -110,10 +110,9 @@ export class ToneTab extends HTMLElement {
     const cycle = (): void => {
       const patch = this.patch();
       void this.noteOn(patch.sampleFreq ?? SAMPLE_FREQ_DEFAULT, 0.9, 'preview');
-      const holdMs = (patch.sampleSeconds ?? SAMPLE_SECONDS_DEFAULT) * 1000;
-      this.previewTimers.push(window.setTimeout(() => this.noteOff('preview'), holdMs));
+      this.previewTimers.push(window.setTimeout(() => this.noteOff('preview'), sampleHold(patch) * 1000));
       if (this.looping) {
-        const gapMs = holdMs + patch.env.release * 1000 + 150;
+        const gapMs = (patch.sampleSeconds ?? SAMPLE_SECONDS_DEFAULT) * 1000 + 150;
         this.previewTimers.push(window.setTimeout(cycle, gapMs));
       }
     };
@@ -170,7 +169,7 @@ export class ToneTab extends HTMLElement {
     const patch = this.patch();
     const { data, sampleRate, duration } = this.lastRender;
     drawWaveformStatic(timeCanvas, data, sampleRate);
-    drawEnvelopeOverlay(timeCanvas, patch.env, duration, patch.sampleSeconds ?? SAMPLE_SECONDS_DEFAULT);
+    drawEnvelopeOverlay(timeCanvas, patch.env, duration, sampleHold(patch));
     drawLfoOverlay(timeCanvas, patch.lfo, duration);
     drawSpectrumStatic(freqCanvas, data, sampleRate);
     drawFilterOverlay(freqCanvas, this.filter(patch));
@@ -521,9 +520,9 @@ export class ToneTab extends HTMLElement {
       btn('Export WAV', async () => {
         const buffer = await renderPatch(patch);
         const path = `tones/${patch.name.replace(/[^\w-]+/g, '_')}.wav`;
-        await store.saveWav(path, buffer);
+        const written = await store.saveWav(path, buffer);
         store.update(() => (patch.wavFile = path));
-        this.flash(`Saved ${path}`);
+        this.flash(written ? `Saved ${path}` : `Rendered ${path} in memory — connect a project folder to write files`);
       }),
       btn('Send to pad →', async () => {
         const buffer = await renderPatch(patch);

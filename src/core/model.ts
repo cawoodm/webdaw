@@ -35,6 +35,16 @@ export function defaultFilter(): PatchFilter {
 export const SAMPLE_FREQ_DEFAULT = 261.63; // C4
 export const SAMPLE_SECONDS_DEFAULT = 1;
 
+/**
+ * Held-note seconds for a patch render: sampleSeconds is the TOTAL length
+ * of the sample, so the hold ends early enough for the release tail to
+ * complete within it.
+ */
+export function sampleHold(patch: TonePatch): number {
+  const total = patch.sampleSeconds ?? SAMPLE_SECONDS_DEFAULT;
+  return Math.max(0.05, total - patch.env.release - 0.1);
+}
+
 export interface PadConfig {
   name: string;
   file?: string;

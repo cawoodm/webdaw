@@ -25,6 +25,7 @@ class ProjectStore {
   needsPermission = false;
 
   private buffers = new Map<string, AudioBuffer>();
+  private pendingWavs = new Set<string>();
   private saveTimer: number | undefined;
   private decodeCtx: OfflineAudioContext | null = null;
 
@@ -86,6 +87,7 @@ class ProjectStore {
     } else {
       await this.save();
     }
+    await this.flushPendingWavs();
     await this.preloadBuffers();
     bus.emit('project:loaded');
   }
@@ -124,11 +126,28 @@ class ProjectStore {
     engine.warmUp(buffer);
   }
 
-  /** Cache the buffer and persist it as a WAV in the project folder. */
-  async saveWav(path: string, buffer: AudioBuffer): Promise<void> {
+  /**
+   * Cache the buffer and persist it as a WAV in the project folder.
+   * Returns true if the file was written to disk; with no folder connected
+   * the WAV is kept in memory and flushed when a folder is chosen.
+   */
+  async saveWav(path: string, buffer: AudioBuffer): Promise<boolean> {
     this.cacheBuffer(path, buffer);
     if (this.dir && !this.needsPermission) {
       await this.writeFile(path, encodeWav(buffer));
+      return true;
+    }
+    this.pendingWavs.add(path);
+    return false;
+  }
+
+  /** Write WAVs that were exported before a project folder was connected. */
+  private async flushPendingWavs(): Promise<void> {
+    if (!this.dir || this.needsPermission) return;
+    for (const path of [...this.pendingWavs]) {
+      const buffer = this.buffers.get(path);
+      if (buffer) await this.writeFile(path, encodeWav(buffer));
+      this.pendingWavs.delete(path);
     }
   }
 

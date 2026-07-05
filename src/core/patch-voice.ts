@@ -1,6 +1,6 @@
 import * as Tone from './tone';
 import type { TonePatch } from './model';
-import { defaultFilter, SAMPLE_FREQ_DEFAULT, SAMPLE_SECONDS_DEFAULT } from './model';
+import { defaultFilter, SAMPLE_FREQ_DEFAULT, SAMPLE_SECONDS_DEFAULT, sampleHold } from './model';
 
 /**
  * One playable voice of a Tone-tab patch: oscillator layers -> layer gains
@@ -81,11 +81,14 @@ export class PatchVoice {
   }
 }
 
-/** Render a patch to an AudioBuffer (held note + release tail) at its sample freq/duration. */
+/**
+ * Render a patch to an AudioBuffer at its sample freq. sampleSeconds is the
+ * total buffer length; the note is released so its tail completes within it.
+ */
 export async function renderPatch(patch: TonePatch, note?: string | number): Promise<AudioBuffer> {
   const freq = note ?? patch.sampleFreq ?? SAMPLE_FREQ_DEFAULT;
-  const hold = patch.sampleSeconds ?? SAMPLE_SECONDS_DEFAULT;
-  const duration = hold + patch.env.release + 0.15;
+  const duration = patch.sampleSeconds ?? SAMPLE_SECONDS_DEFAULT;
+  const hold = sampleHold(patch);
   const result = await Tone.Offline(() => {
     const voice = new PatchVoice(patch, Tone.getDestination());
     voice.triggerAttackRelease(freq, hold, 0.01);

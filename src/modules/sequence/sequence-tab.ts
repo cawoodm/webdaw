@@ -204,9 +204,9 @@ export class SequenceTab extends HTMLElement {
         btn('Bounce to WAV', async () => {
           const buffer = await renderSequence(seq);
           const path = `sequences/${seq.name.replace(/[^\w-]+/g, '_')}.wav`;
-          await store.saveWav(path, buffer);
+          const written = await store.saveWav(path, buffer);
           store.update(() => (seq.wavFile = path));
-          this.flash(`Bounced to ${path}`);
+          this.flash(written ? `Bounced to ${path}` : `Bounced ${path} in memory — connect a project folder to write files`);
         }),
         btn('+ Audio track', () => this.addTrack(seq, 'audio')),
         btn('+ MIDI track', () => this.addTrack(seq, 'midi')),

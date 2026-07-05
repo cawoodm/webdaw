@@ -40,7 +40,7 @@ export class AppShell extends HTMLElement {
           <button class="master-fx">Master FX</button>
           <button class="keys">Keys</button>
           <button class="reconnect hidden">Reconnect project</button>
-          <button class="folder">Open folder…</button>
+          <button class="folder" title="Pick the folder where this project (project.json, tones/, samples/, exports/) is stored on disk">Project folder…</button>
           <span class="project-name hint"></span>
         </div>
       </header>

@@ -151,8 +151,8 @@ export class ArrangeTab extends HTMLElement {
       }
     }, seconds);
     const path = `exports/${store.data.name.replace(/[^\w-]+/g, '_')}-song.wav`;
-    await store.saveWav(path, rendered.get() as AudioBuffer);
-    this.flash(`Exported ${path}`);
+    const written = await store.saveWav(path, rendered.get() as AudioBuffer);
+    this.flash(written ? `Exported ${path}` : `Rendered ${path} in memory — connect a project folder to write files`);
   }
 
   private render(): void {
