@@ -1,3 +1,4 @@
+import * as Tone from 'tone';
 import { engine } from '../../core/audio-engine';
 import { bus } from '../../core/event-bus';
 import type { TonePatch } from '../../core/model';
@@ -5,6 +6,7 @@ import { defaultPatch, uid } from '../../core/model';
 import { store } from '../../core/project-store';
 import { knob } from '../../ui/knob';
 import { PatchVoice, renderPatch } from './patch-voice';
+import { drawFft, drawScope } from './scope-view';
 
 const OSC_TYPES = ['sine', 'sawtooth', 'triangle', 'square'] as const;
 const LFO_TARGETS = ['off', 'pitch', 'volume'] as const;
@@ -13,9 +15,16 @@ export class ToneTab extends HTMLElement {
   private patchId = '';
   private active = false;
   private voices = new Map<string, PatchVoice>();
+  // sum of all voices (and their layers) — analysed for the scope views
+  private tap = new Tone.Gain(1);
+  private waveAnalyser = new Tone.Analyser('waveform', 1024);
+  private fftAnalyser = new Tone.Analyser('fft', 1024);
 
   connectedCallback(): void {
     this.className = 'tab-panel tone-tab';
+    this.tap.connect(engine.master);
+    this.tap.connect(this.waveAnalyser);
+    this.tap.connect(this.fftAnalyser);
     bus.on('project:loaded', () => this.render());
     bus.on('tab:activate', (tab) => {
       this.active = tab === 'tone';
@@ -40,7 +49,7 @@ export class ToneTab extends HTMLElement {
   private async noteOn(note: string, velocity: number): Promise<void> {
     await engine.ensureStarted();
     this.noteOff(note);
-    const voice = new PatchVoice(this.patch(), engine.master);
+    const voice = new PatchVoice(this.patch(), this.tap);
     this.voices.set(note, voice);
     voice.triggerAttack(note, undefined, velocity);
   }
@@ -60,6 +69,30 @@ export class ToneTab extends HTMLElement {
   private render(): void {
     const patch = this.patch();
     this.innerHTML = '';
+
+    // --- scope views (sum of all layers) ---
+    const scopes = document.createElement('div');
+    scopes.className = 'tone-scopes';
+    const isActive = (): boolean => this.classList.contains('active-tab');
+    const scope = (label: string, start: (canvas: HTMLCanvasElement) => void): HTMLDivElement => {
+      const wrap = document.createElement('div');
+      wrap.className = 'scope-wrap';
+      const cap = document.createElement('div');
+      cap.className = 'scope-label';
+      cap.textContent = label;
+      const canvas = document.createElement('canvas');
+      canvas.width = 480;
+      canvas.height = 120;
+      canvas.className = 'scope-canvas';
+      wrap.append(cap, canvas);
+      start(canvas);
+      return wrap;
+    };
+    scopes.append(
+      scope('Time', (c) => drawScope(c, this.waveAnalyser, isActive)),
+      scope('Freq', (c) => drawFft(c, this.fftAnalyser, isActive)),
+    );
+    this.appendChild(scopes);
 
     // --- patch selector row ---
     const bar = document.createElement('div');
