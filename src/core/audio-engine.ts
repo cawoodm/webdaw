@@ -76,6 +76,22 @@ class AudioEngine {
     }
   }
 
+  /**
+   * Play a short slice of the buffer once at zero volume so the audio graph
+   * and output path are warm — the first audible play then starts without
+   * delay. Safe to call before the context is running: the silent source is
+   * queued and fires on the first user gesture.
+   */
+  warmUp(buffer: AudioBuffer): void {
+    const mute = new Tone.Gain(0).toDestination();
+    const src = new Tone.ToneBufferSource(new Tone.ToneAudioBuffer(buffer)).connect(mute);
+    src.onended = (): void => {
+      src.dispose();
+      mute.dispose();
+    };
+    src.start(Tone.now(), 0, Math.min(0.05, buffer.duration));
+  }
+
   secondsPerBeat(): number {
     return 60 / Tone.getTransport().bpm.value;
   }

@@ -1,4 +1,5 @@
 import * as Tone from 'tone';
+import { engine } from './audio-engine';
 import { bus } from './event-bus';
 import { defaultProject, type ProjectData } from './model';
 import { idbGet, idbSet } from './persistence';
@@ -91,12 +92,18 @@ class ProjectStore {
   }
 
   setBuffer(path: string, buffer: AudioBuffer): void {
+    this.cacheBuffer(path, buffer);
+  }
+
+  /** Cache a buffer and silently warm it so its first play has no delay. */
+  private cacheBuffer(path: string, buffer: AudioBuffer): void {
     this.buffers.set(path, buffer);
+    engine.warmUp(buffer);
   }
 
   /** Cache the buffer and persist it as a WAV in the project folder. */
   async saveWav(path: string, buffer: AudioBuffer): Promise<void> {
-    this.buffers.set(path, buffer);
+    this.cacheBuffer(path, buffer);
     if (this.dir && !this.needsPermission) {
       await this.writeFile(path, encodeWav(buffer));
     }
@@ -110,7 +117,7 @@ class ProjectStore {
     try {
       const ctx = Tone.getContext().rawContext as AudioContext;
       const buffer = await ctx.decodeAudioData(raw);
-      this.buffers.set(path, buffer);
+      this.cacheBuffer(path, buffer);
       return buffer;
     } catch (err) {
       console.error(`Failed to decode ${path}`, err);
