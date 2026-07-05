@@ -3,8 +3,7 @@
 Mark in progress 🕜 and then move to done ✅ when complete and merge branch into main
 Once a task is done, show the user the dev URL, confirm with the user they are happy before marking done
 
-- bug: changing sample length should shorten the x-axis of left viz live and not just envelope 🕜
-- feat: Export tone should export .json settings of that tone
+- feat: Export tone should export .json settings of that tone 🕜
 - feat: The Sample frequency should be moved to the layer so it's layer-specific
 - feat: Add a solo button next to mute for tone layers so they play on their own
 - feat: Add a small toggle to enable/disable LPF/HPF completely
@@ -15,6 +14,7 @@ Once a task is done, show the user the dev URL, confirm with the user they are h
 
 # DONE
 
+- bug: changing sample length should shorten the x-axis of left viz live and not just envelope ✅
 - feat: Add a new wave type "White Noise" which generates a random signal instead of a wave but that random signal is persisted ✅
 - bug: Renaming tone should update dropdown in sampler ✅
 - bug: Vizualizations are not displayed at startup ✅

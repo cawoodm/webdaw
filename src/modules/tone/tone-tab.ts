@@ -47,7 +47,7 @@ export class ToneTab extends HTMLElement {
   private staticSeq = 0;
   private looping = false;
   private previewTimers: number[] = [];
-  private lastRender: { data: Float32Array; sampleRate: number; duration: number } | null = null;
+  private lastRender: { data: Float32Array; sampleRate: number } | null = null;
 
   connectedCallback(): void {
     this.className = 'tab-panel tone-tab';
@@ -155,7 +155,7 @@ export class ToneTab extends HTMLElement {
     const buffer = await renderPatch(patch);
     if (seq !== this.staticSeq) return; // superseded by a newer edit
     store.setBuffer(toneBufferKey(patch.id), buffer);
-    this.lastRender = { data: buffer.getChannelData(0), sampleRate: buffer.sampleRate, duration: buffer.duration };
+    this.lastRender = { data: buffer.getChannelData(0), sampleRate: buffer.sampleRate };
     this.redrawStatic();
   }
 
@@ -166,10 +166,21 @@ export class ToneTab extends HTMLElement {
     const freqCanvas = this.querySelector<HTMLCanvasElement>('canvas.scope-static-freq');
     if (!timeCanvas || !freqCanvas) return;
     const patch = this.patch();
-    const { data, sampleRate, duration } = this.lastRender;
-    drawWaveformStatic(timeCanvas, data, sampleRate);
-    drawEnvelopeOverlay(timeCanvas, patch.env, duration, sampleHold(patch));
-    drawLfoOverlay(timeCanvas, patch.lfo, duration);
+    const { data, sampleRate } = this.lastRender;
+    // the time axis follows the CURRENT sample length while dragging:
+    // truncate or zero-pad the cached render until the real one arrives
+    const seconds = patch.sampleSeconds ?? SAMPLE_SECONDS_DEFAULT;
+    const wanted = Math.max(1, Math.round(seconds * sampleRate));
+    let view = data;
+    if (wanted <= data.length) {
+      view = data.subarray(0, wanted);
+    } else {
+      view = new Float32Array(wanted);
+      view.set(data);
+    }
+    drawWaveformStatic(timeCanvas, view, sampleRate);
+    drawEnvelopeOverlay(timeCanvas, patch.env, seconds, sampleHold(patch));
+    drawLfoOverlay(timeCanvas, patch.lfo, seconds);
     drawSpectrumStatic(freqCanvas, data, sampleRate);
     drawFilterOverlay(freqCanvas, this.filter(patch));
   }
