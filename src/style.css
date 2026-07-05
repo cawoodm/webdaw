@@ -230,10 +230,27 @@ daw-knob {
 }
 
 /* ---- tone tab ---- */
+.tone-scopes-block {
+  margin-bottom: 12px;
+}
+
+.tone-scopes-head {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 4px;
+}
+
+.live-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  user-select: none;
+}
+
 .tone-scopes {
   display: flex;
   gap: 12px;
-  margin-bottom: 12px;
 }
 
 .scope-wrap {

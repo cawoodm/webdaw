@@ -4,9 +4,19 @@ Date: 2026-07-05
 
 ## Goal
 
-Live visualization at the top of the Tone tab showing the summed output of all
-patch layers/voices: a time-domain amplitude view and an FFT frequency view,
-side by side. Black background, gray gridlines, green trace.
+Visualization at the top of the Tone tab: a time-domain amplitude view and an
+FFT frequency view, side by side. Black background, gray gridlines, green
+trace.
+
+Two modes, switched by a "Live" checkbox (default unchecked):
+
+- **Static (default):** fixed images of the current patch, recomputed from an
+  offline render (`renderPatch`) whenever patch parameters change (debounced
+  400 ms). Amplitude as a function of time like an audio editor (min/max per
+  pixel column, `waveformPeaks`), and energy as a function of frequency (Hann
+  FFT via `magnitudeSpectrum` in `src/core/dsp.ts`, log-frequency axis
+  20 Hz–20 kHz). Pure DSP lives in `src/core/dsp.ts` with unit tests.
+- **Live:** the animated analyser views described below.
 
 ## Audio tap
 

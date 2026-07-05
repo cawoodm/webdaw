@@ -6,7 +6,7 @@ import { defaultPatch, uid } from '../../core/model';
 import { store } from '../../core/project-store';
 import { knob } from '../../ui/knob';
 import { PatchVoice, renderPatch } from './patch-voice';
-import { drawFft, drawScope } from './scope-view';
+import { drawFft, drawScope, drawSpectrumStatic, drawWaveformStatic } from './scope-view';
 
 const OSC_TYPES = ['sine', 'sawtooth', 'triangle', 'square'] as const;
 const LFO_TARGETS = ['off', 'pitch', 'volume'] as const;
@@ -15,10 +15,13 @@ export class ToneTab extends HTMLElement {
   private patchId = '';
   private active = false;
   private voices = new Map<string, PatchVoice>();
-  // sum of all voices (and their layers) — analysed for the scope views
+  // sum of all voices (and their layers) — analysed for the live scope views
   private tap = new Tone.Gain(1);
   private waveAnalyser = new Tone.Analyser('waveform', 1024);
   private fftAnalyser = new Tone.Analyser('fft', 1024);
+  private live = false;
+  private staticTimer: number | undefined;
+  private staticSeq = 0;
 
   connectedCallback(): void {
     this.className = 'tab-panel tone-tab';
@@ -64,17 +67,50 @@ export class ToneTab extends HTMLElement {
 
   private save(): void {
     store.scheduleSave();
+    // patch parameters changed — refresh the static views once edits settle
+    if (!this.live) {
+      clearTimeout(this.staticTimer);
+      this.staticTimer = window.setTimeout(() => void this.updateStatic(), 400);
+    }
+  }
+
+  /** Offline-render the current patch and draw the static time/freq views. */
+  private async updateStatic(): Promise<void> {
+    const timeCanvas = this.querySelector<HTMLCanvasElement>('canvas.scope-static-time');
+    const freqCanvas = this.querySelector<HTMLCanvasElement>('canvas.scope-static-freq');
+    if (!timeCanvas || !freqCanvas) return;
+    const seq = ++this.staticSeq;
+    const buffer = await renderPatch(this.patch());
+    if (seq !== this.staticSeq || !timeCanvas.isConnected) return; // superseded or re-rendered
+    const data = buffer.getChannelData(0);
+    drawWaveformStatic(timeCanvas, data, buffer.sampleRate);
+    drawSpectrumStatic(freqCanvas, data, buffer.sampleRate);
   }
 
   private render(): void {
     const patch = this.patch();
     this.innerHTML = '';
 
-    // --- scope views (sum of all layers) ---
+    // --- scope views: static patch render by default, live analysers on demand ---
+    const scopesBlock = document.createElement('div');
+    scopesBlock.className = 'tone-scopes-block';
+    const scopesHead = document.createElement('div');
+    scopesHead.className = 'tone-scopes-head';
+    const liveToggle = document.createElement('label');
+    liveToggle.className = 'hint live-toggle';
+    const liveCheck = document.createElement('input');
+    liveCheck.type = 'checkbox';
+    liveCheck.checked = this.live;
+    liveCheck.onchange = (): void => {
+      this.live = liveCheck.checked;
+      this.render();
+    };
+    liveToggle.append(liveCheck, document.createTextNode(' Live'));
+    scopesHead.appendChild(liveToggle);
     const scopes = document.createElement('div');
     scopes.className = 'tone-scopes';
     const isActive = (): boolean => this.classList.contains('active-tab');
-    const scope = (label: string, start: (canvas: HTMLCanvasElement) => void): HTMLDivElement => {
+    const scope = (label: string, cls: string, start?: (canvas: HTMLCanvasElement) => void): HTMLDivElement => {
       const wrap = document.createElement('div');
       wrap.className = 'scope-wrap';
       const cap = document.createElement('div');
@@ -83,16 +119,25 @@ export class ToneTab extends HTMLElement {
       const canvas = document.createElement('canvas');
       canvas.width = 480;
       canvas.height = 120;
-      canvas.className = 'scope-canvas';
+      canvas.className = `scope-canvas ${cls}`;
       wrap.append(cap, canvas);
-      start(canvas);
+      start?.(canvas);
       return wrap;
     };
-    scopes.append(
-      scope('Time', (c) => drawScope(c, this.waveAnalyser, isActive)),
-      scope('Freq', (c) => drawFft(c, this.fftAnalyser, isActive)),
-    );
-    this.appendChild(scopes);
+    if (this.live) {
+      scopes.append(
+        scope('Time (live)', 'scope-live-time', (c) => drawScope(c, this.waveAnalyser, isActive)),
+        scope('Freq (live)', 'scope-live-freq', (c) => drawFft(c, this.fftAnalyser, isActive)),
+      );
+    } else {
+      scopes.append(
+        scope('Amplitude / time', 'scope-static-time'),
+        scope('Energy / frequency', 'scope-static-freq'),
+      );
+    }
+    scopesBlock.append(scopesHead, scopes);
+    this.appendChild(scopesBlock);
+    if (!this.live) void this.updateStatic();
 
     // --- patch selector row ---
     const bar = document.createElement('div');

@@ -1,9 +1,12 @@
 import * as Tone from 'tone';
+import { magnitudeSpectrum, waveformPeaks } from '../../core/dsp';
 
 /**
  * Oscilloscope-style canvas renderers for the Tone tab: black background,
- * gray gridlines, green trace. Each draw loop self-stops when its canvas
- * leaves the document and skips drawing while `isActive()` is false.
+ * gray gridlines, green trace. The live views (drawScope/drawFft) animate
+ * from analysers; the static views draw a rendered buffer once, like an
+ * audio editor. Live draw loops self-stop when their canvas leaves the
+ * document and skip drawing while `isActive()` is false.
  */
 
 const BG = '#000';
@@ -65,6 +68,71 @@ export function drawScope(canvas: HTMLCanvasElement, analyser: Tone.Analyser, is
     }
     ctx.stroke();
   });
+}
+
+/** Static amplitude-over-time view of a rendered buffer (min/max per column). */
+export function drawWaveformStatic(canvas: HTMLCanvasElement, data: Float32Array, sampleRate: number): void {
+  const ctx = canvas.getContext('2d')!;
+  const w = canvas.width;
+  const h = canvas.height;
+  const seconds = data.length / sampleRate;
+  const tickEvery = 0.25;
+  const xs: number[] = [];
+  for (let t = tickEvery; t < seconds; t += tickEvery) xs.push((t / seconds) * w);
+  const ys = [0.25, 0.5, 0.75].map((f) => f * h);
+  grid(ctx, w, h, xs, ys);
+  ctx.fillStyle = LABEL;
+  ctx.font = '10px sans-serif';
+  for (let t = 0.5; t < seconds; t += 0.5) {
+    ctx.fillText(`${t.toFixed(1)}s`, (t / seconds) * w + 3, h - 4);
+  }
+  const { min, max } = waveformPeaks(data, w);
+  ctx.fillStyle = TRACE;
+  for (let x = 0; x < w; x++) {
+    const yTop = ((1 - max[x]) / 2) * h;
+    const yBottom = ((1 - min[x]) / 2) * h;
+    ctx.fillRect(x, yTop, 1, Math.max(1, yBottom - yTop));
+  }
+}
+
+const FMIN = 20;
+const FMAX = 20000;
+
+/** Static energy-over-frequency view: FFT of a rendered buffer, log axis. */
+export function drawSpectrumStatic(canvas: HTMLCanvasElement, data: Float32Array, sampleRate: number): void {
+  const ctx = canvas.getContext('2d')!;
+  const w = canvas.width;
+  const h = canvas.height;
+  const freqX = (f: number): number => (Math.log(f / FMIN) / Math.log(FMAX / FMIN)) * w;
+  const xs = FREQ_LINES.map(freqX);
+  const ys = [-20, -40, -60, -80].map((db) => ((MAX_DB - db) / (MAX_DB - MIN_DB)) * h);
+  grid(ctx, w, h, xs, ys);
+  ctx.fillStyle = LABEL;
+  ctx.font = '10px sans-serif';
+  for (const f of FREQ_LINES) {
+    const label = FREQ_LABELS[f];
+    if (label) ctx.fillText(label, freqX(f) + 3, h - 4);
+  }
+  const { mags, size } = magnitudeSpectrum(data);
+  ctx.strokeStyle = TRACE;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  let started = false;
+  for (let k = 1; k < mags.length; k++) {
+    const f = (k * sampleRate) / size;
+    if (f < FMIN || f > FMAX) continue;
+    const db = 20 * Math.log10(mags[k] + 1e-12);
+    const norm = (db - MIN_DB) / (MAX_DB - MIN_DB);
+    const y = h - Math.max(0, Math.min(1, norm)) * h;
+    const x = freqX(f);
+    if (!started) {
+      ctx.moveTo(x, y);
+      started = true;
+    } else {
+      ctx.lineTo(x, y);
+    }
+  }
+  ctx.stroke();
 }
 
 /** Log-frequency FFT trace of an fft analyser, with Hz-labelled gridlines. */
