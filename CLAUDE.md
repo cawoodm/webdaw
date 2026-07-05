@@ -13,7 +13,9 @@ WebDAW — a browser DAW (Chromium-target: File System Access API + Web MIDI) bu
 - `npm test` — all Vitest tests
 - `npx vitest run src/core/wav.test.ts` — single test file; `npx vitest run -t "name"` for a single test
 
-Audio behavior can't be unit-tested in Node — verify audio changes manually in the browser (Chrome DevTools MCP works well). Anything importing `tone` won't run under Vitest; keep testable logic (encoding, model, mapping math) in modules that don't import it.
+Audio behavior can't be unit-tested in Node — verify audio changes manually in the browser (Chrome DevTools MCP works well), or run `node scripts/audio-smoke.mjs` against a dev server on port 5199 (headless Chrome via puppeteer-core: asserts no AudioContext exists before the first gesture and that audio flows after one). Anything importing Tone won't run under Vitest; keep testable logic (encoding, model, mapping math) in modules that don't import it.
+
+**Tone import rule:** always `import * as Tone from '<path>/core/tone'` (a shim re-exporting `tone/build/esm/classes.js` + lazy `now`/`getTransport`/`getDestination`). NEVER import from `'tone'` directly — the package root evaluates deprecated top-level constants that create the AudioContext at module load, triggering Chrome's autoplay warning before any user gesture. Boot-time audio work must go through `engine.whenReady()`; `engine.ensureStarted()` runs on the first gesture (automatic window listener).
 
 ## Architecture
 

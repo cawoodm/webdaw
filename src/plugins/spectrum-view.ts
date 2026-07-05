@@ -1,4 +1,4 @@
-import * as Tone from 'tone';
+import * as Tone from '../core/tone';
 
 /**
  * Draw a live FFT spectrum onto a canvas until the returned stop

@@ -6,7 +6,7 @@ import { store } from '../../core/project-store';
 import { uiState, updateUi } from '../../core/ui-state';
 import { knob } from '../../ui/knob';
 import { makeSynth, playSequenceLive, renderSequence, type LivePlayback } from './sequence-playback';
-import * as Tone from 'tone';
+import * as Tone from '../../core/tone';
 
 const PIANO_NOTES: string[] = [];
 for (let octave = 5; octave >= 3; octave--) {

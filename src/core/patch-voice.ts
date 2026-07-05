@@ -1,6 +1,6 @@
-import * as Tone from 'tone';
+import * as Tone from './tone';
 import type { TonePatch } from './model';
-import { defaultFilter } from './model';
+import { defaultFilter, SAMPLE_FREQ_DEFAULT, SAMPLE_SECONDS_DEFAULT } from './model';
 
 /**
  * One playable voice of a Tone-tab patch: oscillator layers -> layer gains
@@ -50,7 +50,7 @@ export class PatchVoice {
     }
   }
 
-  triggerAttack(note: string, time?: number, velocity = 1): void {
+  triggerAttack(note: string | number, time?: number, velocity = 1): void {
     const freq = Tone.Frequency(note).toFrequency();
     const t = time ?? Tone.now();
     for (const osc of this.oscs) {
@@ -69,7 +69,7 @@ export class PatchVoice {
     this.lfo?.stop(stopAt);
   }
 
-  triggerAttackRelease(note: string, duration: number, time?: number, velocity = 1): void {
+  triggerAttackRelease(note: string | number, duration: number, time?: number, velocity = 1): void {
     const t = time ?? Tone.now();
     this.triggerAttack(note, t, velocity);
     this.triggerRelease(t + duration);
@@ -81,13 +81,14 @@ export class PatchVoice {
   }
 }
 
-/** Render a patch to an AudioBuffer (1s held note + release tail). */
-export async function renderPatch(patch: TonePatch, note = 'C4'): Promise<AudioBuffer> {
-  const hold = 1;
+/** Render a patch to an AudioBuffer (held note + release tail) at its sample freq/duration. */
+export async function renderPatch(patch: TonePatch, note?: string | number): Promise<AudioBuffer> {
+  const freq = note ?? patch.sampleFreq ?? SAMPLE_FREQ_DEFAULT;
+  const hold = patch.sampleSeconds ?? SAMPLE_SECONDS_DEFAULT;
   const duration = hold + patch.env.release + 0.15;
   const result = await Tone.Offline(() => {
     const voice = new PatchVoice(patch, Tone.getDestination());
-    voice.triggerAttackRelease(note, hold, 0.01);
+    voice.triggerAttackRelease(freq, hold, 0.01);
   }, duration);
   return result.get() as AudioBuffer;
 }

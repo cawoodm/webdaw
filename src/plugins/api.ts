@@ -1,4 +1,4 @@
-import * as Tone from 'tone';
+import * as Tone from '../core/tone';
 
 export interface PluginMeta {
   id: string;

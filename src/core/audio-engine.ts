@@ -1,4 +1,4 @@
-import * as Tone from 'tone';
+import * as Tone from './tone';
 import metronomeMp3 from '../assets/metronome-85688.mp3';
 import { extractClick } from './click-trim';
 
@@ -48,6 +48,10 @@ class AudioEngine {
 
   async ensureStarted(): Promise<void> {
     if (this._started) return;
+    // Until the real AudioContext exists, Tone's global context is a
+    // DummyContext and Tone.start() would "resume" that no-op. Materialize
+    // the real context now, inside the user gesture, then resume it.
+    Tone.getContext();
     await Tone.start();
     if (this._started) return; // concurrent caller won the race
     this._started = true;

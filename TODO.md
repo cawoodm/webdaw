@@ -2,12 +2,13 @@
 
 Mark in progress 🕜 and then move to done ✅ when complete
 
-- bug: BPM is not persisting 🕜
-- User should be able to set frequency and duration of sample
+- User should be able to set frequency and duration of sample 🕜
 - Change wave type dropdown to an icon selector
+- bug: Vizualizations are not displayed at startup
 
 # DONE
 
+- bug: BPM is not persisting ✅ (could not reproduce — works)
 - Live update viz as user drags dials ✅
 - Create a vizualisation for the envelope showing how attack/delay is attenuating the signal over time ✅
 - Ad viz for the LFO in magenta and add a small magenta square left of the "LFO" label ✅

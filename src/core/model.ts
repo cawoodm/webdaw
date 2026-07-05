@@ -22,12 +22,18 @@ export interface TonePatch {
   env: { attack: number; decay: number; sustain: number; release: number };
   lfo: { rate: number; depth: number; target: 'off' | 'pitch' | 'volume' };
   filter?: PatchFilter; // optional: older projects predate it
+  sampleFreq?: number;    // Hz — render/preview pitch (default C4)
+  sampleSeconds?: number; // held-note length of the rendered sample
   wavFile?: string;
 }
 
 export function defaultFilter(): PatchFilter {
   return { hpf: 20, lpf: 20000 };
 }
+
+/** Fallbacks for patches predating sampleFreq/sampleSeconds. */
+export const SAMPLE_FREQ_DEFAULT = 261.63; // C4
+export const SAMPLE_SECONDS_DEFAULT = 1;
 
 export interface PadConfig {
   name: string;

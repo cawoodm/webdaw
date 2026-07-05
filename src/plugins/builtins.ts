@@ -1,4 +1,4 @@
-import * as Tone from 'tone';
+import * as Tone from '../core/tone';
 import { knob } from '../ui/knob';
 import type { DawPlugin, ParamSpec, PluginFactory, PluginMeta } from './api';
 import { drawSpectrum } from './spectrum-view';

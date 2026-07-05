@@ -1,4 +1,4 @@
-import * as Tone from 'tone';
+import * as Tone from '../../core/tone';
 import { engine } from '../../core/audio-engine';
 import type { SeqTrack, Sequence, SynthKind } from '../../core/model';
 import { STEPS_PER_BAR, toneBufferKey } from '../../core/model';

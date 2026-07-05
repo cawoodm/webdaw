@@ -1,8 +1,8 @@
-import * as Tone from 'tone';
+import * as Tone from '../../core/tone';
 import { engine } from '../../core/audio-engine';
 import { bus } from '../../core/event-bus';
 import type { PatchFilter, TonePatch } from '../../core/model';
-import { defaultFilter, defaultPatch, toneBufferKey, uid } from '../../core/model';
+import { defaultFilter, defaultPatch, SAMPLE_FREQ_DEFAULT, SAMPLE_SECONDS_DEFAULT, toneBufferKey, uid } from '../../core/model';
 import { store } from '../../core/project-store';
 import { uiState, updateUi } from '../../core/ui-state';
 import { knob } from '../../ui/knob';
@@ -87,32 +87,33 @@ export class ToneTab extends HTMLElement {
     return this.tap;
   }
 
-  private async noteOn(note: string, velocity: number): Promise<void> {
+  private async noteOn(note: string | number, velocity: number, key = String(note)): Promise<void> {
     await engine.ensureStarted();
-    this.noteOff(note);
+    this.noteOff(key);
     const voice = new PatchVoice(this.patch(), this.getTap());
-    this.voices.set(note, voice);
+    this.voices.set(key, voice);
     voice.triggerAttack(note, undefined, velocity);
   }
 
-  private noteOff(note: string): void {
-    const voice = this.voices.get(note);
+  private noteOff(key: string): void {
+    const voice = this.voices.get(key);
     if (!voice) return;
-    this.voices.delete(note);
+    this.voices.delete(key);
     voice.triggerRelease();
     setTimeout(() => voice.dispose(), (this.patch().env.release + 0.3) * 1000);
   }
 
-  /** Preview C4: 1s hold + release; retriggers while loop is on. */
+  /** Preview at the patch's sample freq/duration; retriggers while loop is on. */
   private async playPreview(): Promise<void> {
     await engine.ensureStarted();
     this.stopPreview();
     const cycle = (): void => {
-      void this.noteOn('C4', 0.9);
-      const holdMs = 1000;
-      this.previewTimers.push(window.setTimeout(() => this.noteOff('C4'), holdMs));
+      const patch = this.patch();
+      void this.noteOn(patch.sampleFreq ?? SAMPLE_FREQ_DEFAULT, 0.9, 'preview');
+      const holdMs = (patch.sampleSeconds ?? SAMPLE_SECONDS_DEFAULT) * 1000;
+      this.previewTimers.push(window.setTimeout(() => this.noteOff('preview'), holdMs));
       if (this.looping) {
-        const gapMs = holdMs + this.patch().env.release * 1000 + 150;
+        const gapMs = holdMs + patch.env.release * 1000 + 150;
         this.previewTimers.push(window.setTimeout(cycle, gapMs));
       }
     };
@@ -122,7 +123,7 @@ export class ToneTab extends HTMLElement {
   private stopPreview(): void {
     for (const t of this.previewTimers) clearTimeout(t);
     this.previewTimers = [];
-    this.noteOff('C4');
+    this.noteOff('preview');
   }
 
   private save(): void {
@@ -169,7 +170,7 @@ export class ToneTab extends HTMLElement {
     const patch = this.patch();
     const { data, sampleRate, duration } = this.lastRender;
     drawWaveformStatic(timeCanvas, data, sampleRate);
-    drawEnvelopeOverlay(timeCanvas, patch.env, duration);
+    drawEnvelopeOverlay(timeCanvas, patch.env, duration, patch.sampleSeconds ?? SAMPLE_SECONDS_DEFAULT);
     drawLfoOverlay(timeCanvas, patch.lfo, duration);
     drawSpectrumStatic(freqCanvas, data, sampleRate);
     drawFilterOverlay(freqCanvas, this.filter(patch));
@@ -487,7 +488,30 @@ export class ToneTab extends HTMLElement {
       ),
     );
     filterCard.appendChild(filterKnobs);
-    row.append(envCard, lfoCard, filterCard);
+
+    const sampleCard = document.createElement('div');
+    sampleCard.className = 'card';
+    sampleCard.innerHTML = '<div class="card-head"><span class="card-title">Sample</span></div>';
+    const sampleKnobs = document.createElement('div');
+    sampleKnobs.className = 'knob-row';
+    sampleKnobs.append(
+      knob(
+        { label: 'Freq', min: 27.5, max: 3520, step: 0.5, value: patch.sampleFreq ?? SAMPLE_FREQ_DEFAULT, log: true, unit: 'Hz' },
+        (v) => {
+          patch.sampleFreq = v;
+          this.save();
+        },
+      ),
+      knob(
+        { label: 'Length', min: 0.1, max: 4, step: 0.05, value: patch.sampleSeconds ?? SAMPLE_SECONDS_DEFAULT, unit: 's' },
+        (v) => {
+          patch.sampleSeconds = v;
+          this.save();
+        },
+      ),
+    );
+    sampleCard.appendChild(sampleKnobs);
+    row.append(envCard, lfoCard, filterCard, sampleCard);
     this.appendChild(row);
 
     // --- actions ---

@@ -1,4 +1,4 @@
-import * as Tone from 'tone';
+import * as Tone from './tone';
 import { engine } from './audio-engine';
 import { bus } from './event-bus';
 import { defaultProject, type ProjectData } from './model';

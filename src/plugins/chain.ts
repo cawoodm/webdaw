@@ -1,4 +1,4 @@
-import * as Tone from 'tone';
+import * as Tone from '../core/tone';
 import type { PluginInstanceState } from '../core/model';
 import { uid } from '../core/model';
 import type { DawPlugin } from './api';
