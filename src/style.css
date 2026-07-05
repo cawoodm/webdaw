@@ -116,6 +116,27 @@ input[type='number'] {
   display: block;
 }
 
+.project-select {
+  max-width: 160px;
+}
+
+.save-btn.saving svg {
+  animation: save-pulse 0.5s ease-in-out infinite alternate;
+}
+
+.save-btn:disabled {
+  cursor: wait;
+}
+
+@keyframes save-pulse {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0.25;
+  }
+}
+
 .metro .pendulum {
   transform-origin: 12px 17px;
 }

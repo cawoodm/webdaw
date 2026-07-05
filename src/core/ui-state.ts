@@ -1,10 +1,10 @@
 import type { TabId } from './model';
-import { idbGet, idbSet } from './persistence';
 
 /**
- * Transient UI state (selections, toggles) persisted to IndexedDB so a
- * page reload restores the session. Project content lives in project.json;
- * this is everything that is not project content.
+ * Transient UI state (selections, toggles) — part of a project: persisted
+ * to the project's IndexedDB mirror and its ui.json on disk (both handled
+ * by the persister the project manager registers), so a project folder
+ * restores the exact UI on any machine.
  */
 export interface UiState {
   activeTab: TabId;
@@ -26,23 +26,28 @@ function defaults(): UiState {
   };
 }
 
-const KEY = 'uiState';
 let state: UiState = defaults();
 let saveTimer: number | undefined;
+let persister: (snapshot: UiState) => Promise<void> | void = () => {};
 
-export async function loadUiState(): Promise<UiState> {
-  const stored = await idbGet<Partial<UiState>>(KEY);
-  if (stored) {
-    const d = defaults();
-    state = {
-      ...d,
-      ...stored,
-      tone: { ...d.tone, ...stored.tone },
-      sample: { ...d.sample, ...stored.sample },
-      sequence: { ...d.sequence, ...stored.sequence },
-      arrange: { ...d.arrange, ...stored.arrange },
-    };
-  }
+/** The project manager registers where UI state gets persisted. */
+export function setUiStatePersister(fn: (snapshot: UiState) => Promise<void> | void): void {
+  persister = fn;
+}
+
+/** Replace the in-memory UI state (project load); missing fields get defaults. */
+export function applyUiState(stored?: Partial<UiState>): UiState {
+  const d = defaults();
+  state = stored
+    ? {
+        ...d,
+        ...stored,
+        tone: { ...d.tone, ...stored.tone },
+        sample: { ...d.sample, ...stored.sample },
+        sequence: { ...d.sequence, ...stored.sequence },
+        arrange: { ...d.arrange, ...stored.arrange },
+      }
+    : d;
   return state;
 }
 
@@ -50,9 +55,19 @@ export function uiState(): UiState {
   return state;
 }
 
-/** Mutate UI state; persists to IndexedDB debounced. */
+export function serializeUiState(): UiState {
+  return JSON.parse(JSON.stringify(state)) as UiState;
+}
+
+/** Mutate UI state; persists debounced via the registered persister. */
 export function updateUi(mutate: (s: UiState) => void): void {
   mutate(state);
   clearTimeout(saveTimer);
-  saveTimer = window.setTimeout(() => void idbSet(KEY, state), 300);
+  saveTimer = window.setTimeout(() => void persister(serializeUiState()), 300);
+}
+
+/** Cancel the debounce and persist immediately (manual save / project switch). */
+export async function flushUiState(): Promise<void> {
+  clearTimeout(saveTimer);
+  await persister(serializeUiState());
 }

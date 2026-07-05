@@ -53,6 +53,8 @@ class MidiInput {
   };
 
   private onKeyDown = (e: KeyboardEvent): void => {
+    // modifier chords (Ctrl+S etc.) are shortcuts, not notes
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.repeat || this.isTyping(e)) return;
     const note = noteForKey(e.code);
     if (!note || this.downKeys.has(e.code)) return;

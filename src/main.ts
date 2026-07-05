@@ -7,18 +7,14 @@ import './modules/arrange/arrange-tab';
 import './modules/produce/produce-tab';
 import './shell/app-shell';
 
-import { bus } from './core/event-bus';
-import { store } from './core/project-store';
-import { loadUiState } from './core/ui-state';
+import { projects } from './core/project-manager';
 import { loadKeyMap } from './midi/keymap';
 import { midiInput } from './midi/midi-input';
 
 async function boot(): Promise<void> {
-  await loadKeyMap();
-  await loadUiState();
-  bus.emit('ui:loaded');
+  await loadKeyMap(); // local mapping; the project's keymap.json may override
+  await projects.restore(); // emits ui:loaded + project:loaded
   await midiInput.init();
-  await store.tryRestore();
 }
 
 void boot();

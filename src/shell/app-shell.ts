@@ -2,6 +2,8 @@ import * as Tone from '../core/tone';
 import { engine } from '../core/audio-engine';
 import { bus } from '../core/event-bus';
 import type { TabId } from '../core/model';
+import { projects } from '../core/project-manager';
+import { NEW_PROJECT_SENTINEL } from '../core/project-names';
 import { store } from '../core/project-store';
 import { uiState, updateUi } from '../core/ui-state';
 import type { PluginChainEl } from '../plugins/chain';
@@ -39,8 +41,16 @@ export class AppShell extends HTMLElement {
         <div class="project-menu">
           <button class="master-fx">Master FX</button>
           <button class="keys">Keys</button>
-          <button class="reconnect hidden">Reconnect project</button>
-          <button class="folder" title="Pick the folder where this project (project.json, tones/, samples/, exports/) is stored on disk">Project folder…</button>
+          <button class="reconnect hidden">Reconnect folder</button>
+          <button class="folder" title="Pick the root folder that holds one subdirectory per project">Root folder…</button>
+          <select class="project-select" title="Switch project"></select>
+          <button class="save-btn icon-btn" title="Save project now (Ctrl+S)" aria-label="Save project">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true">
+              <path d="M5 3h11l4 4v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/>
+              <path d="M8 3v5h7V3"/>
+              <rect x="7" y="13" width="10" height="8" rx="0.5"/>
+            </svg>
+          </button>
           <span class="project-name hint"></span>
         </div>
       </header>
@@ -78,11 +88,47 @@ export class AppShell extends HTMLElement {
     this.querySelector<HTMLButtonElement>('.stop-all')!.onclick = (): void => engine.stop();
     this.querySelector<HTMLButtonElement>('.keys')!.onclick = (): void => openKeymapDialog();
     this.querySelector<HTMLButtonElement>('.folder')!.onclick = async (): Promise<void> => {
-      await store.chooseFolder();
+      await projects.chooseRoot();
     };
     this.querySelector<HTMLButtonElement>('.reconnect')!.onclick = async (): Promise<void> => {
-      await store.reconnect();
+      await projects.reconnect();
     };
+
+    // --- project dropdown + save ---
+    const projectSelect = this.querySelector<HTMLSelectElement>('.project-select')!;
+    projectSelect.onchange = async (): Promise<void> => {
+      const value = projectSelect.value;
+      if (value === NEW_PROJECT_SENTINEL) {
+        const name = prompt('Project name');
+        const created = name ? await projects.createProject(name) : false;
+        if (!created) await this.refreshProjects(); // reset selection
+      } else {
+        await projects.open(value);
+      }
+    };
+
+    const saveBtn = this.querySelector<HTMLButtonElement>('.save-btn')!;
+    const doSave = async (): Promise<void> => {
+      saveBtn.classList.add('saving');
+      saveBtn.disabled = true;
+      try {
+        await projects.saveAll();
+      } finally {
+        saveBtn.classList.remove('saving');
+        saveBtn.disabled = false;
+      }
+    };
+    saveBtn.onclick = (): void => void doSave();
+    window.addEventListener(
+      'keydown',
+      (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+          e.preventDefault();
+          void doSave();
+        }
+      },
+      { capture: true },
+    );
 
     const masterDialog = this.querySelector<HTMLDialogElement>('.master-dialog')!;
     this.querySelector<HTMLButtonElement>('.master-fx')!.onclick = async (): Promise<void> => {
@@ -108,11 +154,31 @@ export class AppShell extends HTMLElement {
       engine.bpm = store.data.bpm;
       bpm.value = String(store.data.bpm);
       this.updateProjectUi();
+      void this.refreshProjects();
       if (this.masterChain) this.ensureMasterChain(true);
     });
 
     this.activate('tone');
     this.updateProjectUi();
+  }
+
+  /** Repopulate the project dropdown (projects + '- new project -'). */
+  private async refreshProjects(): Promise<void> {
+    const select = this.querySelector<HTMLSelectElement>('.project-select');
+    if (!select) return;
+    const names = await projects.listProjects();
+    select.innerHTML = '';
+    for (const name of names) {
+      const opt = document.createElement('option');
+      opt.value = name;
+      opt.textContent = name;
+      opt.selected = name === projects.activeName;
+      select.appendChild(opt);
+    }
+    const newOpt = document.createElement('option');
+    newOpt.value = NEW_PROJECT_SENTINEL;
+    newOpt.textContent = '- new project -';
+    select.appendChild(newOpt);
   }
 
   private ensureMasterChain(rebind = false): void {
@@ -145,12 +211,12 @@ export class AppShell extends HTMLElement {
   private updateProjectUi(): void {
     const name = this.querySelector('.project-name')!;
     const reconnect = this.querySelector('.reconnect')!;
-    reconnect.classList.toggle('hidden', !store.needsPermission);
-    name.textContent = store.dir
-      ? store.needsPermission
-        ? `${store.dir.name} (permission needed)`
-        : store.dir.name
-      : 'no folder — changes not saved';
+    reconnect.classList.toggle('hidden', !projects.needsPermission);
+    name.textContent = projects.root
+      ? projects.needsPermission
+        ? `${projects.root.name} (permission needed)`
+        : `${projects.root.name} / ${projects.activeName}`
+      : 'no folder — changes saved in browser only';
   }
 }
 

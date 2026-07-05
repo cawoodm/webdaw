@@ -2,32 +2,45 @@ import * as Tone from './tone';
 import { engine } from './audio-engine';
 import { bus } from './event-bus';
 import { defaultProject, type ProjectData } from './model';
-import { idbGet, idbSet } from './persistence';
+import { idbSet } from './persistence';
 import { encodeWav } from './wav';
 
-const DIR_KEY = 'projectDir';
 const PROJECT_FILE = 'project.json';
-const PROJECT_IDB_KEY = 'projectData';
 
 /**
- * In-memory project model with autosave to a File System Access folder.
- * The directory handle is persisted in IndexedDB so the project reopens
- * automatically on reload (a permission re-grant may be required).
- *
- * Every save also mirrors the project JSON to IndexedDB, so edits survive
- * reloads even before a folder is chosen (or while permission is pending).
- * The folder's project.json is authoritative once available.
+ * In-memory model + file IO + audio-buffer cache for the ACTIVE project.
+ * The project manager (project-manager.ts) owns the root folder, decides
+ * which project subdirectory `dir` points at, and provides the IndexedDB
+ * mirror key. Every save writes the mirror; the folder copy is written
+ * when a directory handle is attached.
  */
 class ProjectStore {
   data: ProjectData = defaultProject();
   dir: FileSystemDirectoryHandle | null = null;
-  /** True when a stored handle exists but needs a user gesture to re-grant. */
-  needsPermission = false;
 
   private buffers = new Map<string, AudioBuffer>();
   private pendingWavs = new Set<string>();
   private saveTimer: number | undefined;
   private decodeCtx: OfflineAudioContext | null = null;
+  private mirrorKey: () => string = () => 'project:default:data';
+
+  /** The manager tells the store where its IndexedDB mirror lives. */
+  setMirrorKey(provider: () => string): void {
+    this.mirrorKey = provider;
+  }
+
+  /** Attach/detach the active project's directory handle. */
+  setDir(dir: FileSystemDirectoryHandle | null): void {
+    this.dir = dir;
+  }
+
+  /** Swap in another project's data; clears caches and pending writes. */
+  resetTo(data: ProjectData): void {
+    clearTimeout(this.saveTimer);
+    this.data = data;
+    this.buffers.clear();
+    this.pendingWavs.clear();
+  }
 
   /**
    * Decode audio without forcing the live AudioContext into existence
@@ -39,57 +52,6 @@ class ProjectStore {
     }
     this.decodeCtx ??= new OfflineAudioContext(1, 1, 44100);
     return this.decodeCtx.decodeAudioData(raw);
-  }
-
-  async chooseFolder(): Promise<void> {
-    this.dir = await window.showDirectoryPicker({ id: 'webdaw', mode: 'readwrite' });
-    this.needsPermission = false;
-    await idbSet(DIR_KEY, this.dir);
-    await this.loadOrInit();
-  }
-
-  async tryRestore(): Promise<void> {
-    const handle = await idbGet<FileSystemDirectoryHandle>(DIR_KEY);
-    if (handle) {
-      this.dir = handle;
-      const perm = await handle.queryPermission({ mode: 'readwrite' });
-      if (perm === 'granted') {
-        await this.loadOrInit();
-        return;
-      }
-      this.needsPermission = true;
-    }
-    // no folder access (yet) — fall back to the IndexedDB mirror
-    const cached = await idbGet<ProjectData>(PROJECT_IDB_KEY);
-    if (cached) this.data = { ...defaultProject(), ...cached };
-    bus.emit('project:loaded');
-  }
-
-  async reconnect(): Promise<void> {
-    if (!this.dir) return;
-    const perm = await this.dir.requestPermission({ mode: 'readwrite' });
-    if (perm === 'granted') {
-      this.needsPermission = false;
-      await this.loadOrInit();
-    }
-  }
-
-  private async loadOrInit(): Promise<void> {
-    const raw = await this.readFile(PROJECT_FILE);
-    if (raw) {
-      try {
-        const parsed = JSON.parse(new TextDecoder().decode(raw)) as ProjectData;
-        this.data = { ...defaultProject(), ...parsed };
-      } catch (err) {
-        console.error('Failed to parse project.json, starting fresh', err);
-        this.data = defaultProject();
-      }
-    } else {
-      await this.save();
-    }
-    await this.flushPendingWavs();
-    await this.preloadBuffers();
-    bus.emit('project:loaded');
   }
 
   /** Apply a mutation, notify listeners, schedule an autosave. */
@@ -105,8 +67,9 @@ class ProjectStore {
   }
 
   async save(): Promise<void> {
-    await idbSet(PROJECT_IDB_KEY, this.data);
-    if (!this.dir || this.needsPermission) return;
+    clearTimeout(this.saveTimer);
+    await idbSet(this.mirrorKey(), this.data);
+    if (!this.dir) return;
     await this.writeFile(PROJECT_FILE, JSON.stringify(this.data, null, 2));
   }
 
@@ -133,7 +96,7 @@ class ProjectStore {
    */
   async saveWav(path: string, buffer: AudioBuffer): Promise<boolean> {
     this.cacheBuffer(path, buffer);
-    if (this.dir && !this.needsPermission) {
+    if (this.dir) {
       await this.writeFile(path, encodeWav(buffer));
       return true;
     }
@@ -142,8 +105,8 @@ class ProjectStore {
   }
 
   /** Write WAVs that were exported before a project folder was connected. */
-  private async flushPendingWavs(): Promise<void> {
-    if (!this.dir || this.needsPermission) return;
+  async flushPendingWavs(): Promise<void> {
+    if (!this.dir) return;
     for (const path of [...this.pendingWavs]) {
       const buffer = this.buffers.get(path);
       if (buffer) await this.writeFile(path, encodeWav(buffer));
@@ -174,7 +137,8 @@ class ProjectStore {
     return buffer;
   }
 
-  private async preloadBuffers(): Promise<void> {
+  /** Load every WAV referenced by the current project data into the cache. */
+  async preloadBuffers(): Promise<void> {
     const paths = new Set<string>();
     for (const p of this.data.patches) if (p.wavFile) paths.add(p.wavFile);
     for (const pad of this.data.pads) if (pad?.file) paths.add(pad.file);
@@ -188,7 +152,23 @@ class ProjectStore {
     await Promise.all([...paths].map((p) => this.loadBuffer(p)));
   }
 
-  // ---- file system helpers ----
+  // ---- file system helpers (paths relative to the project subdir) ----
+
+  async readJson<T>(path: string): Promise<T | null> {
+    const raw = await this.readFile(path);
+    if (!raw) return null;
+    try {
+      return JSON.parse(new TextDecoder().decode(raw)) as T;
+    } catch (err) {
+      console.error(`Failed to parse ${path}`, err);
+      return null;
+    }
+  }
+
+  async writeJson(path: string, value: unknown): Promise<void> {
+    if (!this.dir) return;
+    await this.writeFile(path, JSON.stringify(value, null, 2));
+  }
 
   private async resolveDir(path: string, create: boolean): Promise<{ dir: FileSystemDirectoryHandle; name: string } | null> {
     if (!this.dir) return null;

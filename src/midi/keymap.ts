@@ -36,6 +36,12 @@ export async function resetKeyMap(): Promise<void> {
   await idbSet(KEY, current);
 }
 
+/** Replace the mapping wholesale (a project's keymap.json overrides local). */
+export async function applyKeyMap(map: KeyMap): Promise<void> {
+  current = { ...map };
+  await idbSet(KEY, current);
+}
+
 export function noteForKey(code: string): string | undefined {
   return current[code];
 }
