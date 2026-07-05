@@ -23,6 +23,8 @@ export class SampleTab extends HTMLElement {
       this.render();
       void this.ensureToneBuffers();
     });
+    // reflect model edits from other tabs (e.g. renaming a tone patch)
+    bus.on('project:changed', () => this.render());
     bus.on('tone:sendToPad', ({ patchId, name, buffer }) => this.receiveTone(patchId, name, buffer));
     this.render();
   }
