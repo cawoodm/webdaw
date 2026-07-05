@@ -2,10 +2,10 @@ import * as Tone from 'tone';
 import { engine } from '../../core/audio-engine';
 import { bus } from '../../core/event-bus';
 import type { TonePatch } from '../../core/model';
-import { defaultPatch, uid } from '../../core/model';
+import { defaultPatch, toneBufferKey, uid } from '../../core/model';
 import { store } from '../../core/project-store';
 import { knob } from '../../ui/knob';
-import { PatchVoice, renderPatch } from './patch-voice';
+import { PatchVoice, renderPatch } from '../../core/patch-voice';
 import { drawFft, drawScope, drawSpectrumStatic, drawWaveformStatic } from './scope-view';
 
 const OSC_TYPES = ['sine', 'sawtooth', 'triangle', 'square'] as const;
@@ -91,21 +91,24 @@ export class ToneTab extends HTMLElement {
 
   private save(): void {
     store.scheduleSave();
-    // patch parameters changed — refresh the static views once edits settle
-    if (!this.live) {
-      clearTimeout(this.staticTimer);
-      this.staticTimer = window.setTimeout(() => void this.updateStatic(), 400);
-    }
+    // patch parameters changed — refresh render (static views + linked pads) once edits settle
+    clearTimeout(this.staticTimer);
+    this.staticTimer = window.setTimeout(() => void this.updateStatic(), 400);
   }
 
-  /** Offline-render the current patch and draw the static time/freq views. */
+  /**
+   * Offline-render the current patch: publish the buffer so linked sampler
+   * pads play the latest version, and draw the static time/freq views.
+   */
   private async updateStatic(): Promise<void> {
+    const patch = this.patch();
+    const seq = ++this.staticSeq;
+    const buffer = await renderPatch(patch);
+    if (seq !== this.staticSeq) return; // superseded by a newer edit
+    store.setBuffer(toneBufferKey(patch.id), buffer);
     const timeCanvas = this.querySelector<HTMLCanvasElement>('canvas.scope-static-time');
     const freqCanvas = this.querySelector<HTMLCanvasElement>('canvas.scope-static-freq');
     if (!timeCanvas || !freqCanvas) return;
-    const seq = ++this.staticSeq;
-    const buffer = await renderPatch(this.patch());
-    if (seq !== this.staticSeq || !timeCanvas.isConnected) return; // superseded or re-rendered
     const data = buffer.getChannelData(0);
     drawWaveformStatic(timeCanvas, data, buffer.sampleRate);
     drawSpectrumStatic(freqCanvas, data, buffer.sampleRate);
@@ -389,7 +392,7 @@ export class ToneTab extends HTMLElement {
       }),
       btn('Send to pad →', async () => {
         const buffer = await renderPatch(patch);
-        bus.emit('tone:sendToPad', { name: patch.name, buffer });
+        bus.emit('tone:sendToPad', { patchId: patch.id, name: patch.name, buffer });
         bus.emit('tab:activate', 'sample');
         this.flash('Sent to sample pad');
       }),

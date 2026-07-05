@@ -2,7 +2,8 @@ import * as Tone from 'tone';
 import { engine } from '../../core/audio-engine';
 import { bus } from '../../core/event-bus';
 import type { PadConfig } from '../../core/model';
-import { PAD_COUNT, STEPS_PER_BAR, uid } from '../../core/model';
+import { PAD_COUNT, STEPS_PER_BAR, toneBufferKey, uid } from '../../core/model';
+import { renderPatch } from '../../core/patch-voice';
 import { store } from '../../core/project-store';
 import { knob } from '../../ui/knob';
 
@@ -13,24 +14,42 @@ export class SampleTab extends HTMLElement {
 
   connectedCallback(): void {
     this.className = 'tab-panel sample-tab';
-    bus.on('project:loaded', () => this.render());
-    bus.on('tone:sendToPad', ({ name, buffer }) => void this.receiveTone(name, buffer));
+    bus.on('project:loaded', () => {
+      this.render();
+      void this.ensureToneBuffers();
+    });
+    bus.on('tone:sendToPad', ({ patchId, name, buffer }) => this.receiveTone(patchId, name, buffer));
     this.render();
   }
 
-  private async receiveTone(name: string, buffer: AudioBuffer): Promise<void> {
+  /** Link a pad to the patch — it will always play the latest render. */
+  private receiveTone(patchId: string, name: string, buffer: AudioBuffer): void {
+    store.setBuffer(toneBufferKey(patchId), buffer);
+    const existing = store.data.pads.findIndex((p) => p?.toneId === patchId);
     const free = store.data.pads.findIndex((p) => p === null);
-    const index = free === -1 ? 0 : free;
-    const path = `samples/${name.replace(/[^\w-]+/g, '_')}-${uid()}.wav`;
-    await store.saveWav(path, buffer);
+    const index = existing !== -1 ? existing : free !== -1 ? free : 0;
     store.update((d) => {
-      d.pads[index] = { name, file: path, gain: 1, trimStart: 0, trimEnd: 0 };
+      d.pads[index] = { name, toneId: patchId, gain: 1, trimStart: 0, trimEnd: 0 };
     });
     this.selected = index;
     this.render();
   }
 
+  /** Render buffers for tone-linked pads that don't have one yet (project load). */
+  private async ensureToneBuffers(): Promise<void> {
+    let rendered = false;
+    for (const pad of store.data.pads) {
+      if (!pad?.toneId || store.getBuffer(toneBufferKey(pad.toneId))) continue;
+      const patch = store.data.patches.find((p) => p.id === pad.toneId);
+      if (!patch) continue;
+      store.setBuffer(toneBufferKey(pad.toneId), await renderPatch(patch));
+      rendered = true;
+    }
+    if (rendered) this.render();
+  }
+
   private padBuffer(pad: PadConfig): AudioBuffer | null {
+    if (pad.toneId) return store.getBuffer(toneBufferKey(pad.toneId));
     return pad.file ? store.getBuffer(pad.file) : null;
   }
 
@@ -235,6 +254,33 @@ export class SampleTab extends HTMLElement {
     title.innerHTML = `<span class="card-title">Pad ${index + 1}${pad ? ` — ${pad.name}` : ''}</span>`;
     editor.appendChild(title);
 
+    // link a tone patch — the pad follows the patch's latest render
+    const toneSel = document.createElement('select');
+    toneSel.title = 'Load a tone onto this pad (always plays its latest version)';
+    const noneOpt = document.createElement('option');
+    noneOpt.value = '';
+    noneOpt.textContent = '— load tone —';
+    toneSel.appendChild(noneOpt);
+    for (const patch of store.data.patches) {
+      const opt = document.createElement('option');
+      opt.value = patch.id;
+      opt.textContent = patch.name;
+      opt.selected = pad?.toneId === patch.id;
+      toneSel.appendChild(opt);
+    }
+    toneSel.onchange = async (): Promise<void> => {
+      const patch = store.data.patches.find((p) => p.id === toneSel.value);
+      if (!patch) return;
+      if (!store.getBuffer(toneBufferKey(patch.id))) {
+        store.setBuffer(toneBufferKey(patch.id), await renderPatch(patch));
+      }
+      store.update((d) => {
+        d.pads[index] = { name: patch.name, toneId: patch.id, gain: 1, trimStart: 0, trimEnd: 0 };
+      });
+      this.render();
+    };
+    editor.appendChild(toneSel);
+
     const fileBtn = document.createElement('button');
     fileBtn.textContent = 'Load audio file…';
     fileBtn.onclick = (): void => {
@@ -284,10 +330,12 @@ export class SampleTab extends HTMLElement {
       }),
     );
     editor.appendChild(knobs);
-    if (buffer === null && pad.file) {
+    if (buffer === null && (pad.file || pad.toneId)) {
       const warn = document.createElement('p');
       warn.className = 'warn';
-      warn.textContent = `Missing audio file: ${pad.file}`;
+      warn.textContent = pad.toneId
+        ? 'Linked tone patch not found or not rendered yet'
+        : `Missing audio file: ${pad.file}`;
       editor.appendChild(warn);
     }
 

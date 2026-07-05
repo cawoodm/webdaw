@@ -3,7 +3,7 @@ import type { TabId } from './model';
 export interface BusEvents {
   'project:loaded': void;
   'project:changed': void;
-  'tone:sendToPad': { name: string; buffer: AudioBuffer };
+  'tone:sendToPad': { patchId: string; name: string; buffer: AudioBuffer };
   'sample:editInSequencer': { sequenceId: string };
   'tab:activate': TabId;
   'midi:noteon': { note: string; velocity: number };

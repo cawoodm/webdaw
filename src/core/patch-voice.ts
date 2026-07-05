@@ -1,5 +1,5 @@
 import * as Tone from 'tone';
-import type { TonePatch } from '../../core/model';
+import type { TonePatch } from './model';
 
 /**
  * One playable voice of a Tone-tab patch: oscillator layers -> layer gains

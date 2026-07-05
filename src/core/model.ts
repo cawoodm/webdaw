@@ -22,9 +22,16 @@ export interface TonePatch {
 export interface PadConfig {
   name: string;
   file?: string;
+  /** Linked tone patch — the pad always plays the patch's latest render. */
+  toneId?: string;
   gain: number;
   trimStart: number; // seconds
   trimEnd: number;   // seconds, 0 = to end
+}
+
+/** Buffer-cache key for a tone patch's current render. */
+export function toneBufferKey(patchId: string): string {
+  return `tone:${patchId}`;
 }
 
 export interface PadEvent {

@@ -1,7 +1,7 @@
 import * as Tone from 'tone';
 import { engine } from '../../core/audio-engine';
 import type { SeqTrack, Sequence, SynthKind } from '../../core/model';
-import { STEPS_PER_BAR } from '../../core/model';
+import { STEPS_PER_BAR, toneBufferKey } from '../../core/model';
 import { store } from '../../core/project-store';
 
 export function makeSynth(kind: SynthKind | undefined): Tone.PolySynth {
@@ -21,7 +21,11 @@ export interface ResolvedAudio {
 export function resolveAudio(track: SeqTrack): ResolvedAudio {
   if (track.source?.pad !== undefined) {
     const pad = store.data.pads[track.source.pad];
-    const buffer = pad?.file ? store.getBuffer(pad.file) : null;
+    const buffer = pad?.toneId
+      ? store.getBuffer(toneBufferKey(pad.toneId))
+      : pad?.file
+        ? store.getBuffer(pad.file)
+        : null;
     return {
       buffer,
       offset: pad?.trimStart ?? 0,
