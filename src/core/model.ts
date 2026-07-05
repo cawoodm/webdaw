@@ -10,13 +10,23 @@ export interface ToneLayer {
   muted?: boolean;
 }
 
+export interface PatchFilter {
+  hpf: number; // high-pass cutoff Hz (20 = off)
+  lpf: number; // low-pass cutoff Hz (20000 = off)
+}
+
 export interface TonePatch {
   id: string;
   name: string;
   layers: ToneLayer[];
   env: { attack: number; decay: number; sustain: number; release: number };
   lfo: { rate: number; depth: number; target: 'off' | 'pitch' | 'volume' };
+  filter?: PatchFilter; // optional: older projects predate it
   wavFile?: string;
+}
+
+export function defaultFilter(): PatchFilter {
+  return { hpf: 20, lpf: 20000 };
 }
 
 export interface PadConfig {
@@ -119,6 +129,7 @@ export function defaultPatch(): TonePatch {
     layers: [{ type: 'sine', gain: 0.8, detune: 0, phase: 0 }],
     env: { attack: 0.01, decay: 0.2, sustain: 0.6, release: 0.4 },
     lfo: { rate: 4, depth: 0, target: 'off' },
+    filter: defaultFilter(),
   };
 }
 

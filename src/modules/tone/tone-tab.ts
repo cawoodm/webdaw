@@ -1,13 +1,22 @@
 import * as Tone from 'tone';
 import { engine } from '../../core/audio-engine';
 import { bus } from '../../core/event-bus';
-import type { TonePatch } from '../../core/model';
-import { defaultPatch, toneBufferKey, uid } from '../../core/model';
+import type { PatchFilter, TonePatch } from '../../core/model';
+import { defaultFilter, defaultPatch, toneBufferKey, uid } from '../../core/model';
 import { store } from '../../core/project-store';
 import { uiState, updateUi } from '../../core/ui-state';
 import { knob } from '../../ui/knob';
 import { PatchVoice, renderPatch } from '../../core/patch-voice';
-import { drawFft, drawScope, drawSpectrumStatic, drawWaveformStatic } from './scope-view';
+import {
+  drawEnvelopeOverlay,
+  drawFft,
+  drawFilterOverlay,
+  drawScope,
+  drawSpectrumStatic,
+  drawWaveformStatic,
+  HPF_TRACE,
+  LPF_TRACE,
+} from './scope-view';
 
 const OSC_TYPES = ['sine', 'sawtooth', 'triangle', 'square'] as const;
 const LFO_TARGETS = ['off', 'pitch', 'volume'] as const;
@@ -124,7 +133,15 @@ export class ToneTab extends HTMLElement {
     if (!timeCanvas || !freqCanvas) return;
     const data = buffer.getChannelData(0);
     drawWaveformStatic(timeCanvas, data, buffer.sampleRate);
+    drawEnvelopeOverlay(timeCanvas, patch.env, buffer.duration);
     drawSpectrumStatic(freqCanvas, data, buffer.sampleRate);
+    drawFilterOverlay(freqCanvas, this.filter(patch));
+  }
+
+  /** Patch filter settings, materialized for patches predating the field. */
+  private filter(patch: TonePatch): PatchFilter {
+    if (!patch.filter) patch.filter = defaultFilter();
+    return patch.filter;
   }
 
   private render(): void {
@@ -397,7 +414,31 @@ export class ToneTab extends HTMLElement {
       }),
     );
     lfoCard.appendChild(lfoKnobs);
-    row.append(envCard, lfoCard);
+
+    const filterCard = document.createElement('div');
+    filterCard.className = 'card';
+    filterCard.innerHTML = '<div class="card-head"><span class="card-title">Filter</span></div>';
+    const filterKnobs = document.createElement('div');
+    filterKnobs.className = 'knob-row';
+    const filter = this.filter(patch);
+    filterKnobs.append(
+      knob(
+        { label: 'HPF', min: 20, max: 10000, step: 1, value: filter.hpf, log: true, unit: 'Hz', color: HPF_TRACE },
+        (v) => {
+          filter.hpf = v;
+          this.save();
+        },
+      ),
+      knob(
+        { label: 'LPF', min: 100, max: 20000, step: 1, value: filter.lpf, log: true, unit: 'Hz', color: LPF_TRACE },
+        (v) => {
+          filter.lpf = v;
+          this.save();
+        },
+      ),
+    );
+    filterCard.appendChild(filterKnobs);
+    row.append(envCard, lfoCard, filterCard);
     this.appendChild(row);
 
     // --- actions ---

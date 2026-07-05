@@ -166,3 +166,74 @@ export function drawFft(canvas: HTMLCanvasElement, analyser: Tone.Analyser, isAc
     ctx.stroke();
   });
 }
+
+export const HPF_TRACE = '#4da6ff';
+export const LPF_TRACE = '#ff5c5c';
+
+/**
+ * HPF (blue) and LPF (red) response curves over an already-drawn static
+ * spectrum view, on the same log-frequency / dB axes. Slopes match the
+ * patch voice's Tone.Filter default rolloff (-12 dB/octave).
+ */
+export function drawFilterOverlay(canvas: HTMLCanvasElement, filter: { hpf: number; lpf: number }): void {
+  const ctx = canvas.getContext('2d')!;
+  const w = canvas.width;
+  const h = canvas.height;
+  const freqAt = (px: number): number => FMIN * Math.pow(FMAX / FMIN, px / w);
+  const yAt = (db: number): number => {
+    const norm = (db - MIN_DB) / (MAX_DB - MIN_DB);
+    return h - Math.max(0, Math.min(1, norm)) * h;
+  };
+  const curve = (color: string, dbAt: (f: number) => number): void => {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    for (let px = 0; px < w; px++) {
+      const y = yAt(dbAt(freqAt(px)));
+      if (px === 0) ctx.moveTo(px, y);
+      else ctx.lineTo(px, y);
+    }
+    ctx.stroke();
+  };
+  curve(HPF_TRACE, (f) => (f < filter.hpf ? -12 * Math.log2(filter.hpf / f) : 0));
+  curve(LPF_TRACE, (f) => (f > filter.lpf ? -12 * Math.log2(f / filter.lpf) : 0));
+}
+
+const ENV_TRACE = '#f6ad55';
+
+/**
+ * Orange ADSR contour over an already-drawn static waveform view, on the
+ * same time axis. `holdSeconds`/`startAt` mirror renderPatch's schedule
+ * (attack at 0.01s, release triggered after a 1s hold).
+ */
+export function drawEnvelopeOverlay(
+  canvas: HTMLCanvasElement,
+  env: { attack: number; decay: number; sustain: number; release: number },
+  seconds: number,
+  holdSeconds = 1,
+  startAt = 0.01,
+): void {
+  const ctx = canvas.getContext('2d')!;
+  const w = canvas.width;
+  const h = canvas.height;
+  // envelope level before release, then exponential release from that level
+  const preRelease = (t: number): number =>
+    t < env.attack
+      ? t / env.attack
+      : env.sustain + (1 - env.sustain) * Math.exp(-5 * ((t - env.attack) / env.decay));
+  const level = (t: number): number => {
+    const ta = t - startAt;
+    if (ta <= 0) return 0;
+    if (ta < holdSeconds) return preRelease(ta);
+    return preRelease(holdSeconds) * Math.exp(-5 * ((ta - holdSeconds) / env.release));
+  };
+  ctx.strokeStyle = ENV_TRACE;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (let px = 0; px < w; px++) {
+    const y = ((1 - level((px / w) * seconds)) / 2) * h;
+    if (px === 0) ctx.moveTo(px, y);
+    else ctx.lineTo(px, y);
+  }
+  ctx.stroke();
+}

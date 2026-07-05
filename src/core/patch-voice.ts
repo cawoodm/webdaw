@@ -1,22 +1,29 @@
 import * as Tone from 'tone';
 import type { TonePatch } from './model';
+import { defaultFilter } from './model';
 
 /**
  * One playable voice of a Tone-tab patch: oscillator layers -> layer gains
- * -> mix -> amplitude envelope, with optional LFO on pitch or volume.
- * Built against the active Tone context, so it also works inside Tone.Offline.
+ * -> mix -> HPF -> LPF -> amplitude envelope, with optional LFO on pitch
+ * or volume. Built against the active Tone context, so it also works
+ * inside Tone.Offline.
  */
 export class PatchVoice {
   private env: Tone.AmplitudeEnvelope;
   private mix: Tone.Gain;
+  private hpFilter: Tone.Filter;
+  private lpFilter: Tone.Filter;
   private oscs: Tone.Oscillator[] = [];
   private gains: Tone.Gain[] = [];
   private lfo: Tone.LFO | null = null;
   private releaseSeconds: number;
 
   constructor(patch: TonePatch, destination: Tone.ToneAudioNode) {
+    const filter = patch.filter ?? defaultFilter();
     this.env = new Tone.AmplitudeEnvelope(patch.env).connect(destination);
-    this.mix = new Tone.Gain(1).connect(this.env);
+    this.lpFilter = new Tone.Filter(filter.lpf, 'lowpass').connect(this.env);
+    this.hpFilter = new Tone.Filter(filter.hpf, 'highpass').connect(this.lpFilter);
+    this.mix = new Tone.Gain(1).connect(this.hpFilter);
     this.releaseSeconds = patch.env.release;
     for (const layer of patch.layers) {
       if (layer.muted) continue;
@@ -69,7 +76,7 @@ export class PatchVoice {
   }
 
   dispose(): void {
-    for (const n of [...this.oscs, ...this.gains, this.mix, this.env]) n.dispose();
+    for (const n of [...this.oscs, ...this.gains, this.mix, this.hpFilter, this.lpFilter, this.env]) n.dispose();
     this.lfo?.dispose();
   }
 }

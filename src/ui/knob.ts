@@ -79,12 +79,14 @@ export class DawKnob extends HTMLElement {
     const angle = -135 + this.norm() * 270;
     const label = this.getAttribute('label') ?? '';
     const unit = this.getAttribute('unit') ?? '';
+    const color = this.getAttribute('color');
     const display = this.value >= 100 ? this.value.toFixed(0) : this.value.toFixed(2).replace(/\.?0+$/, '');
     this.innerHTML = `
       <div class="knob-dial">
         <svg viewBox="0 0 40 40" width="40" height="40">
           <circle cx="20" cy="20" r="16" class="knob-bg"/>
           <line x1="20" y1="20" x2="20" y2="6" class="knob-needle"
+                ${color ? `style="stroke:${color}"` : ''}
                 transform="rotate(${angle} 20 20)"/>
         </svg>
       </div>
@@ -97,7 +99,7 @@ customElements.define('daw-knob', DawKnob);
 
 /** Helper to build a knob wired to a getter/setter. */
 export function knob(
-  opts: { label: string; min: number; max: number; step: number; value: number; log?: boolean; unit?: string },
+  opts: { label: string; min: number; max: number; step: number; value: number; log?: boolean; unit?: string; color?: string },
   onChange: (value: number) => void,
 ): DawKnob {
   const el = document.createElement('daw-knob') as DawKnob;
@@ -108,6 +110,7 @@ export function knob(
   el.setAttribute('label', opts.label);
   if (opts.unit) el.setAttribute('unit', opts.unit);
   if (opts.log) el.setAttribute('log', '1');
+  if (opts.color) el.setAttribute('color', opts.color);
   el.addEventListener('input', (e) => onChange((e as CustomEvent<number>).detail));
   return el;
 }
