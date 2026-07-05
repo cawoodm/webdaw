@@ -2,6 +2,7 @@ import * as Tone from '../../core/tone';
 import { engine } from '../../core/audio-engine';
 import type { SeqTrack, Sequence, SynthKind } from '../../core/model';
 import { STEPS_PER_BAR, toneBufferKey } from '../../core/model';
+import { stepToTransportTime } from '../../core/time';
 import { store } from '../../core/project-store';
 
 export function makeSynth(kind: SynthKind | undefined): Tone.PolySynth {
@@ -97,12 +98,15 @@ export interface LivePlayback {
   dispose(): void;
 }
 
-/** Play a sequence on the live transport (looped). */
+/**
+ * Play a sequence on the live transport (looped). Events are scheduled in
+ * musical time — the transport (= metronome) is the clock, so BPM changes
+ * keep samples, notes and clicks aligned.
+ */
 export function playSequenceLive(seq: Sequence, dest: Tone.ToneAudioNode): LivePlayback {
-  const sps = engine.secondsPerStep();
   const parts: Tone.Part[] = [];
   const nodes: Tone.ToneAudioNode[] = [];
-  const loopEnd = seq.bars * STEPS_PER_BAR * sps;
+  const loopEnd = `${seq.bars}m`;
 
   for (const track of seq.tracks) {
     const gain = new Tone.Gain(track.gain).connect(dest);
@@ -113,9 +117,11 @@ export function playSequenceLive(seq: Sequence, dest: Tone.ToneAudioNode): LiveP
       nodes.push(synth);
       part = new Tone.Part(
         (time, n: { note: string; duration: number; velocity: number }) => {
+          // duration from the CURRENT bpm so held notes track tempo changes
+          const sps = 60 / Tone.getTransport().bpm.value / 4;
           synth.triggerAttackRelease(n.note, Math.max(0.02, n.duration * sps - 0.01), time, n.velocity);
         },
-        (track.notes ?? []).map((n) => [n.step * sps, n] as [number, typeof n]),
+        (track.notes ?? []).map((n) => [stepToTransportTime(n.step), n] as [string, typeof n]),
       );
     } else {
       const audio = resolveAudio(track);
@@ -128,7 +134,7 @@ export function playSequenceLive(seq: Sequence, dest: Tone.ToneAudioNode): LiveP
           };
           src.start(time, audio.offset, audio.duration);
         },
-        (track.steps ?? []).map((s) => [s * sps, s] as [number, number]),
+        (track.steps ?? []).map((s) => [stepToTransportTime(s), s] as [string, number]),
       );
     }
     part.loop = true;

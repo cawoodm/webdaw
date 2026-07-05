@@ -5,6 +5,7 @@ import type { PadConfig } from '../../core/model';
 import { PAD_COUNT, STEPS_PER_BAR, toneBufferKey, uid } from '../../core/model';
 import { renderPatch } from '../../core/patch-voice';
 import { store } from '../../core/project-store';
+import { beatsToTransportTime } from '../../core/time';
 import { uiState, updateUi } from '../../core/ui-state';
 import { knob } from '../../ui/knob';
 
@@ -110,15 +111,16 @@ export class SampleTab extends HTMLElement {
 
   private startLoop(withExisting: boolean): void {
     this.loopPart?.dispose();
-    const spb = engine.secondsPerBeat();
     engine.setLoop(store.data.padLoopBars);
     if (withExisting && store.data.padEvents.length > 0) {
+      // musical time, not seconds: the transport (= metronome) is the clock,
+      // so BPM changes keep pad hits and clicks locked together
       this.loopPart = new Tone.Part(
         (time, ev: { pad: number }) => this.playPad(ev.pad, time),
-        store.data.padEvents.map((e) => [e.time * spb, { pad: e.pad }] as [number, { pad: number }]),
+        store.data.padEvents.map((e) => [beatsToTransportTime(e.time), { pad: e.pad }] as [string, { pad: number }]),
       );
       this.loopPart.loop = true;
-      this.loopPart.loopEnd = this.loopBeats() * spb;
+      this.loopPart.loopEnd = `${store.data.padLoopBars}m`;
       this.loopPart.start(0);
     }
     engine.play();
