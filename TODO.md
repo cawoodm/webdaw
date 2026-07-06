@@ -1,13 +1,20 @@
-# TODO
+# Instructions
 
-Mark in progress 🕜 and then move to done ✅ when complete and merge branch into main
-Once a task is done, show the user the dev URL, confirm with the user they are happy before marking done
+- Synch with main
+- Read an unmarked TODO from the list below
+- Mark it in progress 🕜 and begin implementing
+- Once a task is done, show the user the full dev URL link (with http://), confirm with the user they are happy
+- Mark done ✅ and synch back to main
 
 # TODOs
 
 - feat: Allow drag and drop of sample pads to swap (dest is occupied) or move (if dest empty) 🕜 (todos2)
 - feat: Show quantize gridlines and bar numbers above sample grid 🕜 (todos2)
-- feat: Be consistent with play/stop/record buttons in the top left of each tab (only icons), global play/stop button (next to metronome, icons only) should play stop everything
+- feat: Be consistent with play/stop/record buttons in the top left of each tab (only icons), global play/stop button (next to metronome, icons only) should play stop everything. In general, spacebar is play/stop. 🕜 (todos2)
+- feat: Sort names of patches and loops in their dropdowns by name
+- feat: When dragging a sample pad (mousedown) don't play it
+- feat: Add master volume knob to top
+- feat:
 
 # DONE
 
