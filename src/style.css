@@ -782,3 +782,13 @@ dialog td {
   display: inline-flex;
   gap: 2px;
 }
+
+.btn-with-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-with-icon svg {
+  display: block;
+}
