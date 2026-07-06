@@ -1,7 +1,7 @@
 import * as Tone from '../../core/tone';
 import { engine } from '../../core/audio-engine';
 import { bus } from '../../core/event-bus';
-import type { PadConfig } from '../../core/model';
+import type { PadConfig, PadEvent } from '../../core/model';
 import { PAD_COUNT, STEPS_PER_BAR, toneBufferKey, uid } from '../../core/model';
 import { renderPatch } from '../../core/patch-voice';
 import { store } from '../../core/project-store';
@@ -121,15 +121,30 @@ export class SampleTab extends HTMLElement {
     return pad.file ? store.getBuffer(pad.file) : null;
   }
 
-  /** Play a pad now (or at a scheduled time on the transport). */
-  private playPad(index: number, time?: number): void {
+  /** A pad's trimmed sample length in seconds, when its buffer is known. */
+  private padSeconds(pad: PadConfig): number | undefined {
+    const buffer = this.padBuffer(pad);
+    if (!buffer) return undefined;
+    const end = pad.trimEnd > 0 ? Math.min(pad.trimEnd, buffer.duration) : buffer.duration;
+    return Math.max(0.01, end - pad.trimStart);
+  }
+
+  /**
+   * Play a pad now (or at a scheduled time on the transport).
+   * `durationBeats` (grid clips) caps the playback length.
+   */
+  private playPad(index: number, time?: number, durationBeats?: number): void {
     const pad = store.data.pads[index];
     if (!pad) return;
     const buffer = this.padBuffer(pad);
     if (!buffer) return;
     const gainNode = new Tone.Gain(pad.gain).connect(engine.master);
     const src = new Tone.ToneBufferSource(new Tone.ToneAudioBuffer(buffer)).connect(gainNode);
-    const duration = pad.trimEnd > 0 ? Math.max(0.01, pad.trimEnd - pad.trimStart) : undefined;
+    let duration = pad.trimEnd > 0 ? Math.max(0.01, pad.trimEnd - pad.trimStart) : undefined;
+    if (durationBeats !== undefined) {
+      const cap = durationBeats * engine.secondsPerBeat();
+      duration = duration === undefined ? cap : Math.min(duration, cap);
+    }
     src.onended = (): void => {
       src.dispose();
       gainNode.dispose();
@@ -175,15 +190,7 @@ export class SampleTab extends HTMLElement {
     this.countInBeats = countBars * 4;
     engine.setLoop(bars, countBars);
     if (withExisting && store.data.padEvents.length > 0) {
-      // musical time, not seconds: the transport (= metronome) is the clock,
-      // so BPM changes keep pad hits and clicks locked together
-      this.loopPart = new Tone.Part(
-        (time, ev: { pad: number }) => this.playPad(ev.pad, time),
-        store.data.padEvents.map((e) => [beatsToTransportTime(e.time), { pad: e.pad }] as [string, { pad: number }]),
-      );
-      this.loopPart.loop = true;
-      this.loopPart.loopEnd = `${bars}m`;
-      this.loopPart.start(`${countBars}m`);
+      this.loopPart = this.makeLoopPart(countBars);
     }
     const transport = Tone.getTransport();
     if (countIn && !engine.metronomeOn) {
@@ -207,6 +214,29 @@ export class SampleTab extends HTMLElement {
       );
     }
     engine.play();
+  }
+
+  /**
+   * Schedule all pad events on the transport. Musical time, not seconds:
+   * the transport (= metronome) is the clock, so BPM changes keep pad
+   * hits and clicks locked together.
+   */
+  private makeLoopPart(countBars: number): Tone.Part {
+    const part = new Tone.Part(
+      (time, ev: PadEvent) => this.playPad(ev.pad, time, ev.duration),
+      store.data.padEvents.map((e) => [beatsToTransportTime(e.time), e] as [string, PadEvent]),
+    );
+    part.loop = true;
+    part.loopEnd = `${store.data.padLoopBars}m`;
+    part.start(`${countBars}m`);
+    return part;
+  }
+
+  /** Re-schedule after grid edits so changes are audible mid-playback. */
+  private rebuildLoopPartIfPlaying(): void {
+    if (!engine.started || !engine.playing) return;
+    this.loopPart?.dispose();
+    this.loopPart = this.makeLoopPart(this.countInBeats / 4);
   }
 
   private stopLoop(): void {
@@ -246,12 +276,12 @@ export class SampleTab extends HTMLElement {
     // playhead moves every frame; block/beat classes only on change
     const playhead = this.querySelector<HTMLElement>('.event-playhead');
     if (playhead) {
-      const cells = this.querySelector<HTMLElement>('.event-cells');
-      if (fraction < 0 || !cells) {
+      const lane = this.querySelector<HTMLElement>('.event-lane');
+      if (fraction < 0 || !lane) {
         playhead.classList.add('hidden');
       } else {
         playhead.classList.remove('hidden');
-        playhead.style.left = `${cells.offsetLeft + fraction * cells.offsetWidth}px`;
+        playhead.style.left = `${lane.offsetLeft + fraction * lane.offsetWidth}px`;
       }
     }
     const key = counting ? -1 : bar * 4 + beat;
@@ -300,23 +330,39 @@ export class SampleTab extends HTMLElement {
     this.paintPlayToggle(button, playing);
   }
 
-  /** Grid of recorded hits: one row per pad with data, colored by pad color. */
+  /** Snap beats to the 16th grid. */
+  private static snap(beats: number): number {
+    return Math.round(beats * 4) / 4;
+  }
+
+  /** After direct mutations of padEvents: persist, re-render, re-schedule. */
+  private commitGridEdit(): void {
+    store.update(() => {});
+    this.rebuildLoopPartIfPlaying();
+  }
+
+  /**
+   * Editable clip grid of pad events: one lane per loaded pad (or pad
+   * with data), clips colored by pad. Click empty space = create a
+   * 1-beat clip; drag = move (across lanes too); right edge = resize;
+   * double-click = delete.
+   */
   private buildEventGrid(): HTMLElement {
-    const bars = store.data.padLoopBars;
-    const steps = bars * STEPS_PER_BAR;
-    const byPad = new Map<number, Set<number>>();
-    for (const e of store.data.padEvents) {
-      const step = Math.round(e.time * 4) % steps;
-      if (!byPad.has(e.pad)) byPad.set(e.pad, new Set());
-      byPad.get(e.pad)!.add(step);
-    }
+    const loopBeats = this.loopBeats();
     const grid = document.createElement('div');
     grid.className = 'event-grid';
-    if (byPad.size === 0) {
+
+    const rowPads: number[] = [];
+    store.data.pads.forEach((pad, i) => {
+      if (pad || store.data.padEvents.some((e) => e.pad === i)) rowPads.push(i);
+    });
+    if (rowPads.length === 0) {
       grid.classList.add('hidden');
       return grid;
     }
-    for (const padIndex of [...byPad.keys()].sort((a, b) => a - b)) {
+
+    const lanes = new Map<number, HTMLElement>();
+    for (const padIndex of rowPads) {
       const pad = store.data.pads[padIndex];
       const color = pad?.color ?? '#4fd1c5';
       const row = document.createElement('div');
@@ -326,27 +372,102 @@ export class SampleTab extends HTMLElement {
       label.textContent = pad?.name ?? `Pad ${padIndex + 1}`;
       label.style.borderRightColor = color;
       row.appendChild(label);
-      const cells = document.createElement('div');
-      cells.className = 'event-cells';
-      cells.style.gridTemplateColumns = `repeat(${steps}, 1fr)`;
-      const hits = byPad.get(padIndex)!;
-      for (let s = 0; s < steps; s++) {
-        const cell = document.createElement('div');
-        cell.className =
-          'event-cell' + (s % STEPS_PER_BAR === 0 ? ' bar-start' : s % 4 === 0 ? ' beat-start' : '');
-        if (hits.has(s)) {
-          cell.classList.add('on');
-          cell.style.background = color;
-        }
-        cells.appendChild(cell);
-      }
-      row.appendChild(cells);
+
+      const lane = document.createElement('div');
+      lane.className = 'event-lane';
+      // beat + bar gridlines sized to the loop
+      lane.style.backgroundImage =
+        'linear-gradient(90deg, var(--text-dim) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px)';
+      lane.style.backgroundSize = `${100 / store.data.padLoopBars}% 100%, ${100 / loopBeats}% 100%`;
+      lane.onclick = (e): void => {
+        if (e.target !== lane) return; // clicks on clips are handled there
+        const fraction = (e.clientX - lane.getBoundingClientRect().left) / lane.offsetWidth;
+        const time = Math.min(loopBeats - 0.25, Math.max(0, SampleTab.snap(fraction * loopBeats)));
+        store.data.padEvents.push({ pad: padIndex, time, duration: 1 });
+        this.commitGridEdit();
+      };
+      row.appendChild(lane);
+      lanes.set(padIndex, lane);
       grid.appendChild(row);
     }
+
+    for (const ev of store.data.padEvents) {
+      const lane = lanes.get(ev.pad);
+      if (lane) this.buildClip(ev, lane, lanes, loopBeats);
+    }
+
     const playhead = document.createElement('div');
     playhead.className = 'event-playhead hidden';
     grid.appendChild(playhead);
     return grid;
+  }
+
+  /** Visible clip length in beats: explicit duration or the sample's natural length. */
+  private clipBeats(ev: PadEvent, loopBeats: number): number {
+    if (ev.duration !== undefined) return ev.duration;
+    const pad = store.data.pads[ev.pad];
+    const seconds = pad ? this.padSeconds(pad) : undefined;
+    const natural = seconds !== undefined ? seconds / engine.secondsPerBeat() : 0.25;
+    return Math.max(0.25, Math.min(natural, loopBeats - ev.time));
+  }
+
+  private buildClip(ev: PadEvent, lane: HTMLElement, lanes: Map<number, HTMLElement>, loopBeats: number): void {
+    const pad = store.data.pads[ev.pad];
+    const color = pad?.color ?? '#4fd1c5';
+    const clip = document.createElement('div');
+    clip.className = 'event-clip';
+    clip.style.background = color;
+    const place = (): void => {
+      clip.style.left = `${(ev.time / loopBeats) * 100}%`;
+      clip.style.width = `${(this.clipBeats(ev, loopBeats) / loopBeats) * 100}%`;
+    };
+    place();
+    const handle = document.createElement('div');
+    handle.className = 'event-clip-resize';
+    clip.appendChild(handle);
+
+    clip.ondblclick = (): void => {
+      const idx = store.data.padEvents.indexOf(ev);
+      if (idx >= 0) store.data.padEvents.splice(idx, 1);
+      this.commitGridEdit();
+    };
+
+    clip.onpointerdown = (e): void => {
+      // no preventDefault here — it would suppress the dblclick used for delete
+      e.stopPropagation();
+      const resizing = e.target === handle;
+      const laneRect = lane.getBoundingClientRect();
+      const beatsPerPx = loopBeats / lane.offsetWidth;
+      const start = { x: e.clientX, y: e.clientY, time: ev.time, duration: this.clipBeats(ev, loopBeats), pad: ev.pad };
+      let moved = false;
+      clip.setPointerCapture(e.pointerId);
+      clip.onpointermove = (m): void => {
+        if (Math.abs(m.clientX - start.x) + Math.abs(m.clientY - start.y) < 3 && !moved) return;
+        moved = true;
+        const deltaBeats = SampleTab.snap((m.clientX - start.x) * beatsPerPx);
+        if (resizing) {
+          ev.duration = Math.min(loopBeats - ev.time, Math.max(0.25, start.duration + deltaBeats));
+        } else {
+          ev.time = Math.min(loopBeats - 0.25, Math.max(0, SampleTab.snap(start.time + deltaBeats)));
+          // vertical drag moves the clip to another pad's lane
+          for (const [padIndex, otherLane] of lanes) {
+            const r = otherLane.getBoundingClientRect();
+            if (m.clientY >= r.top && m.clientY <= r.bottom) {
+              ev.pad = padIndex;
+              clip.style.transform = `translateY(${r.top - laneRect.top}px)`;
+              break;
+            }
+          }
+        }
+        place();
+      };
+      clip.onpointerup = (): void => {
+        clip.onpointermove = null;
+        clip.onpointerup = null;
+        if (moved) this.commitGridEdit();
+      };
+    };
+    lane.appendChild(clip);
   }
 
   private async exportLoop(): Promise<void> {
@@ -366,7 +487,11 @@ export class SampleTab extends HTMLElement {
         if (!pad || !buffer) continue;
         const g = new Tone.Gain(pad.gain).connect(Tone.getDestination());
         const src = new Tone.ToneBufferSource(new Tone.ToneAudioBuffer(buffer)).connect(g);
-        const duration = pad.trimEnd > 0 ? Math.max(0.01, pad.trimEnd - pad.trimStart) : undefined;
+        let duration = pad.trimEnd > 0 ? Math.max(0.01, pad.trimEnd - pad.trimStart) : undefined;
+        if (ev.duration !== undefined) {
+          const cap = ev.duration * spb;
+          duration = duration === undefined ? cap : Math.min(duration, cap);
+        }
         src.start(ev.time * spb, pad.trimStart, duration);
       }
     }, seconds);

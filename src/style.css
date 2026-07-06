@@ -427,28 +427,40 @@ daw-knob {
   line-height: 16px;
 }
 
-.event-cells {
+.event-lane {
+  position: relative;
   flex: 1;
-  display: grid;
-  gap: 1px;
+  height: 18px;
+  background-color: var(--bg-panel);
+  border-radius: 3px;
+  cursor: copy;
 }
 
-.event-cell {
-  height: 16px;
-  background: var(--bg-panel);
-  border-radius: 2px;
-}
-
-.event-cell.beat-start {
-  border-left: 1px solid var(--border);
-}
-
-.event-cell.bar-start {
-  border-left: 2px solid var(--text-dim);
-}
-
-.event-cell.on {
+.event-clip {
+  position: absolute;
+  top: 1px;
+  bottom: 1px;
+  min-width: 5px;
+  border-radius: 3px;
+  cursor: grab;
   box-shadow: 0 0 5px rgb(0 0 0 / 40%);
+  user-select: none;
+  touch-action: none;
+}
+
+.event-clip:active {
+  cursor: grabbing;
+}
+
+.event-clip-resize {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 7px;
+  cursor: ew-resize;
+  border-right: 2px solid rgb(255 255 255 / 45%);
+  border-radius: 0 3px 3px 0;
 }
 
 .event-playhead {

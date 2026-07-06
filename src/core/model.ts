@@ -113,6 +113,8 @@ export function toneBufferKey(patchId: string): string {
 export interface PadEvent {
   pad: number;
   time: number; // beats from loop start
+  /** Playback length in beats (caps the sample); unset = natural length. */
+  duration?: number;
 }
 
 export interface NoteEvent {
