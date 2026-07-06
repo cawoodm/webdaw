@@ -8,10 +8,9 @@
 
 # TODOs
 
-- feat: Drag and drop has a nice overlay in tone but not in sample, add it. Also allow dragging to the tab name.
-
 # In-Progress
 
+- feat: Drag and drop has a nice overlay in tone but not in sample, add it. Also allow dragging to the tab name. 🕜 (todos2)
 - feat: Sort names of patches and loops in their dropdowns by name 🕜 (todos)
 - feat: Add master volume knob to top 🕜 (todos2 — implemented, awaiting confirmation)
 - feat: When dragging a sample pad (mousedown) don't play it 🕜 (todos2 — implemented, awaiting confirmation)
