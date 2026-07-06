@@ -13,7 +13,7 @@
 # In-Progress
 
 - feat: Sort names of patches and loops in their dropdowns by name 🕜 (todos)
-- feat: Add master volume knob to top 🕜 (todos2)
+- feat: Add master volume knob to top 🕜 (todos2 — implemented, awaiting confirmation)
 - feat: When dragging a sample pad (mousedown) don't play it 🕜 (todos2 — implemented, awaiting confirmation)
 
 # DONE
