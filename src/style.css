@@ -273,6 +273,28 @@ daw-knob {
   color: var(--text-dim);
 }
 
+/* master level gauge beside the volume knob */
+.transport .level-meter {
+  width: 7px;
+  height: 26px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg-panel);
+  display: flex;
+  align-items: flex-end;
+  overflow: hidden;
+}
+
+.transport .level-meter .level-fill {
+  width: 100%;
+  height: 0%;
+  background: #3dd68c;
+}
+
+.transport .level-meter.clip .level-fill {
+  background: #ff5c5c;
+}
+
 /* compact master-volume knob in the header: dial only, no label/value */
 .transport daw-knob.master-vol {
   width: auto;
