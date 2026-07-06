@@ -23,6 +23,15 @@ export function projectUiKey(name: string): string {
   return `project:${name}:ui`;
 }
 
+/** "Kick" -> "Kick 2" (then "Kick 3", …) until it collides with none of `taken`. */
+export function uniqueName(wanted: string, taken: Iterable<string>): string {
+  const set = new Set([...taken].map((n) => n.toLowerCase()));
+  if (!set.has(wanted.toLowerCase())) return wanted;
+  let n = 2;
+  while (set.has(`${wanted} ${n}`.toLowerCase())) n++;
+  return `${wanted} ${n}`;
+}
+
 /** Extract the project name from a `project:<name>:data|ui` key. */
 export function projectNameFromKey(key: string): string | null {
   const match = /^project:(.+):(data|ui)$/.exec(key);

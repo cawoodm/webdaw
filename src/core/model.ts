@@ -168,19 +168,29 @@ export interface ArrangeTrack {
   clips: ArrangeClip[];
 }
 
+/** A named pad-loop ("sample"): the sampler's recorded/edited snippet. */
+export interface PadLoop {
+  id: string;
+  name: string;
+  bars: number;
+  events: PadEvent[];
+}
+
 export interface ProjectData {
   version: 1;
   name: string;
   bpm: number;
   patches: TonePatch[];
   pads: (PadConfig | null)[];
-  padLoopBars: number;
-  padEvents: PadEvent[];
+  padLoops: PadLoop[];
   sequences: Sequence[];
   arrangement: {
     tracks: ArrangeTrack[];
     masterPlugins: PluginInstanceState[];
   };
+  /** Legacy single-loop fields (pre-padLoops) — folded in by normalizeProject. */
+  padLoopBars?: number;
+  padEvents?: PadEvent[];
 }
 
 export const PAD_COUNT = 16;
@@ -202,6 +212,10 @@ export function defaultPatch(): TonePatch {
   };
 }
 
+export function defaultLoop(): PadLoop {
+  return { id: uid(), name: 'Loop 1', bars: 2, events: [] };
+}
+
 export function defaultProject(): ProjectData {
   return {
     version: 1,
@@ -209,9 +223,25 @@ export function defaultProject(): ProjectData {
     bpm: 120,
     patches: [defaultPatch()],
     pads: new Array(PAD_COUNT).fill(null),
-    padLoopBars: 2,
-    padEvents: [],
+    padLoops: [defaultLoop()],
     sequences: [],
     arrangement: { tracks: [], masterPlugins: [] },
   };
+}
+
+/** Upgrade loaded data in place: legacy single-loop fields become padLoops[0]. */
+export function normalizeProject(data: ProjectData): ProjectData {
+  if (!Array.isArray(data.padLoops) || data.padLoops.length === 0) {
+    data.padLoops = [
+      {
+        id: uid(),
+        name: 'Loop 1',
+        bars: data.padLoopBars ?? 2,
+        events: data.padEvents ?? [],
+      },
+    ];
+  }
+  delete data.padLoopBars;
+  delete data.padEvents;
+  return data;
 }

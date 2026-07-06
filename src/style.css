@@ -480,6 +480,12 @@ button.recording {
   animation: rec-blink 0.7s ease-in-out infinite alternate;
 }
 
+.export-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .play-toggle {
   display: inline-flex;
   align-items: center;

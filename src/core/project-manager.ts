@@ -1,6 +1,6 @@
 import { engine } from './audio-engine';
 import { bus } from './event-bus';
-import { defaultProject, type ProjectData } from './model';
+import { defaultProject, normalizeProject, type ProjectData } from './model';
 import { idbDel, idbGet, idbKeys, idbSet } from './persistence';
 import { projectDataKey, projectNameFromKey, projectUiKey, sanitizeProjectName } from './project-names';
 import { store } from './project-store';
@@ -169,7 +169,7 @@ class ProjectManager {
     data ??= (await idbGet<ProjectData>(projectDataKey(name))) ?? null;
     const resolved: ProjectData = { ...defaultProject(), ...(data ?? {}) };
     resolved.name = name;
-    store.resetTo(resolved);
+    store.resetTo(normalizeProject(resolved));
 
     let ui = dir ? await store.readJson<Partial<UiState>>('ui.json') : null;
     ui ??= (await idbGet<Partial<UiState>>(projectUiKey(name))) ?? null;

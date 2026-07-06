@@ -1,13 +1,43 @@
 import * as Tone from '../../core/tone';
 import { engine } from '../../core/audio-engine';
 import { bus } from '../../core/event-bus';
-import type { PadConfig, PadEvent } from '../../core/model';
-import { PAD_COUNT, STEPS_PER_BAR, toneBufferKey, uid } from '../../core/model';
+import type { PadConfig, PadEvent, PadLoop, TonePatch } from '../../core/model';
+import { defaultLoop, defaultPatch, PAD_COUNT, STEPS_PER_BAR, toneBufferKey, uid } from '../../core/model';
 import { renderPatch } from '../../core/patch-voice';
+import { uniqueName } from '../../core/project-names';
 import { store } from '../../core/project-store';
 import { beatsToTransportTime } from '../../core/time';
 import { uiState, updateUi } from '../../core/ui-state';
+import { encodeWav } from '../../core/wav';
 import { knob } from '../../ui/knob';
+
+/** Trigger a browser download of a generated file. */
+function download(filename: string, blob: Blob): void {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+/** Portable .json form of a sample: loop definition + the pad kit it uses. */
+interface SampleFile {
+  format: 'webdaw-sample';
+  name: string;
+  bars: number;
+  events: PadEvent[];
+  pads: Record<string, SamplePadEntry>;
+}
+
+interface SamplePadEntry {
+  name: string;
+  gain: number;
+  trimStart: number;
+  trimEnd: number;
+  color?: string;
+  file?: string;
+  tone?: Partial<TonePatch>;
+}
 
 export class SampleTab extends HTMLElement {
   private selected = 0;
@@ -40,7 +70,34 @@ export class SampleTab extends HTMLElement {
     // reflect model edits from other tabs (e.g. renaming a tone patch)
     bus.on('project:changed', () => this.render());
     bus.on('tone:sendToPad', ({ patchId, name, buffer }) => this.receiveTone(patchId, name, buffer));
+    // drag a .json sample (Export's sidecar) here to import it
+    this.addEventListener('dragover', (e) => {
+      if (!e.dataTransfer?.types.includes('Files')) return;
+      e.preventDefault();
+      this.classList.add('drag-over');
+    });
+    this.addEventListener('dragleave', () => this.classList.remove('drag-over'));
+    this.addEventListener('drop', (e) => {
+      this.classList.remove('drag-over');
+      if (!e.dataTransfer?.files.length) return;
+      e.preventDefault();
+      void this.importSampleFiles([...e.dataTransfer.files]);
+    });
     this.render();
+  }
+
+  /** The active loop ("sample"); guarantees one exists. */
+  private loop(): PadLoop {
+    const loops = store.data.padLoops;
+    const found = loops.find((l) => l.id === uiState().sample.loopId);
+    if (found) return found;
+    if (loops.length === 0) loops.push(defaultLoop());
+    this.selectLoop(loops[0].id);
+    return loops[0];
+  }
+
+  private selectLoop(id: string): void {
+    updateUi((s) => (s.sample.loopId = id));
   }
 
   /** Keypad 1-8 fire pads 1-8; Shift+1-8 fire pads 9-16 (sample tab only). */
@@ -155,7 +212,7 @@ export class SampleTab extends HTMLElement {
   }
 
   private loopBeats(): number {
-    return store.data.padLoopBars * 4;
+    return this.loop().bars * 4;
   }
 
   private onPadHit(index: number): void {
@@ -167,7 +224,7 @@ export class SampleTab extends HTMLElement {
       if (posBeats < 0) return;
       // round to the nearest quantize step (may wrap past the loop end)
       const time = this.nearestSnap(posBeats % this.loopBeats()) % this.loopBeats();
-      store.update((d) => d.padEvents.push({ pad: index, time }));
+      store.update(() => this.loop().events.push({ pad: index, time }));
       this.updateStatus();
     }
   }
@@ -186,11 +243,11 @@ export class SampleTab extends HTMLElement {
 
   private async startLoop(withExisting: boolean, countIn = false): Promise<void> {
     this.loopPart?.dispose();
-    const bars = store.data.padLoopBars;
+    const bars = this.loop().bars;
     const countBars = countIn ? 1 : 0;
     this.countInBeats = countBars * 4;
     engine.setLoop(bars, countBars);
-    if (withExisting && store.data.padEvents.length > 0) {
+    if (withExisting && this.loop().events.length > 0) {
       this.loopPart = this.makeLoopPart(countBars);
     }
     const transport = Tone.getTransport();
@@ -225,10 +282,10 @@ export class SampleTab extends HTMLElement {
   private makeLoopPart(countBars: number): Tone.Part {
     const part = new Tone.Part(
       (time, ev: PadEvent) => this.playPad(ev.pad, time, ev.duration),
-      store.data.padEvents.map((e) => [beatsToTransportTime(e.time), e] as [string, PadEvent]),
+      this.loop().events.map((e) => [beatsToTransportTime(e.time), e] as [string, PadEvent]),
     );
     part.loop = true;
-    part.loopEnd = `${store.data.padLoopBars}m`;
+    part.loopEnd = `${this.loop().bars}m`;
     part.start(`${countBars}m`);
     return part;
   }
@@ -269,7 +326,7 @@ export class SampleTab extends HTMLElement {
         counting = true;
       } else {
         const inLoop = posBeats % this.loopBeats();
-        bar = Math.floor(inLoop / 4) % store.data.padLoopBars;
+        bar = Math.floor(inLoop / 4) % this.loop().bars;
         beat = Math.floor(inLoop % 4);
         fraction = inLoop / this.loopBeats();
       }
@@ -367,7 +424,7 @@ export class SampleTab extends HTMLElement {
 
     const rowPads: number[] = [];
     store.data.pads.forEach((pad, i) => {
-      if (pad || store.data.padEvents.some((e) => e.pad === i)) rowPads.push(i);
+      if (pad || this.loop().events.some((e) => e.pad === i)) rowPads.push(i);
     });
     if (rowPads.length === 0) {
       grid.classList.add('hidden');
@@ -392,14 +449,14 @@ export class SampleTab extends HTMLElement {
       // beat + bar gridlines sized to the loop
       lane.style.backgroundImage =
         'linear-gradient(90deg, var(--text-dim) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px)';
-      lane.style.backgroundSize = `${100 / store.data.padLoopBars}% 100%, ${100 / loopBeats}% 100%`;
+      lane.style.backgroundSize = `${100 / this.loop().bars}% 100%, ${100 / loopBeats}% 100%`;
       lane.onclick = (e): void => {
         if (e.target !== lane) return; // clicks on clips are handled there
         const q = this.quantize();
         const fraction = (e.clientX - lane.getBoundingClientRect().left) / lane.offsetWidth;
         const time = Math.min(loopBeats - q, Math.max(0, this.floorSnap(fraction * loopBeats)));
         // new clips are one quantize step long
-        store.data.padEvents.push({ pad: padIndex, time, duration: q });
+        this.loop().events.push({ pad: padIndex, time, duration: q });
         this.commitGridEdit();
       };
       row.appendChild(lane);
@@ -407,7 +464,7 @@ export class SampleTab extends HTMLElement {
       grid.appendChild(row);
     }
 
-    for (const ev of store.data.padEvents) {
+    for (const ev of this.loop().events) {
       const lane = lanes.get(ev.pad);
       if (lane) this.buildClip(ev, lane, lanes, loopBeats);
     }
@@ -443,8 +500,8 @@ export class SampleTab extends HTMLElement {
     clip.appendChild(handle);
 
     clip.ondblclick = (): void => {
-      const idx = store.data.padEvents.indexOf(ev);
-      if (idx >= 0) store.data.padEvents.splice(idx, 1);
+      const idx = this.loop().events.indexOf(ev);
+      if (idx >= 0) this.loop().events.splice(idx, 1);
       this.commitGridEdit();
     };
 
@@ -491,7 +548,7 @@ export class SampleTab extends HTMLElement {
   private async exportLoop(): Promise<void> {
     const spb = engine.secondsPerBeat();
     const seconds = this.loopBeats() * spb;
-    const events = store.data.padEvents;
+    const events = this.loop().events;
     const pads = store.data.pads;
     const buffers = new Map<number, AudioBuffer>();
     pads.forEach((pad, i) => {
@@ -513,19 +570,119 @@ export class SampleTab extends HTMLElement {
         src.start(ev.time * spb, pad.trimStart, duration);
       }
     }, seconds);
-    const path = `exports/pad-loop-${uid()}.wav`;
-    const written = await store.saveWav(path, rendered.get() as AudioBuffer);
-    this.flash(written ? `Exported ${path}` : `Rendered ${path} in memory — connect a project folder to write files`);
+    const loop = this.loop();
+    const base = loop.name.replace(/[^\w-]+/g, '_');
+    download(`${base}.wav`, new Blob([encodeWav(rendered.get() as AudioBuffer)], { type: 'audio/wav' }));
+    download(`${base}.json`, new Blob([JSON.stringify(this.serializeLoop(loop), null, 2)], { type: 'application/json' }));
+    this.flash(`Downloaded ${base}.wav + ${base}.json`);
+  }
+
+  /** Portable sample definition: loop + the pad kit it uses (tone settings embedded). */
+  private serializeLoop(loop: PadLoop): SampleFile {
+    const padEntries: Record<string, SamplePadEntry> = {};
+    for (const index of new Set(loop.events.map((e) => e.pad))) {
+      const pad = store.data.pads[index];
+      if (!pad) continue;
+      const entry: SamplePadEntry = {
+        name: pad.name,
+        gain: pad.gain,
+        trimStart: pad.trimStart,
+        trimEnd: pad.trimEnd,
+        color: pad.color,
+      };
+      if (pad.toneId) {
+        const patch = store.data.patches.find((p) => p.id === pad.toneId);
+        if (patch) {
+          const { id, wavFile, ...settings } = patch;
+          entry.tone = settings;
+        }
+      } else if (pad.file) {
+        entry.file = pad.file;
+      }
+      padEntries[String(index)] = entry;
+    }
+    return { format: 'webdaw-sample', name: loop.name, bars: loop.bars, events: loop.events, pads: padEntries };
+  }
+
+  /** Import dropped .json samples; name clashes prompt overwrite-or-rename. */
+  private async importSampleFiles(files: File[]): Promise<void> {
+    for (const file of files) {
+      if (!file.name.toLowerCase().endsWith('.json')) continue;
+      let parsed: Partial<SampleFile>;
+      try {
+        parsed = JSON.parse(await file.text()) as Partial<SampleFile>;
+      } catch {
+        this.flash(`${file.name}: not valid JSON`);
+        continue;
+      }
+      if (!Array.isArray(parsed.events) || typeof parsed.bars !== 'number') {
+        this.flash(`${file.name}: not a sample`);
+        continue;
+      }
+      let name = (parsed.name ?? file.name.replace(/\.json$/i, '')).trim() || 'Sample';
+      const existing = store.data.padLoops.find((l) => l.name.toLowerCase() === name.toLowerCase());
+      let target: PadLoop | null = null;
+      if (existing) {
+        if (confirm(`A sample named "${name}" already exists.\nOK: overwrite it — Cancel: import under a new name`)) {
+          target = existing;
+        } else {
+          const suggestion = uniqueName(name, store.data.padLoops.map((l) => l.name));
+          const renamed = prompt('New sample name', suggestion);
+          if (renamed === null) continue; // aborted
+          name = uniqueName(renamed.trim() || suggestion, store.data.padLoops.map((l) => l.name));
+        }
+      }
+      this.importPads(parsed.pads ?? {});
+      store.update((d) => {
+        if (target) {
+          target.bars = parsed.bars!;
+          target.events = parsed.events!;
+        } else {
+          target = { id: uid(), name, bars: parsed.bars!, events: parsed.events! };
+          d.padLoops.push(target);
+        }
+      });
+      this.selectLoop(target!.id);
+      this.flash(`Imported "${target!.name}"`);
+    }
+    this.render();
+    void this.ensureToneBuffers();
+  }
+
+  /** Restore the sample's pad kit into empty pad slots (occupied pads win). */
+  private importPads(entries: Record<string, SamplePadEntry>): void {
+    for (const [key, entry] of Object.entries(entries)) {
+      const index = Number(key);
+      if (!Number.isInteger(index) || index < 0 || index >= PAD_COUNT) continue;
+      if (store.data.pads[index]) continue;
+      const pad: PadConfig = {
+        name: entry.name ?? `Pad ${index + 1}`,
+        gain: entry.gain ?? 1,
+        trimStart: entry.trimStart ?? 0,
+        trimEnd: entry.trimEnd ?? 0,
+        color: entry.color,
+      };
+      if (entry.tone) {
+        const patch: TonePatch = { ...defaultPatch(), ...entry.tone, id: uid() };
+        delete patch.wavFile;
+        patch.name = uniqueName(patch.name || pad.name, store.data.patches.map((p) => p.name));
+        store.data.patches.push(patch);
+        pad.toneId = patch.id;
+      } else if (entry.file) {
+        pad.file = entry.file;
+      }
+      store.data.pads[index] = pad;
+    }
   }
 
   private editInSequencer(): void {
-    const bars = store.data.padLoopBars;
-    const usedPads = [...new Set(store.data.padEvents.map((e) => e.pad))].sort((a, b) => a - b);
+    const bars = this.loop().bars;
+    const usedPads = [...new Set(this.loop().events.map((e) => e.pad))].sort((a, b) => a - b);
     const seqId = uid();
     store.update((d) => {
       d.sequences.push({
         id: seqId,
-        name: `Pad loop ${d.sequences.length + 1}`,
+        name: uniqueName(this.loop().name, d.sequences.map((s) => s.name)),
         bars,
         tracks: usedPads.map((padIndex) => ({
           id: uid(),
@@ -535,8 +692,8 @@ export class SampleTab extends HTMLElement {
           source: { pad: padIndex },
           steps: [
             ...new Set(
-              d.padEvents
-                .filter((e) => e.pad === padIndex)
+              this.loop()
+                .events.filter((e) => e.pad === padIndex)
                 .map((e) => Math.round(e.time * 4) % (bars * STEPS_PER_BAR)),
             ),
           ].sort((a, b) => a - b),
@@ -555,7 +712,7 @@ export class SampleTab extends HTMLElement {
     // --- bar indicator (bar number + one dot per beat) + recorded-event grid ---
     const indicator = document.createElement('div');
     indicator.className = 'bar-indicator';
-    for (let b = 0; b < store.data.padLoopBars; b++) {
+    for (let b = 0; b < this.loop().bars; b++) {
       const block = document.createElement('div');
       block.className = 'bar-block';
       const num = document.createElement('span');
@@ -578,16 +735,33 @@ export class SampleTab extends HTMLElement {
       b.onclick = fn;
       return b;
     };
+    const loop = this.loop();
+    const loopSel = document.createElement('select');
+    loopSel.title = 'Switch sample';
+    for (const l of store.data.padLoops) {
+      const opt = document.createElement('option');
+      opt.value = l.id;
+      opt.textContent = l.name;
+      opt.selected = l.id === loop.id;
+      loopSel.appendChild(opt);
+    }
+    loopSel.onchange = (): void => {
+      this.stopLoop();
+      this.recording = false;
+      this.selectLoop(loopSel.value);
+      this.render();
+    };
+
     const barsSel = document.createElement('select');
     for (const n of [1, 2, 4, 8]) {
       const opt = document.createElement('option');
       opt.value = String(n);
       opt.textContent = `${n} bar${n > 1 ? 's' : ''}`;
-      opt.selected = store.data.padLoopBars === n;
+      opt.selected = loop.bars === n;
       barsSel.appendChild(opt);
     }
     barsSel.onchange = (): void => {
-      store.update((d) => (d.padLoopBars = Number(barsSel.value)));
+      store.update(() => (loop.bars = Number(barsSel.value)));
     };
     const quantSel = document.createElement('select');
     quantSel.title = 'Quantize: recording rounds to the nearest step, grid edits snap down to it';
@@ -622,7 +796,42 @@ export class SampleTab extends HTMLElement {
       wrap.append(box, document.createTextNode(` ${label}`));
       return wrap;
     };
+    const exportBtn = document.createElement('button');
+    exportBtn.className = 'export-btn';
+    exportBtn.title = 'Download this sample as .wav + .json (drop the .json back in to import)';
+    exportBtn.innerHTML =
+      '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Export';
+    exportBtn.onclick = (): void => void this.exportLoop();
+
     bar.append(
+      loopSel,
+      btn('New', () => {
+        const l: PadLoop = {
+          id: uid(),
+          name: uniqueName(`Loop ${store.data.padLoops.length + 1}`, store.data.padLoops.map((x) => x.name)),
+          bars: 2,
+          events: [],
+        };
+        store.update((d) => d.padLoops.push(l));
+        this.selectLoop(l.id);
+        this.render();
+      }),
+      btn('Rename', () => {
+        const name = prompt('Sample name', loop.name);
+        if (!name?.trim()) return;
+        store.update(() => {
+          loop.name = uniqueName(name.trim(), store.data.padLoops.filter((l) => l.id !== loop.id).map((l) => l.name));
+        });
+        this.render();
+      }),
+      btn('Delete', () => {
+        this.stopLoop();
+        this.recording = false;
+        store.update((d) => (d.padLoops = d.padLoops.filter((l) => l.id !== loop.id)));
+        this.selectLoop('');
+        this.render();
+      }),
       barsSel,
       quantWrap,
       check('Count-in', 'One bar of metronome clicks before recording starts', uiState().sample.countIn, (v) =>
@@ -634,10 +843,10 @@ export class SampleTab extends HTMLElement {
       btn(this.recording ? '⏺ Stop rec' : '⏺ Record', () => void this.toggleRecord(), this.recording ? 'recording' : ''),
       this.buildPlayToggle(),
       btn('Clear events', () => {
-        store.update((d) => (d.padEvents = []));
+        store.update(() => (this.loop().events = []));
         this.updateStatus();
       }),
-      btn('Export loop WAV', () => void this.exportLoop()),
+      exportBtn,
       btn('Edit in sequencer →', () => this.editInSequencer()),
     );
     const status = document.createElement('span');
@@ -810,7 +1019,7 @@ export class SampleTab extends HTMLElement {
 
   private updateStatus(): void {
     const el = this.querySelector('.pad-status');
-    if (el) el.textContent = `${store.data.padEvents.length} recorded hits`;
+    if (el) el.textContent = `${this.loop().events.length} recorded hits`;
   }
 
   private flash(msg: string): void {
