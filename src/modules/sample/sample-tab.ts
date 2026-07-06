@@ -445,6 +445,29 @@ export class SampleTab extends HTMLElement {
       return grid;
     }
 
+    // ruler: bar numbers + quantize ticks above the lanes
+    const bars = this.loop().bars;
+    const q = this.quantize();
+    const ruler = document.createElement('div');
+    ruler.className = 'event-row event-ruler';
+    const rulerSpacer = document.createElement('span');
+    rulerSpacer.className = 'event-label';
+    ruler.appendChild(rulerSpacer);
+    const scale = document.createElement('div');
+    scale.className = 'event-scale';
+    scale.style.backgroundImage =
+      'linear-gradient(90deg, var(--text-dim) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px)';
+    scale.style.backgroundSize = `${100 / bars}% 100%, ${100 / (loopBeats / q)}% 100%`;
+    for (let b = 0; b < bars; b++) {
+      const num = document.createElement('span');
+      num.className = 'event-bar-num';
+      num.textContent = String(b + 1);
+      num.style.left = `${(b / bars) * 100}%`;
+      scale.appendChild(num);
+    }
+    ruler.appendChild(scale);
+    grid.appendChild(ruler);
+
     const lanes = new Map<number, HTMLElement>();
     for (const padIndex of rowPads) {
       const pad = store.data.pads[padIndex];
@@ -460,10 +483,10 @@ export class SampleTab extends HTMLElement {
       const lane = document.createElement('div');
       lane.className = 'event-lane';
       lane.title = 'Click: add a clip (quantize length) · drag: move · right edge: resize · double-click: delete';
-      // beat + bar gridlines sized to the loop
+      // bar + quantize gridlines sized to the loop (matches clip snapping)
       lane.style.backgroundImage =
         'linear-gradient(90deg, var(--text-dim) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px)';
-      lane.style.backgroundSize = `${100 / this.loop().bars}% 100%, ${100 / loopBeats}% 100%`;
+      lane.style.backgroundSize = `${100 / this.loop().bars}% 100%, ${100 / (loopBeats / q)}% 100%`;
       lane.onclick = (e): void => {
         if (e.target !== lane) return; // clicks on clips are handled there
         const q = this.quantize();

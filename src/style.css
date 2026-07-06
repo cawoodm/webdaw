@@ -413,6 +413,27 @@ daw-knob {
   gap: 8px;
 }
 
+.event-ruler .event-label {
+  border-right-color: transparent;
+}
+
+.event-scale {
+  position: relative;
+  flex: 1;
+  height: 15px;
+  border-radius: 3px 3px 0 0;
+}
+
+.event-bar-num {
+  position: absolute;
+  top: 0;
+  padding-left: 4px;
+  font-size: 10px;
+  line-height: 15px;
+  color: var(--text-dim);
+  user-select: none;
+}
+
 .event-label {
   width: 92px;
   flex-shrink: 0;
