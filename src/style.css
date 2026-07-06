@@ -715,9 +715,9 @@ button.recording {
   justify-content: flex-end;
   padding-right: 6px;
   font-size: 10px;
-  color: var(--text-dim);
-  background: var(--bg-card);
-  border-bottom: 1px solid var(--border);
+  color: #3a4150;
+  background: #e9ecf1;
+  border-bottom: 1px solid #c3c9d4;
   border-right: 1px solid var(--border);
   cursor: pointer;
   user-select: none;
