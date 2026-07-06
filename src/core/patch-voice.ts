@@ -2,7 +2,7 @@ import * as Tone from './tone';
 import { engine } from './audio-engine';
 import { seededNoise } from './dsp';
 import type { TonePatch } from './model';
-import { defaultFilter, SAMPLE_FREQ_DEFAULT, SAMPLE_SECONDS_DEFAULT, sampleHold } from './model';
+import { defaultFilter, SAMPLE_FREQ_DEFAULT, SAMPLE_NOTE_DEFAULT, SAMPLE_SECONDS_DEFAULT, sampleHold } from './model';
 
 const NOISE_LOOP_SECONDS = 2;
 
@@ -108,7 +108,7 @@ export class PatchVoice {
  * total buffer length; the note is released so its tail completes within it.
  */
 export async function renderPatch(patch: TonePatch, note?: string | number): Promise<AudioBuffer> {
-  const freq = note ?? SAMPLE_FREQ_DEFAULT; // C4 = every layer at its base freq
+  const freq = note ?? patch.sampleNote ?? SAMPLE_NOTE_DEFAULT; // C4 = every layer at its base freq
   const duration = patch.sampleSeconds ?? SAMPLE_SECONDS_DEFAULT;
   const hold = sampleHold(patch);
   return engine.runExclusive(async () => {
