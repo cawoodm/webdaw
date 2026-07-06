@@ -17,6 +17,8 @@ export interface ToneLayer {
 export interface PatchFilter {
   hpf: number; // high-pass cutoff Hz (20 = off)
   lpf: number; // low-pass cutoff Hz (20000 = off)
+  hpfOn?: boolean; // undefined = enabled (older projects)
+  lpfOn?: boolean;
 }
 
 export interface TonePatch {
@@ -24,7 +26,7 @@ export interface TonePatch {
   name: string;
   layers: ToneLayer[];
   env: { attack: number; decay: number; sustain: number; release: number };
-  lfo: { rate: number; depth: number; target: 'off' | 'pitch' | 'volume' };
+  lfo: { rate: number; depth: number; target: 'off' | 'pitch' | 'volume'; on?: boolean };
   filter?: PatchFilter; // optional: older projects predate it
   /** @deprecated superseded by per-layer freq; kept as a fallback for old projects */
   sampleFreq?: number;

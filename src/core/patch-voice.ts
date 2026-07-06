@@ -15,8 +15,8 @@ const NOISE_LOOP_SECONDS = 2;
 export class PatchVoice {
   private env: Tone.AmplitudeEnvelope;
   private mix: Tone.Gain;
-  private hpFilter: Tone.Filter;
-  private lpFilter: Tone.Filter;
+  private hpFilter: Tone.Filter | null = null;
+  private lpFilter: Tone.Filter | null = null;
   private oscs: Tone.Oscillator[] = [];
   /** Per-oscillator base frequency (the layer's pitch at C4). */
   private baseFreqs: number[] = [];
@@ -28,9 +28,17 @@ export class PatchVoice {
   constructor(patch: TonePatch, destination: Tone.ToneAudioNode) {
     const filter = patch.filter ?? defaultFilter();
     this.env = new Tone.AmplitudeEnvelope(patch.env).connect(destination);
-    this.lpFilter = new Tone.Filter(filter.lpf, 'lowpass').connect(this.env);
-    this.hpFilter = new Tone.Filter(filter.hpf, 'highpass').connect(this.lpFilter);
-    this.mix = new Tone.Gain(1).connect(this.hpFilter);
+    // disabled filters are left out of the chain entirely
+    let next: Tone.ToneAudioNode = this.env;
+    if (filter.lpfOn !== false) {
+      this.lpFilter = new Tone.Filter(filter.lpf, 'lowpass').connect(next);
+      next = this.lpFilter;
+    }
+    if (filter.hpfOn !== false) {
+      this.hpFilter = new Tone.Filter(filter.hpf, 'highpass').connect(next);
+      next = this.hpFilter;
+    }
+    this.mix = new Tone.Gain(1).connect(next);
     this.releaseSeconds = patch.env.release;
     for (const layer of patch.layers) {
       if (layer.muted) continue;
@@ -53,7 +61,7 @@ export class PatchVoice {
       }
     }
     const { target, rate, depth } = patch.lfo;
-    if (target !== 'off' && depth > 0) {
+    if (target !== 'off' && depth > 0 && patch.lfo.on !== false) {
       if (target === 'pitch') {
         // sums with each oscillator's detune param (+/- depth semitones)
         this.lfo = new Tone.LFO(rate, -depth * 100, depth * 100);
@@ -100,8 +108,9 @@ export class PatchVoice {
   }
 
   dispose(): void {
-    for (const n of [...this.oscs, ...this.noises, ...this.gains, this.mix, this.hpFilter, this.lpFilter, this.env])
-      n.dispose();
+    for (const n of [...this.oscs, ...this.noises, ...this.gains, this.mix, this.env]) n.dispose();
+    this.hpFilter?.dispose();
+    this.lpFilter?.dispose();
     this.lfo?.dispose();
   }
 }
