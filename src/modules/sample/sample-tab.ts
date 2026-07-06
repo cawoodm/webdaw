@@ -749,6 +749,15 @@ export class SampleTab extends HTMLElement {
       b.onclick = fn;
       return b;
     };
+    const iconBtn = (title: string, svg: string, fn: () => void): HTMLButtonElement => {
+      const b = document.createElement('button');
+      b.className = 'icon-btn';
+      b.title = title;
+      b.setAttribute('aria-label', title);
+      b.innerHTML = svg;
+      b.onclick = fn;
+      return b;
+    };
     const loop = this.loop();
     const loopSel = document.createElement('select');
     loopSel.title = 'Switch sample';
@@ -820,32 +829,47 @@ export class SampleTab extends HTMLElement {
 
     bar.append(
       loopSel,
-      btn('New', () => {
-        const l: PadLoop = {
-          id: uid(),
-          name: uniqueName(`Loop ${store.data.padLoops.length + 1}`, store.data.padLoops.map((x) => x.name)),
-          bars: 2,
-          events: [],
-        };
-        store.update((d) => d.padLoops.push(l));
-        this.selectLoop(l.id);
-        this.render();
-      }),
-      btn('Rename', () => {
-        const name = prompt('Sample name', loop.name);
-        if (!name?.trim()) return;
-        store.update(() => {
-          loop.name = uniqueName(name.trim(), store.data.padLoops.filter((l) => l.id !== loop.id).map((l) => l.name));
-        });
-        this.render();
-      }),
-      btn('Delete', () => {
-        this.stopLoop();
-        this.recording = false;
-        store.update((d) => (d.padLoops = d.padLoops.filter((l) => l.id !== loop.id)));
-        this.selectLoop('');
-        this.render();
-      }),
+      iconBtn(
+        'New sample',
+        `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+          <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`,
+        () => {
+          const l: PadLoop = {
+            id: uid(),
+            name: uniqueName(`Loop ${store.data.padLoops.length + 1}`, store.data.padLoops.map((x) => x.name)),
+            bars: 2,
+            events: [],
+          };
+          store.update((d) => d.padLoops.push(l));
+          this.selectLoop(l.id);
+          this.render();
+        },
+      ),
+      iconBtn(
+        'Rename sample',
+        `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true">
+          <path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg>`,
+        () => {
+          const name = prompt('Sample name', loop.name);
+          if (!name?.trim()) return;
+          store.update(() => {
+            loop.name = uniqueName(name.trim(), store.data.padLoops.filter((l) => l.id !== loop.id).map((l) => l.name));
+          });
+          this.render();
+        },
+      ),
+      iconBtn(
+        'Delete sample',
+        `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`,
+        () => {
+          this.stopLoop();
+          this.recording = false;
+          store.update((d) => (d.padLoops = d.padLoops.filter((l) => l.id !== loop.id)));
+          this.selectLoop('');
+          this.render();
+        },
+      ),
       barsSel,
       quantWrap,
       check('Count-in', 'One bar of metronome clicks before recording starts', uiState().sample.countIn, (v) =>
