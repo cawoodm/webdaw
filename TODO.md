@@ -1,5 +1,6 @@
 # Instructions
 
+- The master file is C:\projects\Marc\webdaw\TODO.md - only write to this
 - Synch with main
 - Read an unmarked TODO from the list below, don't take a task marked 🕜
 - Mark and move it to in-progress 🕜 and begin implementing (add name of branch you are on e.g. todos)
@@ -10,10 +11,9 @@
 
 # In-Progress
 
-- feat: Sort names of patches and loops in their dropdowns by name 🕜 (todos)
-
 # DONE
 
+- feat: Sort names of patches and loops in their dropdowns by name ✅ (case-insensitive; stored order unchanged)
 - feat: Drag and drop has a nice overlay in tone but not in sample, add it. Also allow dragging to the tab name. ✅ (overlay on all tab panels; tab names switch mid-drag and accept drops)
 - feat: Add master volume knob to top ✅ (compact dial in the header, persisted per project)
 - feat: When dragging a sample pad (mousedown) don't play it ✅ (pads play on click; drags stay silent)
