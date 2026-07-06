@@ -22,8 +22,6 @@ class AudioEngine {
   private bpmValue = 120;
   private metroGain: Tone.Gain | null = null;
   private metroLoop: Tone.Loop | null = null;
-  private metroClock: Tone.Clock | null = null;
-  private clockBeat = 0;
   private clickBuffer: Tone.ToneAudioBuffer | null = null;
   metronomeOn = false;
 
@@ -106,7 +104,6 @@ class AudioEngine {
   set bpm(value: number) {
     this.bpmValue = value;
     if (this._started) Tone.getTransport().bpm.value = value;
-    if (this.metroClock) this.metroClock.frequency.value = value / 60;
   }
 
   get playing(): boolean {
@@ -120,13 +117,13 @@ class AudioEngine {
   }
 
   /**
-   * All transport starts/stops go through here so the metronome can switch
-   * mode at the right moment: the transport-synced loop must be created
-   * BEFORE transport.start() — Tone's 'start' event fires from the clock
-   * tick loop after playback has begun, too late for the beat-0 click.
+   * All transport starts go through here: if the metronome is armed, the
+   * ticker must be created BEFORE transport.start() — Tone's 'start' event
+   * fires from the clock tick loop after playback has begun, too late for
+   * the beat-0 click.
    */
   play(): void {
-    if (this.metronomeOn && !this.playing) this.startTicker(true);
+    if (this.metronomeOn && !this.playing) this.startTicker();
     Tone.getTransport().start();
   }
 
@@ -134,8 +131,8 @@ class AudioEngine {
     const t = Tone.getTransport();
     t.stop();
     t.position = 0;
-    // back to the free-running clock so a standalone metronome keeps ticking
-    if (this.metronomeOn) this.startTicker(false);
+    // stopping playback silences the metronome — it never runs free-standing
+    this.stopTicker();
   }
 
   /**
@@ -178,33 +175,23 @@ class AudioEngine {
     return this.clickBuffer;
   }
 
+  /**
+   * ARMS or disarms the metronome — it never ticks on its own. Arming while
+   * playback is already running starts the ticker immediately; arming while
+   * stopped stays silent until the next play().
+   */
   async setMetronome(on: boolean): Promise<void> {
     this.metronomeOn = on;
     if (on) {
       await this.loadClick();
       if (!this.metronomeOn) return; // toggled off again while loading
       if (!this.metroGain) this.metroGain = new Tone.Gain(0.8).connect(this.master);
-      this.startTicker();
+      if (this.playing) this.startTicker();
     } else {
       this.stopTicker();
       this.metroGain?.dispose();
       this.metroGain = null;
     }
-  }
-
-  /**
-   * Enable the metronome WITHOUT ticking yet: click buffer loaded, gain
-   * ready, metronomeOn set — the transport 'start' hook then begins the
-   * synced loop exactly at beat 0. Await this before starting the
-   * transport (count-in), otherwise the first accented click is missed.
-   */
-  async armMetronome(): Promise<void> {
-    if (this.metronomeOn) return;
-    await this.loadClick();
-    if (this.metronomeOn) return;
-    this.metronomeOn = true;
-    if (!this.metroGain) this.metroGain = new Tone.Gain(0.8).connect(this.master);
-    if (this.playing) this.startTicker();
   }
 
   private playClick(time: number, accent: boolean): void {
@@ -218,34 +205,22 @@ class AudioEngine {
   }
 
   /**
-   * transportMode true (or transport running): transport-synced Loop so
-   * clicks land on beats — pass true explicitly BEFORE transport.start().
-   * Otherwise: free-running Clock so a standalone metronome is audible
-   * immediately when toggled on.
+   * Transport-synced Loop so clicks land on beats. Must be created BEFORE
+   * transport.start() — Tone's 'start' event fires from the clock tick loop
+   * after playback has begun, too late for the beat-0 click.
    */
-  private startTicker(transportMode = this.playing): void {
+  private startTicker(): void {
     this.stopTicker();
-    if (transportMode) {
-      this.metroLoop = new Tone.Loop((time) => {
-        const t = Tone.getTransport();
-        const beat = Math.round(t.getTicksAtTime(time) / t.PPQ) % 4;
-        this.playClick(time, beat === 0);
-      }, '4n').start(0);
-    } else {
-      this.clockBeat = 0;
-      this.metroClock = new Tone.Clock((time) => {
-        this.playClick(time, this.clockBeat % 4 === 0);
-        this.clockBeat++;
-      }, Tone.getTransport().bpm.value / 60);
-      this.metroClock.start();
-    }
+    this.metroLoop = new Tone.Loop((time) => {
+      const t = Tone.getTransport();
+      const beat = Math.round(t.getTicksAtTime(time) / t.PPQ) % 4;
+      this.playClick(time, beat === 0);
+    }, '4n').start(0);
   }
 
   private stopTicker(): void {
     this.metroLoop?.dispose();
     this.metroLoop = null;
-    this.metroClock?.dispose();
-    this.metroClock = null;
   }
 
   /**

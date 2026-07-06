@@ -46,9 +46,10 @@ export class SampleTab extends HTMLElement {
   /** Beats of count-in preceding the loop region (0 when none). */
   private countInBeats = 0;
   private transportEvents: number[] = [];
-  private metroForced = false;
   private lastIndicatorBar = -2;
   private lastPlayState = false;
+  /** Last number shown in the count-in overlay (-1 when hidden), to avoid DOM churn per frame. */
+  private lastCountShown = -1;
 
   connectedCallback(): void {
     this.className = 'tab-panel sample-tab';
@@ -66,6 +67,7 @@ export class SampleTab extends HTMLElement {
     window.addEventListener('keydown', this.onKeyDown);
     const indicatorTick = (): void => {
       this.updateBarIndicator();
+      this.updateCountOverlay();
       this.syncPlayToggle();
       requestAnimationFrame(indicatorTick);
     };
@@ -259,14 +261,6 @@ export class SampleTab extends HTMLElement {
       this.loopPart = this.makeLoopPart(countBars);
     }
     const transport = Tone.getTransport();
-    if (countIn && !engine.metronomeOn) {
-      // the count-in IS metronome clicks — force it on and keep it ticking
-      // through the recording; stopLoop restores the user's toggle state.
-      // Armed (not started) BEFORE the transport starts, so the very first
-      // accented beat-0 click is scheduled too.
-      this.metroForced = true;
-      await engine.armMetronome();
-    }
     if (this.recording && !uiState().sample.overdub) {
       // no overdub: disarm recording after exactly one pass (playback continues).
       // Integer ticks — decimal measures like "2.98m" are not valid notation
@@ -318,10 +312,6 @@ export class SampleTab extends HTMLElement {
     const transport = Tone.getTransport();
     for (const id of this.transportEvents) transport.clear(id);
     this.transportEvents = [];
-    if (this.metroForced) {
-      this.metroForced = false;
-      void engine.setMetronome(false);
-    }
     this.countInBeats = 0;
     this.recording = false;
   }
@@ -364,6 +354,27 @@ export class SampleTab extends HTMLElement {
       b.classList.toggle('counting', counting);
       b.querySelectorAll('i').forEach((dot, j) => dot.classList.toggle('on', i === bar && j === beat));
     });
+  }
+
+  /** Big overlaid "1".."4" while a record count-in is running; hidden otherwise. */
+  private updateCountOverlay(): void {
+    const overlay = this.querySelector<HTMLElement>('.count-overlay');
+    if (!overlay) return;
+    // reading the transport pre-gesture would create the AudioContext
+    const counting = engine.started && engine.playing && engine.positionBeats < this.countInBeats;
+    if (!counting) {
+      overlay.classList.add('hidden');
+      this.lastCountShown = -1;
+      return;
+    }
+    overlay.classList.remove('hidden');
+    const n = Math.floor(engine.positionBeats) + 1;
+    if (n === this.lastCountShown) return;
+    this.lastCountShown = n;
+    overlay.textContent = String(n);
+    overlay.classList.remove('pop');
+    void overlay.offsetWidth; // restart the CSS animation
+    overlay.classList.add('pop');
   }
 
   /** One button toggling loop playback: green Play when stopped, red Stop while playing. */
@@ -722,6 +733,11 @@ export class SampleTab extends HTMLElement {
     this.innerHTML = '';
     const pads = store.data.pads;
     this.lastIndicatorBar = -2;
+    this.lastCountShown = -1;
+
+    const countOverlay = document.createElement('div');
+    countOverlay.className = 'count-overlay hidden';
+    this.appendChild(countOverlay);
 
     // --- bar indicator (bar number + one dot per beat) + recorded-event grid ---
     const indicator = document.createElement('div');
