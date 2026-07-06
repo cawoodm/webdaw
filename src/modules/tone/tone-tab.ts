@@ -44,6 +44,20 @@ function download(filename: string, blob: Blob): void {
   URL.revokeObjectURL(a.href);
 }
 
+/**
+ * Chromatic keyboard rows for the tone tab, by PHYSICAL key position
+ * (KeyboardEvent.code, layout-independent): the home row plays the current
+ * sample and walks up in semitones, the row above plays below it, the
+ * bottom row continues above the home row's top.
+ */
+const KEY_SEMITONES: Record<string, number> = {};
+['KeyQ', 'KeyW', 'KeyE', 'KeyR', 'KeyT', 'KeyY', 'KeyU', 'KeyI', 'KeyO', 'KeyP'] // -10 … -1
+  .forEach((c, i) => (KEY_SEMITONES[c] = i - 10));
+['KeyA', 'KeyS', 'KeyD', 'KeyF', 'KeyG', 'KeyH', 'KeyJ', 'KeyK', 'KeyL'] // 0 … +8
+  .forEach((c, i) => (KEY_SEMITONES[c] = i));
+['KeyZ', 'KeyX', 'KeyC', 'KeyV', 'KeyB', 'KeyN', 'KeyM'] // +9 … +15
+  .forEach((c, i) => (KEY_SEMITONES[c] = i + 9));
+
 const OSC_TYPES = ['sine', 'sawtooth', 'triangle', 'square', 'noise'] as const;
 
 /** One waveform cycle per oscillator type, drawn as a 24x24 stroke icon. */
@@ -103,6 +117,31 @@ export class ToneTab extends HTMLElement {
         void this.playPreview();
       }
     });
+    // chromatic rows: play the current sample transposed in semitones.
+    // Capture phase + preventDefault so the global piano keymap
+    // (midi-input's keyboard fallback) skips these keys.
+    window.addEventListener(
+      'keydown',
+      (e) => {
+        if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+        if (!this.classList.contains('active-tab')) return;
+        const target = e.target as HTMLElement;
+        if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
+        const semis = KEY_SEMITONES[e.code];
+        if (semis === undefined) return;
+        e.preventDefault();
+        void this.noteOn(this.keyFrequency(semis), 0.8, e.code);
+      },
+      true,
+    );
+    window.addEventListener(
+      'keyup',
+      (e) => {
+        if (KEY_SEMITONES[e.code] === undefined) return;
+        this.noteOff(e.code);
+      },
+      true,
+    );
     // drag a .json patch (Export WAV's settings sidecar) here to import it
     this.addEventListener('dragover', (e) => {
       if (!e.dataTransfer?.types.includes('Files')) return;
@@ -181,6 +220,12 @@ export class ToneTab extends HTMLElement {
       this.tap.connect(this.fftAnalyser);
     }
     return this.tap;
+  }
+
+  /** Frequency of the current sample's pitch shifted by `semis` semitones. */
+  private keyFrequency(semis: number): number {
+    const base = Tone.Frequency(this.patch().sampleNote ?? SAMPLE_NOTE_DEFAULT).toFrequency();
+    return base * Math.pow(2, semis / 12);
   }
 
   private async noteOn(note: string | number, velocity: number, key = String(note)): Promise<void> {
