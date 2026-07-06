@@ -3,7 +3,6 @@
 Mark in progress 🕜 and then move to done ✅ when complete and merge branch into main
 Once a task is done, show the user the dev URL, confirm with the user they are happy before marking done
 
-- feat: The Sample frequency should be moved to the layer so it's layer-specific 🕜
 - feat: Add a solo button next to mute for tone layers so they play on their own
 - feat: Add a small toggle to enable/disable LPF/HPF completely
 - feat: Add an option to increase slope of LPF/HPF
@@ -12,6 +11,7 @@ Once a task is done, show the user the dev URL, confirm with the user they are h
 
 # DONE
 
+- feat: The Sample frequency should be moved to the layer so it's layer-specific ✅ (notes transpose relative to C4; click a knob's number to type a value)
 - feat: Export tone should export .json settings of that tone ✅ (browser download of .wav + .json; Ctrl+S writes tones/*.wav to the project folder)
 - the metronome is the clock for playback: when samples play in a loop, align with metronome and BPM ✅
 - bug: changing sample length should shorten the x-axis of left viz live and not just envelope ✅

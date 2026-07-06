@@ -242,6 +242,11 @@ daw-knob {
 
 .knob-value {
   font-size: 11px;
+  cursor: text;
+}
+
+.knob-value:hover {
+  color: var(--accent);
 }
 
 .knob-row {

@@ -125,7 +125,7 @@ export class ToneTab extends HTMLElement {
   }
 
   /**
-   * Preview at the patch's sample freq/duration. With loop on, retriggers
+   * Preview at C4 (each layer at its base freq). With loop on, retriggers
    * ride the transport on a whole-beat interval — the metronome is the
    * clock, so clicks and retriggers stay locked through BPM changes.
    */
@@ -140,7 +140,7 @@ export class ToneTab extends HTMLElement {
         const p = this.patch();
         const holdNow = sampleHold(p);
         const voice = new PatchVoice(p, this.getTap());
-        voice.triggerAttackRelease(p.sampleFreq ?? SAMPLE_FREQ_DEFAULT, holdNow, time);
+        voice.triggerAttackRelease(SAMPLE_FREQ_DEFAULT, holdNow, time);
         this.previewTimers.push(
           window.setTimeout(() => voice.dispose(), (holdNow + p.env.release + 0.5) * 1000),
         );
@@ -148,7 +148,7 @@ export class ToneTab extends HTMLElement {
       this.previewStartedTransport = !engine.playing;
       engine.play();
     } else {
-      void this.noteOn(patch.sampleFreq ?? SAMPLE_FREQ_DEFAULT, 0.9, 'preview');
+      void this.noteOn(SAMPLE_FREQ_DEFAULT, 0.9, 'preview');
       this.previewTimers.push(window.setTimeout(() => this.noteOff('preview'), hold * 1000));
     }
   }
@@ -437,6 +437,21 @@ export class ToneTab extends HTMLElement {
       const knobs = document.createElement('div');
       knobs.className = 'knob-row';
       knobs.append(
+        knob(
+          {
+            label: 'Freq',
+            min: 27.5,
+            max: 3520,
+            step: 0.5,
+            value: layer.freq ?? patch.sampleFreq ?? SAMPLE_FREQ_DEFAULT,
+            log: true,
+            unit: 'Hz',
+          },
+          (v) => {
+            layer.freq = v;
+            this.save();
+          },
+        ),
         knob({ label: 'Gain', min: 0, max: 1, step: 0.01, value: layer.gain }, (v) => {
           layer.gain = v;
           this.save();
@@ -543,13 +558,6 @@ export class ToneTab extends HTMLElement {
     const sampleKnobs = document.createElement('div');
     sampleKnobs.className = 'knob-row';
     sampleKnobs.append(
-      knob(
-        { label: 'Freq', min: 27.5, max: 3520, step: 0.5, value: patch.sampleFreq ?? SAMPLE_FREQ_DEFAULT, log: true, unit: 'Hz' },
-        (v) => {
-          patch.sampleFreq = v;
-          this.save();
-        },
-      ),
       knob(
         { label: 'Length', min: 0.1, max: 4, step: 0.05, value: patch.sampleSeconds ?? SAMPLE_SECONDS_DEFAULT, unit: 's' },
         (v) => {

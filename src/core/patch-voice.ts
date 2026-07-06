@@ -18,6 +18,8 @@ export class PatchVoice {
   private hpFilter: Tone.Filter;
   private lpFilter: Tone.Filter;
   private oscs: Tone.Oscillator[] = [];
+  /** Per-oscillator base frequency (the layer's pitch at C4). */
+  private baseFreqs: number[] = [];
   private noises: Tone.ToneBufferSource[] = [];
   private gains: Tone.Gain[] = [];
   private lfo: Tone.LFO | null = null;
@@ -47,6 +49,7 @@ export class PatchVoice {
           phase: layer.phase,
         }).connect(g);
         this.oscs.push(osc);
+        this.baseFreqs.push(layer.freq ?? patch.sampleFreq ?? SAMPLE_FREQ_DEFAULT);
       }
     }
     const { target, rate, depth } = patch.lfo;
@@ -64,12 +67,14 @@ export class PatchVoice {
   }
 
   triggerAttack(note: string | number, time?: number, velocity = 1): void {
-    const freq = Tone.Frequency(note).toFrequency();
+    // notes transpose the whole patch relative to C4: at C4 every layer
+    // plays exactly its configured base frequency
+    const ratio = Tone.Frequency(note).toFrequency() / SAMPLE_FREQ_DEFAULT;
     const t = time ?? Tone.now();
-    for (const osc of this.oscs) {
-      osc.frequency.value = freq;
+    this.oscs.forEach((osc, i) => {
+      osc.frequency.value = this.baseFreqs[i] * ratio;
       osc.start(t);
-    }
+    });
     for (const noise of this.noises) noise.start(t);
     this.lfo?.start(t);
     this.env.triggerAttack(t, velocity);
@@ -102,7 +107,7 @@ export class PatchVoice {
  * total buffer length; the note is released so its tail completes within it.
  */
 export async function renderPatch(patch: TonePatch, note?: string | number): Promise<AudioBuffer> {
-  const freq = note ?? patch.sampleFreq ?? SAMPLE_FREQ_DEFAULT;
+  const freq = note ?? SAMPLE_FREQ_DEFAULT; // C4 = every layer at its base freq
   const duration = patch.sampleSeconds ?? SAMPLE_SECONDS_DEFAULT;
   const hold = sampleHold(patch);
   return engine.runExclusive(async () => {
