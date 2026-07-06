@@ -193,12 +193,15 @@ export class SampleTab extends HTMLElement {
       await engine.armMetronome();
     }
     if (this.recording && !uiState().sample.overdub) {
-      // no overdub: disarm recording after exactly one pass (playback continues)
+      // no overdub: disarm recording after exactly one pass (playback continues).
+      // Integer ticks — decimal measures like "2.98m" are not valid notation
+      // and silently degrade to seconds, firing far too early.
+      const disarmTicks = Math.round(((countBars + bars) * 4 - 0.05) * transport.PPQ);
       this.transportEvents.push(
         transport.scheduleOnce(() => {
           this.recording = false;
           this.render();
-        }, `${countBars + bars - 0.02}m`),
+        }, `${disarmTicks}i`),
       );
     }
     engine.play();
