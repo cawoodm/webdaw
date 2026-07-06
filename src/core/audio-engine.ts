@@ -93,16 +93,7 @@ class AudioEngine {
     }
     await Tone.start();
     this._started = true;
-    const transport = Tone.getTransport();
-    transport.bpm.value = this.bpmValue;
-    // The metronome must tick standalone AND stay beat-aligned during
-    // playback, so it switches mode whenever the transport starts/stops.
-    transport.on('start', () => {
-      if (this.metronomeOn) this.startTicker();
-    });
-    transport.on('stop', () => {
-      if (this.metronomeOn) this.startTicker();
-    });
+    Tone.getTransport().bpm.value = this.bpmValue;
     for (const fn of this.readyQueue.splice(0)) fn();
   }
 
@@ -126,7 +117,14 @@ class AudioEngine {
     return t.ticks / t.PPQ;
   }
 
+  /**
+   * All transport starts/stops go through here so the metronome can switch
+   * mode at the right moment: the transport-synced loop must be created
+   * BEFORE transport.start() — Tone's 'start' event fires from the clock
+   * tick loop after playback has begun, too late for the beat-0 click.
+   */
   play(): void {
+    if (this.metronomeOn && !this.playing) this.startTicker(true);
     Tone.getTransport().start();
   }
 
@@ -134,6 +132,8 @@ class AudioEngine {
     const t = Tone.getTransport();
     t.stop();
     t.position = 0;
+    // back to the free-running clock so a standalone metronome keeps ticking
+    if (this.metronomeOn) this.startTicker(false);
   }
 
   /**
@@ -205,13 +205,14 @@ class AudioEngine {
   }
 
   /**
-   * Transport running: transport-synced Loop (clicks land on beats).
-   * Transport stopped: free-running Clock so the metronome is audible
+   * transportMode true (or transport running): transport-synced Loop so
+   * clicks land on beats — pass true explicitly BEFORE transport.start().
+   * Otherwise: free-running Clock so a standalone metronome is audible
    * immediately when toggled on.
    */
-  private startTicker(): void {
+  private startTicker(transportMode = this.playing): void {
     this.stopTicker();
-    if (Tone.getTransport().state === 'started') {
+    if (transportMode) {
       this.metroLoop = new Tone.Loop((time) => {
         const t = Tone.getTransport();
         const beat = Math.round(t.getTicksAtTime(time) / t.PPQ) % 4;
