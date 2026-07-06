@@ -122,6 +122,20 @@ const phaserFactory: PluginFactory = {
     ),
 };
 
+const distortionFactory: PluginFactory = {
+  meta: { id: 'distortion', name: 'Distortion' },
+  create: () =>
+    new EffectPlugin(
+      { id: 'distortion', name: 'Distortion' },
+      new Tone.Distortion({ distortion: 0.4, wet: 0.5 }),
+      [
+        { key: 'distortion', label: 'Drive', min: 0, max: 1, step: 0.01, defaultValue: 0.4 },
+        { key: 'wet', label: 'Wet', min: 0, max: 1, step: 0.01, defaultValue: 0.5 },
+      ],
+      setParam,
+    ),
+};
+
 /** FFT spectrum viewer — pass-through analyser, works on any bus. */
 class SpectrumPlugin implements DawPlugin {
   readonly meta: PluginMeta = { id: 'spectrum', name: 'Spectrum' };
@@ -231,6 +245,7 @@ export const PLUGIN_REGISTRY: PluginFactory[] = [
   reverbFactory,
   chorusFactory,
   phaserFactory,
+  distortionFactory,
 ];
 
 export function createPlugin(pluginId: string): DawPlugin | null {
