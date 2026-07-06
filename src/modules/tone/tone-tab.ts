@@ -1,10 +1,11 @@
 import * as Tone from '../../core/tone';
 import { engine } from '../../core/audio-engine';
 import { bus } from '../../core/event-bus';
-import type { PatchFilter, TonePatch } from '../../core/model';
+import type { LfoConfig, PatchFilter, TonePatch } from '../../core/model';
 import {
   defaultFilter,
   defaultPatch,
+  resolveLfos,
   pianoNotes,
   SAMPLE_FREQ_DEFAULT,
   SAMPLE_NOTE_DEFAULT,
@@ -29,6 +30,7 @@ import {
   drawWaveformStatic,
   ENV_TRACE,
   HPF_TRACE,
+  LFO_PITCH_TRACE,
   LFO_TRACE,
   LPF_TRACE,
 } from './scope-view';
@@ -43,7 +45,6 @@ function download(filename: string, blob: Blob): void {
 }
 
 const OSC_TYPES = ['sine', 'sawtooth', 'triangle', 'square', 'noise'] as const;
-const LFO_TARGETS = ['off', 'pitch', 'volume'] as const;
 
 /** One waveform cycle per oscillator type, drawn as a 24x24 stroke icon. */
 const WAVE_ICONS: Record<typeof OSC_TYPES[number], string> = {
@@ -286,7 +287,9 @@ export class ToneTab extends HTMLElement {
     }
     drawWaveformStatic(timeCanvas, view, sampleRate);
     drawEnvelopeOverlay(timeCanvas, patch.env, seconds, sampleHold(patch));
-    drawLfoOverlay(timeCanvas, patch.lfo, seconds);
+    const lfos = this.lfos(patch);
+    drawLfoOverlay(timeCanvas, lfos.pitch, 'pitch', seconds);
+    drawLfoOverlay(timeCanvas, lfos.volume, 'volume', seconds);
     drawSpectrumStatic(freqCanvas, data, sampleRate);
     drawFilterOverlay(freqCanvas, this.filter(patch));
   }
@@ -295,6 +298,14 @@ export class ToneTab extends HTMLElement {
   private filter(patch: TonePatch): PatchFilter {
     if (!patch.filter) patch.filter = defaultFilter();
     return patch.filter;
+  }
+
+  /** Pitch + volume LFOs, materialized so knobs mutate the persisted objects. */
+  private lfos(patch: TonePatch): { pitch: LfoConfig; volume: LfoConfig } {
+    const resolved = resolveLfos(patch);
+    patch.lfoPitch ??= resolved.pitch;
+    patch.lfoVolume ??= resolved.volume;
+    return { pitch: patch.lfoPitch, volume: patch.lfoVolume };
   }
 
   private render(): void {
@@ -585,41 +596,32 @@ export class ToneTab extends HTMLElement {
       return l;
     };
 
-    const lfoCard = document.createElement('div');
-    lfoCard.className = 'card';
-    const lfoHead = document.createElement('div');
-    lfoHead.className = 'card-head';
-    lfoHead.innerHTML = `${legendDot(LFO_TRACE)}<span class="card-title">LFO</span>`;
-    lfoHead.appendChild(
-      onToggle('Enable/disable the LFO', patch.lfo.on !== false, (on) => (patch.lfo.on = on)),
-    );
-    const targetSel = document.createElement('select');
-    for (const t of LFO_TARGETS) {
-      const opt = document.createElement('option');
-      opt.value = t;
-      opt.textContent = t;
-      opt.selected = patch.lfo.target === t;
-      targetSel.appendChild(opt);
-    }
-    targetSel.onchange = (): void => {
-      patch.lfo.target = targetSel.value as typeof LFO_TARGETS[number];
-      this.save();
+    const lfoCard = (title: string, trace: string, lfo: LfoConfig): HTMLDivElement => {
+      const card = document.createElement('div');
+      card.className = 'card';
+      const head = document.createElement('div');
+      head.className = 'card-head';
+      head.innerHTML = `${legendDot(trace)}<span class="card-title">${title}</span>`;
+      head.appendChild(onToggle(`Enable/disable the ${title.toLowerCase()}`, lfo.on !== false, (on) => (lfo.on = on)));
+      card.appendChild(head);
+      const knobs = document.createElement('div');
+      knobs.className = 'knob-row';
+      knobs.append(
+        knob({ label: 'Rate', min: 0.1, max: 20, step: 0.1, value: lfo.rate, log: true, unit: 'Hz' }, (v) => {
+          lfo.rate = v;
+          this.save();
+        }),
+        knob({ label: 'Depth', min: 0, max: 1, step: 0.01, value: lfo.depth }, (v) => {
+          lfo.depth = v;
+          this.save();
+        }),
+      );
+      card.appendChild(knobs);
+      return card;
     };
-    lfoHead.appendChild(targetSel);
-    lfoCard.appendChild(lfoHead);
-    const lfoKnobs = document.createElement('div');
-    lfoKnobs.className = 'knob-row';
-    lfoKnobs.append(
-      knob({ label: 'Rate', min: 0.1, max: 20, step: 0.1, value: patch.lfo.rate, log: true, unit: 'Hz' }, (v) => {
-        patch.lfo.rate = v;
-        this.save();
-      }),
-      knob({ label: 'Depth', min: 0, max: 1, step: 0.01, value: patch.lfo.depth }, (v) => {
-        patch.lfo.depth = v;
-        this.save();
-      }),
-    );
-    lfoCard.appendChild(lfoKnobs);
+    const lfos = this.lfos(patch);
+    const lfoPitchCard = lfoCard('Pitch LFO', LFO_PITCH_TRACE, lfos.pitch);
+    const lfoVolCard = lfoCard('Vol LFO', LFO_TRACE, lfos.volume);
 
     const filterCard = document.createElement('div');
     filterCard.className = 'card';
@@ -678,7 +680,7 @@ export class ToneTab extends HTMLElement {
       ),
     );
     sampleCard.appendChild(sampleKnobs);
-    row.append(envCard, lfoCard, filterCard, sampleCard);
+    row.append(envCard, lfoPitchCard, lfoVolCard, filterCard, sampleCard);
     this.appendChild(row);
 
     // --- actions ---

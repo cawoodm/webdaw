@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { defaultProject, PAD_COUNT, pianoNotes, uid } from './model';
+import { defaultLfo, defaultPatch, defaultProject, PAD_COUNT, pianoNotes, resolveLfos, uid } from './model';
 import { DEFAULT_KEYMAP } from '../midi/keymap';
 
 describe('project model', () => {
@@ -17,6 +17,32 @@ describe('project model', () => {
   it('generates unique ids', () => {
     const ids = new Set(Array.from({ length: 100 }, () => uid()));
     expect(ids.size).toBe(100);
+  });
+});
+
+describe('resolveLfos', () => {
+  it('uses the dedicated pitch/volume fields when present', () => {
+    const p = defaultPatch();
+    p.lfoPitch = { rate: 5, depth: 0.5 };
+    p.lfoVolume = { rate: 3, depth: 0.8, on: false };
+    expect(resolveLfos(p)).toEqual({ pitch: { rate: 5, depth: 0.5 }, volume: { rate: 3, depth: 0.8, on: false } });
+  });
+
+  it('routes a legacy single LFO to the slot its target names', () => {
+    const base = { ...defaultPatch(), lfoPitch: undefined, lfoVolume: undefined };
+    const pitch = { ...base, lfo: { rate: 6, depth: 0.4, target: 'pitch' as const } };
+    expect(resolveLfos(pitch).pitch).toMatchObject({ rate: 6, depth: 0.4 });
+    expect(resolveLfos(pitch).volume).toEqual(defaultLfo());
+    const volume = { ...base, lfo: { rate: 45, depth: 0.6, target: 'volume' as const, on: false } };
+    expect(resolveLfos(volume).volume).toMatchObject({ rate: 45, depth: 0.6, on: false });
+    expect(resolveLfos(volume).pitch).toEqual(defaultLfo());
+    const off = { ...base, lfo: { rate: 4, depth: 0.9, target: 'off' as const } };
+    expect(resolveLfos(off)).toEqual({ pitch: defaultLfo(), volume: defaultLfo() });
+  });
+
+  it('falls back to inactive defaults when a patch has no LFO fields at all', () => {
+    const p = { ...defaultPatch(), lfo: undefined, lfoPitch: undefined, lfoVolume: undefined };
+    expect(resolveLfos(p)).toEqual({ pitch: defaultLfo(), volume: defaultLfo() });
   });
 });
 

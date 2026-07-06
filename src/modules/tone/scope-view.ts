@@ -213,7 +213,7 @@ export const LFO_PITCH_TRACE = '#4fd8ff';
  */
 export function drawLfoOverlay(
   canvas: HTMLCanvasElement,
-  lfo: LfoConfig,
+  lfo: { rate: number; depth: number; on?: boolean },
   kind: 'pitch' | 'volume',
   seconds: number,
   startAt = 0.01,
