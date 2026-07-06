@@ -1,7 +1,7 @@
 import * as Tone from './tone';
 import { engine } from './audio-engine';
 import { seededNoise } from './dsp';
-import type { TonePatch } from './model';
+import type { FilterEnv, PitchEnv, TonePatch } from './model';
 import { defaultFilter, resolveLfos, SAMPLE_FREQ_DEFAULT, SAMPLE_NOTE_DEFAULT, SAMPLE_SECONDS_DEFAULT, sampleHold } from './model';
 
 const NOISE_LOOP_SECONDS = 2;
@@ -25,13 +25,18 @@ export class PatchVoice {
   private gains: Tone.Gain[] = [];
   private lfoPitch: Tone.LFO | null = null;
   private lfoVolume: Tone.LFO | null = null;
+  private distortion: Tone.Distortion | null = null;
   private releaseSeconds: number;
+  private pitchEnv?: PitchEnv;
+  private filterEnv?: FilterEnv;
+  private lpfBase: number;
 
   constructor(patch: TonePatch, destination: Tone.ToneAudioNode) {
     const filter = patch.filter ?? defaultFilter();
     this.env = new Tone.AmplitudeEnvelope(patch.env).connect(destination);
     // disabled filters are left out of the chain entirely
     const slope = filter.slope ?? -12;
+    this.lpfBase = filter.lpf;
     let next: Tone.ToneAudioNode = this.env;
     if (filter.lpfOn !== false) {
       this.lpFilter = new Tone.Filter(filter.lpf, 'lowpass', slope).connect(next);
@@ -46,8 +51,14 @@ export class PatchVoice {
       this.hpFilter = new Tone.Filter(filter.hpf, 'highpass', slope).connect(next);
       next = this.hpFilter;
     }
+    if (patch.drive && patch.drive > 0) {
+      this.distortion = new Tone.Distortion(patch.drive).connect(next);
+      next = this.distortion;
+    }
     this.mix = new Tone.Gain(1).connect(next);
     this.releaseSeconds = patch.env.release;
+    this.pitchEnv = patch.pitchEnv;
+    this.filterEnv = patch.filterEnv;
     // solo: when any unmuted layer is soloed, only soloed layers sound
     const anySolo = patch.layers.some((l) => l.solo && !l.muted);
     for (const layer of patch.layers) {
@@ -93,10 +104,22 @@ export class PatchVoice {
       // schedule at t: a live trigger starts at immediate(), BEFORE the
       // now()+lookAhead point where a plain .value write would land, so the
       // oscillator would open at its default 440 Hz until the write applied
-      osc.frequency.setValueAtTime(this.baseFreqs[i] * ratio, t);
+      const target = this.baseFreqs[i] * ratio;
+      if (this.pitchEnv && this.pitchEnv.amount > 0) {
+        // start above the transposed base freq and glide down to it
+        osc.frequency.setValueAtTime(target * Math.pow(2, this.pitchEnv.amount / 12), t);
+        osc.frequency.exponentialRampToValueAtTime(target, t + this.pitchEnv.time);
+      } else {
+        osc.frequency.setValueAtTime(target, t);
+      }
       osc.start(t);
     });
     for (const noise of this.noises) noise.start(t);
+    if (this.lpFilter && this.filterEnv && this.filterEnv.amount > 1) {
+      const start = Math.min(this.lpfBase * this.filterEnv.amount, 20000);
+      this.lpFilter.frequency.setValueAtTime(start, t);
+      this.lpFilter.frequency.exponentialRampToValueAtTime(this.lpfBase, t + this.filterEnv.time);
+    }
     this.lfoPitch?.start(t);
     this.lfoVolume?.start(t);
     this.env.triggerAttack(t, velocity);
@@ -125,6 +148,7 @@ export class PatchVoice {
     this.lpFilter?.dispose();
     this.lfoPitch?.dispose();
     this.lfoVolume?.dispose();
+    this.distortion?.dispose();
   }
 }
 
