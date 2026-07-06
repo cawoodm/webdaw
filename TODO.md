@@ -3,7 +3,7 @@
 Mark in progress 🕜 and then move to done ✅ when complete and merge branch into main
 Once a task is done, show the user the dev URL, confirm with the user they are happy before marking done
 
-- bug: When count-in is finished, recording stops
+- feat: In "tone" when asdfghjkl are pressed play the current sample shifted by a half tone up per letter. For example if the signal is 440hz (A) then S plays 466.16Hz (A#), L would be F. q-p would be the notes below A. y-m would be above F#-D. 🕜
 - feat: Add an option to increase slope of LPF/HPF
 - feat: Allow drag and drop of sample pads to swap (dest is occupied) or move (if dest empty)
 - feat: Add a BPF (band pass filter) in yellow
@@ -11,6 +11,7 @@ Once a task is done, show the user the dev URL, confirm with the user they are h
 
 # DONE
 
+- feat: Change "Root Folder" button to just a Folder icon ✅
 - feat: Add a small toggle to enable/disable LPF/HPF completely (same for LFO) ✅
 - feat: Add a dropdown to the "Sample" box which let's the user choose a note (88 notes) ✅
 - feat: The Sample frequency should be moved to the layer so it's layer-specific ✅ (notes transpose relative to C4; click a knob's number to type a value)

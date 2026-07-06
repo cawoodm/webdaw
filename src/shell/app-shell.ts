@@ -42,7 +42,11 @@ export class AppShell extends HTMLElement {
           <button class="master-fx">Master FX</button>
           <button class="keys">Keys</button>
           <button class="reconnect hidden">Reconnect folder</button>
-          <button class="folder" title="Pick the root folder that holds one subdirectory per project">Root folder…</button>
+          <button class="folder icon-btn" title="Pick the root folder that holds one subdirectory per project" aria-label="Pick root folder">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+            </svg>
+          </button>
           <select class="project-select" title="Switch project"></select>
           <button class="save-btn icon-btn" title="Save project now (Ctrl+S)" aria-label="Save project">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true">
