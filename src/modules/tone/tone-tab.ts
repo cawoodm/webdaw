@@ -686,27 +686,24 @@ export class ToneTab extends HTMLElement {
     // --- actions ---
     const actions = document.createElement('div');
     actions.className = 'toolbar';
-    actions.append(
-      btn('Export WAV', async () => {
-        const buffer = await renderPatch(patch);
-        const base = patch.name.replace(/[^\w-]+/g, '_');
-        download(`${base}.wav`, new Blob([encodeWav(buffer)], { type: 'audio/wav' }));
-        // settings sidecar (internal id and file refs stripped)
-        const { id, wavFile, ...settings } = patch;
-        download(`${base}.json`, new Blob([JSON.stringify(settings, null, 2)], { type: 'application/json' }));
-        this.flash(`Downloaded ${base}.wav + ${base}.json`);
-      }),
-      btn('Send to pad →', async () => {
-        const buffer = await renderPatch(patch);
-        bus.emit('tone:sendToPad', { patchId: patch.id, name: patch.name, buffer });
-        bus.emit('tab:activate', 'sample');
-        this.flash('Sent to sample pad');
-      }),
-    );
+    const exportBtn = document.createElement('button');
+    exportBtn.title = 'Download this tone as .wav + .json';
+    exportBtn.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Export`;
+    exportBtn.onclick = async (): Promise<void> => {
+      const buffer = await renderPatch(patch);
+      const base = patch.name.replace(/[^\w-]+/g, '_');
+      download(`${base}.wav`, new Blob([encodeWav(buffer)], { type: 'audio/wav' }));
+      // settings sidecar (internal id and file refs stripped)
+      const { id, wavFile, ...settings } = patch;
+      download(`${base}.json`, new Blob([JSON.stringify(settings, null, 2)], { type: 'application/json' }));
+      this.flash(`Downloaded ${base}.wav + ${base}.json`);
+    };
+    exportBtn.className = 'btn-with-icon';
+    actions.appendChild(exportBtn);
     const hint = document.createElement('span');
     hint.className = 'hint';
-    hint.textContent =
-      'Play with keys A W S E D F T G Y H U J K (or a MIDI keyboard) — drop a .json patch here to import it';
+    hint.textContent = 'Drop a .json patch here to import it';
     actions.appendChild(hint);
     this.appendChild(actions);
   }
