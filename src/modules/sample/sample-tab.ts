@@ -916,6 +916,34 @@ export class SampleTab extends HTMLElement {
         grid.querySelectorAll('.pad').forEach((p, j) => p.classList.toggle('selected', j === i));
         this.renderEditor(editor);
       };
+      // drag a pad onto another: occupied target = swap, empty target = move.
+      // Recorded loop events follow their pads.
+      el.draggable = !!pad;
+      el.ondragstart = (e): void => {
+        e.dataTransfer!.setData('text/pad-index', String(i));
+        e.dataTransfer!.effectAllowed = 'move';
+      };
+      el.ondragover = (e): void => {
+        if (!e.dataTransfer?.types.includes('text/pad-index')) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        el.classList.add('drag-over');
+      };
+      el.ondragleave = (): void => el.classList.remove('drag-over');
+      el.ondrop = (e): void => {
+        el.classList.remove('drag-over');
+        const from = Number(e.dataTransfer?.getData('text/pad-index'));
+        if (!Number.isInteger(from) || from === i) return;
+        e.preventDefault();
+        store.update((d) => {
+          [d.pads[from], d.pads[i]] = [d.pads[i], d.pads[from]];
+          for (const loop of d.padLoops)
+            for (const ev of loop.events) ev.pad = ev.pad === from ? i : ev.pad === i ? from : ev.pad;
+        });
+        this.selected = i;
+        updateUi((s) => (s.sample.selectedPad = i));
+        this.render();
+      };
       grid.appendChild(el);
     }
     main.appendChild(grid);
