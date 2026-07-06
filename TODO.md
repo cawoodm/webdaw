@@ -3,7 +3,7 @@
 Mark in progress 🕜 and then move to done ✅ when complete and merge branch into main
 Once a task is done, show the user the dev URL, confirm with the user they are happy before marking done
 
-- feat: Allow drag and drop of sample pads to swap (dest is occupied) or move (if dest empty)
+- feat: Allow drag and drop of sample pads to swap (dest is occupied) or move (if dest empty) 🕜 (todos2)
 - feat: Show quantize gridlines and bar numbers above sample grid
 
 # DONE
