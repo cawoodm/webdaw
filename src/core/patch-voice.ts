@@ -70,7 +70,8 @@ export class PatchVoice {
     // notes transpose the whole patch relative to C4: at C4 every layer
     // plays exactly its configured base frequency
     const ratio = Tone.Frequency(note).toFrequency() / SAMPLE_FREQ_DEFAULT;
-    const t = time ?? Tone.now();
+    // no explicit time = a live key press: skip the scheduling look-ahead
+    const t = time ?? Tone.immediate();
     this.oscs.forEach((osc, i) => {
       osc.frequency.value = this.baseFreqs[i] * ratio;
       osc.start(t);
@@ -81,7 +82,7 @@ export class PatchVoice {
   }
 
   triggerRelease(time?: number): void {
-    const t = time ?? Tone.now();
+    const t = time ?? Tone.immediate();
     this.env.triggerRelease(t);
     const stopAt = t + this.releaseSeconds + 0.05;
     for (const osc of this.oscs) osc.stop(stopAt);
@@ -90,7 +91,7 @@ export class PatchVoice {
   }
 
   triggerAttackRelease(note: string | number, duration: number, time?: number, velocity = 1): void {
-    const t = time ?? Tone.now();
+    const t = time ?? Tone.immediate();
     this.triggerAttack(note, t, velocity);
     this.triggerRelease(t + duration);
   }

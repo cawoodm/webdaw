@@ -76,7 +76,7 @@ export class SequenceTab extends HTMLElement {
       if (!this.monitorSynth) {
         this.monitorSynth = makeSynth(track.synth).connect(engine.master);
       }
-      this.monitorSynth.triggerAttack(note, Tone.now(), velocity);
+      this.monitorSynth.triggerAttack(note, Tone.immediate(), velocity);
     });
     if (this.recording && engine.playing) {
       this.heldNotes.set(note, engine.positionBeats);
@@ -85,7 +85,7 @@ export class SequenceTab extends HTMLElement {
 
   private onNoteOff(note: string): void {
     if (!this.isActive()) return;
-    this.monitorSynth?.triggerRelease(note, Tone.now());
+    this.monitorSynth?.triggerRelease(note, Tone.immediate());
     const onBeat = this.heldNotes.get(note);
     if (onBeat === undefined) return;
     this.heldNotes.delete(note);

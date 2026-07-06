@@ -66,7 +66,7 @@ export class SampleTab extends HTMLElement {
 
   /** Flash a pad at (or near) its scheduled play time. */
   private flashPad(index: number, time?: number): void {
-    const delayMs = time !== undefined && engine.started ? Math.max(0, (time - Tone.now()) * 1000) : 0;
+    const delayMs = time !== undefined && engine.started ? Math.max(0, (time - Tone.immediate()) * 1000) : 0;
     window.setTimeout(() => {
       const el = this.querySelectorAll<HTMLElement>('.pad')[index];
       if (!el) return;
@@ -129,7 +129,8 @@ export class SampleTab extends HTMLElement {
       src.dispose();
       gainNode.dispose();
     };
-    src.start(time ?? Tone.now(), pad.trimStart, duration);
+    // live hits start without the ~100ms scheduling look-ahead
+    src.start(time ?? Tone.immediate(), pad.trimStart, duration);
     if (time !== undefined) this.flashPad(index, time); // scheduled loop hits
   }
 

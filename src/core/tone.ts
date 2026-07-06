@@ -17,6 +17,15 @@ export function now(): ReturnType<ReturnType<typeof getContext>['now']> {
   return getContext().now();
 }
 
+/**
+ * The context time WITHOUT the scheduling look-ahead (~100 ms by default).
+ * Use for live, user-triggered sounds (pad hits, note keys) so they start
+ * instantly; use now()/transport times for scheduled playback.
+ */
+export function immediate(): ReturnType<ReturnType<typeof getContext>['immediate']> {
+  return getContext().immediate();
+}
+
 export function getTransport(): ReturnType<typeof getContext>['transport'] {
   return getContext().transport;
 }
