@@ -179,6 +179,21 @@ class AudioEngine {
     }
   }
 
+  /**
+   * Enable the metronome WITHOUT ticking yet: click buffer loaded, gain
+   * ready, metronomeOn set — the transport 'start' hook then begins the
+   * synced loop exactly at beat 0. Await this before starting the
+   * transport (count-in), otherwise the first accented click is missed.
+   */
+  async armMetronome(): Promise<void> {
+    if (this.metronomeOn) return;
+    await this.loadClick();
+    if (this.metronomeOn) return;
+    this.metronomeOn = true;
+    if (!this.metroGain) this.metroGain = new Tone.Gain(0.8).connect(this.master);
+    if (this.playing) this.startTicker();
+  }
+
   private playClick(time: number, accent: boolean): void {
     if (!this.clickBuffer || !this.metroGain) return;
     const src = new Tone.ToneBufferSource(this.clickBuffer).connect(this.metroGain);

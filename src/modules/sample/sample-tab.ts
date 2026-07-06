@@ -158,12 +158,12 @@ export class SampleTab extends HTMLElement {
       this.stopLoop();
     } else {
       this.recording = true;
-      this.startLoop(true, uiState().sample.countIn);
+      await this.startLoop(true, uiState().sample.countIn);
     }
     this.render();
   }
 
-  private startLoop(withExisting: boolean, countIn = false): void {
+  private async startLoop(withExisting: boolean, countIn = false): Promise<void> {
     this.loopPart?.dispose();
     const bars = store.data.padLoopBars;
     const countBars = countIn ? 1 : 0;
@@ -183,9 +183,11 @@ export class SampleTab extends HTMLElement {
     const transport = Tone.getTransport();
     if (countIn && !engine.metronomeOn) {
       // the count-in IS metronome clicks — force it on and keep it ticking
-      // through the recording; stopLoop restores the user's toggle state
+      // through the recording; stopLoop restores the user's toggle state.
+      // Armed (not started) BEFORE the transport starts, so the very first
+      // accented beat-0 click is scheduled too.
       this.metroForced = true;
-      void engine.setMetronome(true);
+      await engine.armMetronome();
     }
     if (this.recording && !uiState().sample.overdub) {
       // no overdub: disarm recording after exactly one pass (playback continues)
@@ -350,7 +352,7 @@ export class SampleTab extends HTMLElement {
       btn(this.recording ? '⏺ Stop rec' : '⏺ Record', () => void this.toggleRecord(), this.recording ? 'recording' : ''),
       btn('▶ Play loop', async () => {
         await engine.ensureStarted();
-        this.startLoop(true);
+        await this.startLoop(true);
       }),
       btn('⏹ Stop', () => this.stopLoop()),
       btn('Clear events', () => {
