@@ -11,11 +11,11 @@
 
 # In-Progress
 
-- bug: When I save the project Marc with the loop Happy and reload the project Marc on another tab/site I don't see the loop Happy 🕜 (todos)
-- Add a guage next to master volume to indicate level (green) and clipping (red) 🕜 (todos2)
+- Add a guage next to master volume to indicate level (green) and clipping (red) 🕜 (todos2 — implemented, awaiting confirmation)
 
 # DONE
 
+- bug: When I save the project Marc with the loop Happy and reload the project Marc on another tab/site I don't see the loop Happy ✅ (stale tabs were clobbering newer saves; saves now broadcast to other tabs and the newer of folder/mirror copy wins on load)
 - feat: Sort names of patches and loops in their dropdowns by name ✅ (case-insensitive; stored order unchanged)
 - feat: Drag and drop has a nice overlay in tone but not in sample, add it. Also allow dragging to the tab name. ✅ (overlay on all tab panels; tab names switch mid-drag and accept drops)
 - feat: Add master volume knob to top ✅ (compact dial in the header, persisted per project)
