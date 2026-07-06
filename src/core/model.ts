@@ -165,25 +165,30 @@ export interface NoteEvent {
 
 export type SynthKind = 'synth' | 'fm' | 'am';
 
-export interface SeqTrack {
-  id: string;
-  name: string;
-  kind: 'audio' | 'midi';
-  gain: number;
-  // audio
-  source?: { pad?: number; file?: string };
-  steps?: number[];
-  // midi
-  synth?: SynthKind;
-  notes?: NoteEvent[];
-}
+export type SeqInstrument =
+  | { type: 'synth'; kind: SynthKind }
+  | { type: 'patch'; patchId: string }
+  | { type: 'wav'; file: string; root?: string }; // root note, default 'C4'
 
 export interface Sequence {
   id: string;
   name: string;
-  bars: number;
-  tracks: SeqTrack[];
+  bars: number; // 1..64
+  instrument?: SeqInstrument;
+  notes: NoteEvent[];
   wavFile?: string;
+}
+
+/** @deprecated pre-piano-roll multi-track sequence shape; migrated by normalizeProject. */
+interface LegacySeqTrack {
+  id: string;
+  name: string;
+  kind: 'audio' | 'midi';
+  gain: number;
+  source?: { pad?: number; file?: string };
+  steps?: number[];
+  synth?: SynthKind;
+  notes?: NoteEvent[];
 }
 
 export interface PluginInstanceState {
@@ -296,5 +301,20 @@ export function normalizeProject(data: ProjectData): ProjectData {
   }
   delete data.padLoopBars;
   delete data.padEvents;
+  if (!Array.isArray(data.sequences)) data.sequences = [];
+  for (const seq of data.sequences) {
+    const raw = seq as unknown as { tracks?: LegacySeqTrack[] };
+    if (raw.tracks && !seq.notes) {
+      const midiTrack = raw.tracks.find((t) => t.kind === 'midi' && t.notes);
+      if (midiTrack) {
+        seq.notes = midiTrack.notes ?? [];
+        seq.instrument = { type: 'synth', kind: midiTrack.synth ?? 'synth' };
+      } else {
+        seq.notes = [];
+      }
+    }
+    delete raw.tracks;
+    seq.notes ??= [];
+  }
   return data;
 }

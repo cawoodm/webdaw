@@ -2,7 +2,7 @@ import * as Tone from '../../core/tone';
 import { engine } from '../../core/audio-engine';
 import { bus } from '../../core/event-bus';
 import type { PadConfig, PadEvent, PadLoop, TonePatch } from '../../core/model';
-import { defaultLoop, defaultPatch, PAD_COUNT, sortedByName, STEPS_PER_BAR, toneBufferKey, uid } from '../../core/model';
+import { defaultLoop, defaultPatch, PAD_COUNT, sortedByName, toneBufferKey, uid } from '../../core/model';
 import { renderPatch } from '../../core/patch-voice';
 import { uniqueName } from '../../core/project-names';
 import { store } from '../../core/project-store';
@@ -742,35 +742,6 @@ export class SampleTab extends HTMLElement {
     }
   }
 
-  private editInSequencer(): void {
-    const bars = this.loop().bars;
-    const usedPads = [...new Set(this.loop().events.map((e) => e.pad))].sort((a, b) => a - b);
-    const seqId = uid();
-    store.update((d) => {
-      d.sequences.push({
-        id: seqId,
-        name: uniqueName(this.loop().name, d.sequences.map((s) => s.name)),
-        bars,
-        tracks: usedPads.map((padIndex) => ({
-          id: uid(),
-          name: d.pads[padIndex]?.name ?? `Pad ${padIndex + 1}`,
-          kind: 'audio' as const,
-          gain: 1,
-          source: { pad: padIndex },
-          steps: [
-            ...new Set(
-              this.loop()
-                .events.filter((e) => e.pad === padIndex)
-                .map((e) => Math.round(e.time * 4) % (bars * STEPS_PER_BAR)),
-            ),
-          ].sort((a, b) => a - b),
-        })),
-      });
-    });
-    bus.emit('sample:editInSequencer', { sequenceId: seqId });
-    bus.emit('tab:activate', 'sequence');
-  }
-
   private render(): void {
     this.innerHTML = '';
     const pads = store.data.pads;
@@ -964,7 +935,6 @@ export class SampleTab extends HTMLElement {
         this.updateStatus();
       }),
       exportBtn,
-      btn('Edit in sequencer →', () => this.editInSequencer()),
     );
     const status = document.createElement('span');
     status.className = 'hint pad-status';

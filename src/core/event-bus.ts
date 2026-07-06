@@ -6,7 +6,6 @@ export interface BusEvents {
   'project:loaded': void;
   'project:changed': void;
   'tone:sendToPad': { patchId: string; name: string; buffer: AudioBuffer };
-  'sample:editInSequencer': { sequenceId: string };
   'tab:activate': TabId;
   /** A module is taking over playback — everyone else releases their scheduled parts. */
   'transport:claim': { owner: TabId };

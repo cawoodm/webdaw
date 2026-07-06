@@ -3,11 +3,11 @@ import { bus } from './event-bus';
 
 describe('EventBus', () => {
   it('delivers payloads to subscribers', () => {
-    let seen = '';
-    const off = bus.on('sample:editInSequencer', (p) => (seen = p.sequenceId));
-    bus.emit('sample:editInSequencer', { sequenceId: 'abc' });
+    let seen: string | undefined;
+    const off = bus.on('tab:activate', (tab) => (seen = tab));
+    bus.emit('tab:activate', 'sequence');
     off();
-    expect(seen).toBe('abc');
+    expect(seen).toBe('sequence');
   });
 
   it('stops delivering after unsubscribe', () => {

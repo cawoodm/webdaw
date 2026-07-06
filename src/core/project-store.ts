@@ -179,7 +179,7 @@ class ProjectStore {
     for (const pad of this.data.pads) if (pad?.file) paths.add(pad.file);
     for (const seq of this.data.sequences) {
       if (seq.wavFile) paths.add(seq.wavFile);
-      for (const t of seq.tracks) if (t.source?.file) paths.add(t.source.file);
+      if (seq.instrument?.type === 'wav') paths.add(seq.instrument.file);
     }
     for (const t of this.data.arrangement.tracks) {
       for (const c of t.clips) if (c.ref.type === 'file') paths.add(c.ref.file);

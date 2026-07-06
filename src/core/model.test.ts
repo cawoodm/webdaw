@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { Sequence } from './model';
 import { defaultLfo, defaultPatch, defaultProject, normalizeProject, PAD_COUNT, pianoNotes, resolveLfos, uid } from './model';
 import { DEFAULT_KEYMAP } from '../midi/keymap';
 
@@ -22,6 +23,68 @@ describe('project model', () => {
   it('defaults savedAt to 0 for old project.json files missing the field', () => {
     const stale = JSON.parse(JSON.stringify({ ...defaultProject(), savedAt: undefined }));
     expect(normalizeProject(stale).savedAt).toBe(0);
+  });
+
+  it('a piano-roll sequence survives a JSON round-trip', () => {
+    const p = defaultProject();
+    const seq: Sequence = {
+      id: uid(),
+      name: 'Lead',
+      bars: 4,
+      instrument: { type: 'patch', patchId: p.patches[0].id },
+      notes: [{ step: 0, note: 'C4', duration: 4, velocity: 0.8 }],
+      wavFile: 'sequences/Lead.wav',
+    };
+    p.sequences.push(seq);
+    expect(JSON.parse(JSON.stringify(p))).toEqual(p);
+  });
+
+  it('migrates a legacy multi-track sequence to notes + instrument', () => {
+    const legacy = {
+      ...defaultProject(),
+      sequences: [
+        {
+          id: 'seq1',
+          name: 'Old',
+          bars: 2,
+          tracks: [
+            { id: 't1', name: 'Audio', kind: 'audio', gain: 1, source: { pad: 0 }, steps: [0, 4] },
+            {
+              id: 't2',
+              name: 'MIDI',
+              kind: 'midi',
+              gain: 1,
+              synth: 'fm',
+              notes: [{ step: 0, note: 'C4', duration: 4, velocity: 0.8 }],
+            },
+          ],
+        },
+      ],
+    };
+    const stale = JSON.parse(JSON.stringify(legacy));
+    const normalized = normalizeProject(stale);
+    const seq = normalized.sequences[0];
+    expect((seq as unknown as { tracks?: unknown }).tracks).toBeUndefined();
+    expect(seq.notes).toEqual([{ step: 0, note: 'C4', duration: 4, velocity: 0.8 }]);
+    expect(seq.instrument).toEqual({ type: 'synth', kind: 'fm' });
+  });
+
+  it('migrates a legacy sequence with no midi track to empty notes', () => {
+    const legacy = {
+      ...defaultProject(),
+      sequences: [
+        {
+          id: 'seq1',
+          name: 'Old',
+          bars: 2,
+          tracks: [{ id: 't1', name: 'Audio', kind: 'audio', gain: 1, source: { pad: 0 }, steps: [0, 4] }],
+        },
+      ],
+    };
+    const stale = JSON.parse(JSON.stringify(legacy));
+    const normalized = normalizeProject(stale);
+    expect(normalized.sequences[0].notes).toEqual([]);
+    expect(normalized.sequences[0].instrument).toBeUndefined();
   });
 });
 

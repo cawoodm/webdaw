@@ -11,7 +11,7 @@ export interface UiState {
   metronomeOn: boolean;
   tone: { patchId: string; live: boolean; loop: boolean };
   sample: { selectedPad: number; countIn: boolean; overdub: boolean; quantize: number; loopId: string };
-  sequence: { seqId: string; trackId: string };
+  sequence: { seqId: string; quantize: number };
   arrange: { palette: string; openFx: string[] };
 }
 
@@ -21,7 +21,7 @@ function defaults(): UiState {
     metronomeOn: false,
     tone: { patchId: '', live: false, loop: false },
     sample: { selectedPad: 0, countIn: false, overdub: false, quantize: 0.25, loopId: '' },
-    sequence: { seqId: '', trackId: '' },
+    sequence: { seqId: '', quantize: 0.25 },
     arrange: { palette: '', openFx: [] },
   };
 }

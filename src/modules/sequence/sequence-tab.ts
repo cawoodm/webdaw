@@ -1,39 +1,70 @@
 import { engine } from '../../core/audio-engine';
 import { bus } from '../../core/event-bus';
-import type { SeqTrack, Sequence, SynthKind } from '../../core/model';
-import { sortedByName, STEPS_PER_BAR, uid } from '../../core/model';
+import type { NoteEvent, SeqInstrument, Sequence, SynthKind } from '../../core/model';
+import { pianoNotes, sortedByName, STEPS_PER_BAR, uid } from '../../core/model';
+import { uniqueName } from '../../core/project-names';
 import { store } from '../../core/project-store';
 import { uiState, updateUi } from '../../core/ui-state';
-import { knob } from '../../ui/knob';
-import { transportButton } from '../../ui/transport-buttons';
-import { makeSynth, playSequenceLive, renderSequence, type LivePlayback } from './sequence-playback';
-import * as Tone from '../../core/tone';
+import { PLAY_ICON, STOP_ICON, transportButton } from '../../ui/transport-buttons';
+import {
+  makeMonitor,
+  playSequenceLive,
+  resolveInstrument,
+  type LivePlayback,
+  type Monitor,
+} from './sequence-playback';
 
-const PIANO_NOTES: string[] = [];
-for (let octave = 5; octave >= 3; octave--) {
-  for (const n of ['B', 'A#', 'A', 'G#', 'G', 'F#', 'F', 'E', 'D#', 'D', 'C#', 'C']) {
-    PIANO_NOTES.push(`${n}${octave}`);
-  }
+/** Round DOWN to the quantize grid (16th-note steps) — placing/dragging notes. */
+export function floorSnapSteps(steps: number, qSteps: number): number {
+  return Math.floor(steps / qSteps + 1e-6) * qSteps;
 }
+
+/** Round to the NEAREST quantize step — recorded/resized notes. */
+export function nearestSnapSteps(steps: number, qSteps: number): number {
+  return Math.round(steps / qSteps) * qSteps;
+}
+
+/**
+ * Hierarchical gridlines down to the quantize step: bar heaviest, then
+ * halving levels, progressively thinner/fainter — the step-unit twin of
+ * sample-tab's beat-based gridBackground.
+ */
+export function gridBackgroundSteps(totalSteps: number, qSteps: number): { image: string; size: string } {
+  const style = (level: number): { w: number; a: number } =>
+    [
+      { w: 2, a: 0.6 },  // bar
+      { w: 2, a: 0.32 }, // 1/2 bar
+      { w: 1, a: 0.32 }, // beat
+      { w: 1, a: 0.2 },  // 1/8
+      { w: 1, a: 0.12 }, // 1/16 and finer
+    ][Math.min(level, 4)];
+  const images: string[] = [];
+  const sizes: string[] = [];
+  for (let s = STEPS_PER_BAR, level = 0; s >= qSteps - 1e-6; s /= 2, level++) {
+    const { w, a } = style(level);
+    images.push(`linear-gradient(90deg, rgb(148 163 184 / ${a * 100}%) ${w}px, transparent ${w}px)`);
+    sizes.push(`${100 / (totalSteps / s)}% 100%`);
+  }
+  return { image: images.join(', '), size: sizes.join(', ') };
+}
+
+const ROW_HEIGHT = 18;
 
 export class SequenceTab extends HTMLElement {
   private seqId = '';
-  private selectedTrackId = '';
   private playback: LivePlayback | null = null;
   private recording = false;
-  private monitorSynth: Tone.PolySynth | null = null;
-  private heldNotes = new Map<string, number>(); // note -> beat at noteon
+  private monitor: Monitor | null = null;
+  private monitorKey = '';
+  private recordStarts = new Map<string, { beat: number; velocity: number }>();
+  private lastPlayState = false;
 
   connectedCallback(): void {
     this.className = 'tab-panel sequence-tab';
     bus.on('project:loaded', () => this.render());
+    bus.on('project:changed', () => this.render());
     bus.on('ui:loaded', () => {
       this.seqId = uiState().sequence.seqId;
-      this.selectedTrackId = uiState().sequence.trackId;
-      this.render();
-    });
-    bus.on('sample:editInSequencer', ({ sequenceId }) => {
-      this.selectSeq(sequenceId);
       this.render();
     });
     // playback survives tab switches; release only when another module claims it
@@ -52,11 +83,21 @@ export class SequenceTab extends HTMLElement {
     });
     bus.on('transport:stop', () => {
       if (!this.playback && !this.recording) return;
-      this.stopPlayback();
-      this.render();
+      this.stop();
     });
-    bus.on('midi:noteon', ({ note, velocity }) => this.onNoteOn(note, velocity));
-    bus.on('midi:noteoff', ({ note }) => this.onNoteOff(note));
+    bus.on('midi:noteon', ({ note, velocity }) => {
+      if (this.isActive()) this.noteOnInternal(note, velocity);
+    });
+    bus.on('midi:noteoff', ({ note }) => {
+      if (this.isActive()) this.noteOffInternal(note);
+    });
+    const tick = (): void => {
+      this.updatePlayhead();
+      this.updateBarIndicator();
+      this.syncPlayToggle();
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
     this.render();
   }
 
@@ -69,54 +110,59 @@ export class SequenceTab extends HTMLElement {
     updateUi((s) => (s.sequence.seqId = id));
   }
 
-  private selectTrack(id: string): void {
-    this.selectedTrackId = id;
-    updateUi((s) => (s.sequence.trackId = id));
-  }
-
   private seq(): Sequence | null {
     return store.data.sequences.find((s) => s.id === this.seqId) ?? store.data.sequences[0] ?? null;
   }
 
-  private selectedTrack(): SeqTrack | null {
-    const seq = this.seq();
-    return seq?.tracks.find((t) => t.id === this.selectedTrackId) ?? null;
+  /** Current quantization in 16th-note steps (from the Quantize dropdown, stored in beats). */
+  private qSteps(): number {
+    return (uiState().sequence.quantize || 0.25) * 4;
   }
 
   // ---- live note input (monitor + record) ----
 
-  private onNoteOn(note: string, velocity: number): void {
-    if (!this.isActive()) return;
-    const track = this.selectedTrack();
-    if (!track || track.kind !== 'midi') return;
-    void engine.ensureStarted().then(() => {
-      if (!this.monitorSynth) {
-        this.monitorSynth = makeSynth(track.synth).connect(engine.master);
-      }
-      this.monitorSynth.triggerAttack(note, Tone.immediate(), velocity);
-    });
+  private async ensureMonitor(): Promise<Monitor | null> {
+    const seq = this.seq();
+    if (!seq?.instrument) return null;
+    const key = `${seq.id}:${JSON.stringify(seq.instrument)}`;
+    if (this.monitor && this.monitorKey === key) return this.monitor;
+    await engine.ensureStarted();
+    const resolved = await resolveInstrument(seq);
+    if (!resolved) return null;
+    if (this.monitorKey !== key) {
+      this.monitor?.dispose();
+      this.monitor = makeMonitor(resolved, engine.master);
+      this.monitorKey = key;
+    }
+    return this.monitor;
+  }
+
+  private lightKey(note: string, on: boolean): void {
+    this.querySelector(`.roll-key[data-note="${note}"]`)?.classList.toggle('lit', on);
+  }
+
+  private noteOnInternal(note: string, velocity: number): void {
+    this.lightKey(note, true);
+    void this.ensureMonitor().then((m) => m?.attack(note, velocity));
     if (this.recording && engine.playing) {
-      this.heldNotes.set(note, engine.positionBeats);
+      this.recordStarts.set(note, { beat: engine.positionBeats, velocity });
     }
   }
 
-  private onNoteOff(note: string): void {
-    if (!this.isActive()) return;
-    this.monitorSynth?.triggerRelease(note, Tone.immediate());
-    const onBeat = this.heldNotes.get(note);
-    if (onBeat === undefined) return;
-    this.heldNotes.delete(note);
+  private noteOffInternal(note: string): void {
+    this.lightKey(note, false);
+    this.monitor?.release(note);
+    const start = this.recordStarts.get(note);
+    if (!start) return;
+    this.recordStarts.delete(note);
     const seq = this.seq();
-    const track = this.selectedTrack();
-    if (!seq || !track || track.kind !== 'midi') return;
+    if (!seq) return;
     const totalSteps = seq.bars * STEPS_PER_BAR;
-    const step = Math.round(onBeat * 4) % totalSteps;
-    const duration = Math.max(1, Math.round((engine.positionBeats - onBeat) * 4));
-    store.update(() => {
-      track.notes = track.notes ?? [];
-      track.notes.push({ step, note, duration, velocity: 0.8 });
-    });
-    this.renderGrid();
+    const q = this.qSteps();
+    const startStep = nearestSnapSteps(start.beat * 4, q) % totalSteps;
+    const duration = Math.max(q, nearestSnapSteps((engine.positionBeats - start.beat) * 4, q));
+    store.update(() => seq.notes.push({ step: startStep, note, duration, velocity: start.velocity }));
+    this.rebuildLivePartIfPlaying();
   }
 
   // ---- playback ----
@@ -125,331 +171,584 @@ export class SequenceTab extends HTMLElement {
     const seq = this.seq();
     if (!seq) return;
     await engine.ensureStarted();
-    this.stopPlayback(false);
-    engine.claimTransport('sequence');
-    this.playback = playSequenceLive(seq, engine.master);
-    engine.setLoop(seq.bars);
-    engine.play();
-  }
-
-  private stopPlayback(fullStop = true): void {
     this.playback?.dispose();
     this.playback = null;
-    if (fullStop) {
-      engine.stop();
-      engine.setLoop(0);
-      this.recording = false;
+    engine.claimTransport('sequence');
+    const resolved = await resolveInstrument(seq);
+    if (resolved) {
+      this.playback = playSequenceLive(seq, engine.master, resolved);
+      engine.setLoop(seq.bars);
+      engine.play();
     }
+    this.render();
+  }
+
+  private stop(): void {
+    this.playback?.dispose();
+    this.playback = null;
+    engine.stop();
+    engine.setLoop(0);
+    this.recording = false;
+    this.render();
+  }
+
+  private async toggleRecord(): Promise<void> {
+    const seq = this.seq();
+    if (!seq?.instrument) return;
+    if (this.recording) {
+      this.recording = false;
+      this.stop();
+    } else {
+      this.recording = true;
+      await this.play();
+    }
+  }
+
+  /** Re-schedule after note edits so changes are audible mid-playback. */
+  private rebuildLivePartIfPlaying(): void {
+    if (!engine.started || !engine.playing || !this.playback) return;
+    const seq = this.seq();
+    if (!seq) return;
+    this.playback.dispose();
+    this.playback = null;
+    void resolveInstrument(seq).then((resolved) => {
+      if (!resolved) return;
+      this.playback = playSequenceLive(seq, engine.master, resolved);
+    });
+  }
+
+  /** After direct mutations of seq.notes: persist (triggers a re-render) + re-schedule. */
+  private commitNotes(): void {
+    store.update(() => {});
+    this.rebuildLivePartIfPlaying();
+  }
+
+  // ---- rAF-driven playhead / indicator / toggle ----
+
+  private updatePlayhead(): void {
+    const seq = this.seq();
+    const playhead = this.querySelector<HTMLElement>('.roll-playhead');
+    const body = this.querySelector<HTMLElement>('.roll-body');
+    const scroll = this.querySelector<HTMLElement>('.roll-scroll');
+    if (!seq || !playhead || !body || !scroll) return;
+    const active = engine.started && engine.playing && (this.playback !== null || this.recording);
+    if (!active) {
+      playhead.classList.add('hidden');
+      return;
+    }
+    playhead.classList.remove('hidden');
+    const totalBeats = seq.bars * 4;
+    const fraction = (engine.positionBeats % totalBeats) / totalBeats;
+    const x = fraction * body.offsetWidth;
+    playhead.style.left = `${x}px`;
+    if (seq.bars > 4) {
+      const viewWidth = scroll.clientWidth;
+      const margin = viewWidth * 0.2; // keep the playhead within the middle 60%
+      if (x < scroll.scrollLeft + margin) scroll.scrollLeft = Math.max(0, x - margin);
+      else if (x > scroll.scrollLeft + viewWidth - margin) scroll.scrollLeft = x - viewWidth + margin;
+    }
+  }
+
+  private updateBarIndicator(): void {
+    const seq = this.seq();
+    if (!seq) return;
+    const active = engine.started && engine.playing && (this.playback !== null || this.recording);
+    let bar = -1;
+    let beat = -1;
+    if (active) {
+      const totalBeats = seq.bars * 4;
+      const posBeats = engine.positionBeats % totalBeats;
+      bar = Math.floor(posBeats / 4);
+      beat = Math.floor(posBeats % 4);
+    }
+    const readout = this.querySelector<HTMLElement>('.bar-readout');
+    if (readout) {
+      readout.textContent = `bar ${(bar >= 0 ? bar : 0) + 1}/${seq.bars}`;
+      return;
+    }
+    const blocks = this.querySelectorAll<HTMLElement>('.bar-block');
+    blocks.forEach((b, i) => {
+      b.classList.toggle('active', i === bar);
+      b.querySelectorAll('i').forEach((dot, j) => dot.classList.toggle('on', i === bar && j === beat));
+    });
+  }
+
+  private syncPlayToggle(): void {
+    const button = this.querySelector<HTMLButtonElement>('.transport-play');
+    if (!button) return;
+    const playing = !!this.playback && engine.started && engine.playing;
+    if (playing === this.lastPlayState) return;
+    this.lastPlayState = playing;
+    this.paintPlayToggle(button, playing);
+  }
+
+  private paintPlayToggle(button: HTMLButtonElement, playing: boolean): void {
+    button.classList.toggle('active', playing);
+    button.innerHTML = playing ? STOP_ICON : PLAY_ICON;
+    button.title = playing ? 'Stop the sequence (Space)' : 'Play the sequence (Space)';
   }
 
   // ---- rendering ----
 
+  private iconBtn(title: string, svg: string, fn: () => void): HTMLButtonElement {
+    const b = document.createElement('button');
+    b.className = 'icon-btn';
+    b.title = title;
+    b.setAttribute('aria-label', title);
+    b.innerHTML = svg;
+    b.onclick = fn;
+    return b;
+  }
+
+  private instrumentValue(instr: SeqInstrument | undefined): string {
+    if (!instr) return '';
+    if (instr.type === 'patch') return `patch:${instr.patchId}`;
+    if (instr.type === 'wav') return `wav:${instr.file}`;
+    return `synth:${instr.kind}`;
+  }
+
+  private buildInstrumentSelect(seq: Sequence): HTMLSelectElement {
+    const sel = document.createElement('select');
+    sel.title = 'Instrument this sequence plays';
+    const current = this.instrumentValue(seq.instrument);
+
+    const noneOpt = document.createElement('option');
+    noneOpt.value = '';
+    noneOpt.textContent = '— instrument —';
+    noneOpt.selected = current === '';
+    sel.appendChild(noneOpt);
+
+    const tonesGroup = document.createElement('optgroup');
+    tonesGroup.label = 'Tones';
+    for (const patch of sortedByName(store.data.patches)) {
+      const opt = document.createElement('option');
+      opt.value = `patch:${patch.id}`;
+      opt.textContent = patch.name;
+      opt.selected = current === opt.value;
+      tonesGroup.appendChild(opt);
+    }
+    if (tonesGroup.children.length > 0) sel.appendChild(tonesGroup);
+
+    const samplesGroup = document.createElement('optgroup');
+    samplesGroup.label = 'Samples';
+    const files = new Set<string>();
+    for (const pad of store.data.pads) if (pad?.file) files.add(pad.file);
+    if (seq.instrument?.type === 'wav') files.add(seq.instrument.file);
+    for (const file of files) {
+      const opt = document.createElement('option');
+      opt.value = `wav:${file}`;
+      opt.textContent = file.split('/').pop() ?? file;
+      opt.selected = current === opt.value;
+      samplesGroup.appendChild(opt);
+    }
+    const loadOpt = document.createElement('option');
+    loadOpt.value = 'wav:load';
+    loadOpt.textContent = '— load audio file… —';
+    samplesGroup.appendChild(loadOpt);
+    sel.appendChild(samplesGroup);
+
+    const synthGroup = document.createElement('optgroup');
+    synthGroup.label = 'Synth';
+    for (const [kind, label] of [
+      ['synth', 'Synth'],
+      ['fm', 'FM Synth'],
+      ['am', 'AM Synth'],
+    ] as const) {
+      const opt = document.createElement('option');
+      opt.value = `synth:${kind}`;
+      opt.textContent = label;
+      opt.selected = current === opt.value;
+      synthGroup.appendChild(opt);
+    }
+    sel.appendChild(synthGroup);
+
+    sel.onchange = (): void => {
+      const v = sel.value;
+      if (v === 'wav:load') {
+        sel.value = current;
+        this.loadInstrumentWav(seq);
+        return;
+      }
+      if (v === '') {
+        store.update(() => (seq.instrument = undefined));
+      } else if (v.startsWith('patch:')) {
+        store.update(() => (seq.instrument = { type: 'patch', patchId: v.slice(6) }));
+      } else if (v.startsWith('wav:')) {
+        store.update(() => (seq.instrument = { type: 'wav', file: v.slice(4) }));
+      } else if (v.startsWith('synth:')) {
+        store.update(() => (seq.instrument = { type: 'synth', kind: v.slice(6) as SynthKind }));
+      }
+      this.monitorKey = '';
+    };
+    return sel;
+  }
+
+  private loadInstrumentWav(seq: Sequence): void {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'audio/*';
+    input.onchange = async (): Promise<void> => {
+      const file = input.files?.[0];
+      if (!file) return;
+      await engine.ensureStarted();
+      const name = file.name.replace(/\.[^.]+$/, '');
+      const path = `samples/${name.replace(/[^\w-]+/g, '_')}-${uid()}.wav`;
+      await store.importAudioFile(file, path);
+      this.monitorKey = '';
+      store.update(() => (seq.instrument = { type: 'wav', file: path }));
+    };
+    input.click();
+  }
+
+  private buildBarIndicator(seq: Sequence): HTMLElement {
+    const indicator = document.createElement('div');
+    indicator.className = 'bar-indicator';
+    if (seq.bars <= 8) {
+      for (let b = 0; b < seq.bars; b++) {
+        const block = document.createElement('div');
+        block.className = 'bar-block';
+        const num = document.createElement('span');
+        num.className = 'bar-num';
+        num.textContent = String(b + 1);
+        block.appendChild(num);
+        for (let beat = 0; beat < 4; beat++) block.appendChild(document.createElement('i'));
+        indicator.appendChild(block);
+      }
+    } else {
+      const readout = document.createElement('span');
+      readout.className = 'bar-readout hint';
+      readout.textContent = `bar 1/${seq.bars}`;
+      indicator.appendChild(readout);
+    }
+    return indicator;
+  }
+
+  private buildClip(seq: Sequence, n: NoteEvent, lane: HTMLElement, lanes: Map<string, HTMLElement>, totalSteps: number): void {
+    const clip = document.createElement('div');
+    clip.className = 'roll-clip';
+    const place = (): void => {
+      clip.style.left = `${(n.step / totalSteps) * 100}%`;
+      clip.style.width = `${(n.duration / totalSteps) * 100}%`;
+      clip.style.opacity = String(0.35 + 0.65 * n.velocity);
+    };
+    place();
+    const handle = document.createElement('div');
+    handle.className = 'event-clip-resize';
+    clip.appendChild(handle);
+
+    clip.ondblclick = (): void => {
+      const idx = seq.notes.indexOf(n);
+      if (idx >= 0) seq.notes.splice(idx, 1);
+      this.commitNotes();
+    };
+
+    clip.oncontextmenu = (e): void => {
+      e.preventDefault();
+      this.showVelocityPopover(e, n, clip);
+    };
+
+    clip.onpointerdown = (e): void => {
+      // no preventDefault here — it would suppress the dblclick used for delete
+      e.stopPropagation();
+      const resizing = e.target === handle;
+      const laneRect = lane.getBoundingClientRect();
+      const stepsPerPx = totalSteps / lane.offsetWidth;
+      const start = { x: e.clientX, y: e.clientY, step: n.step, duration: n.duration };
+      let moved = false;
+      clip.setPointerCapture(e.pointerId);
+      clip.onpointermove = (m): void => {
+        if (!moved && Math.abs(m.clientX - start.x) + Math.abs(m.clientY - start.y) < 3) return;
+        moved = true;
+        const q = this.qSteps();
+        const deltaSteps = (m.clientX - start.x) * stepsPerPx;
+        if (resizing) {
+          n.duration = Math.min(totalSteps - n.step, Math.max(q, nearestSnapSteps(start.duration + deltaSteps, q)));
+        } else {
+          n.step = Math.min(totalSteps - n.duration, Math.max(0, floorSnapSteps(start.step + deltaSteps, q)));
+          for (const [note, otherLane] of lanes) {
+            const r = otherLane.getBoundingClientRect();
+            if (m.clientY >= r.top && m.clientY <= r.bottom) {
+              n.note = note;
+              clip.style.transform = `translateY(${r.top - laneRect.top}px)`;
+              break;
+            }
+          }
+        }
+        place();
+      };
+      clip.onpointerup = (): void => {
+        clip.onpointermove = null;
+        clip.onpointerup = null;
+        if (moved) this.commitNotes();
+      };
+    };
+    lane.appendChild(clip);
+  }
+
+  private showVelocityPopover(e: MouseEvent, n: NoteEvent, clip: HTMLElement): void {
+    document.querySelector('.vel-pop')?.remove();
+    const pop = document.createElement('div');
+    pop.className = 'vel-pop';
+    pop.style.left = `${e.clientX}px`;
+    pop.style.top = `${e.clientY}px`;
+    const label = document.createElement('span');
+    label.textContent = 'Velocity';
+    const input = document.createElement('input');
+    input.type = 'range';
+    input.min = '5';
+    input.max = '100';
+    input.value = String(Math.round(n.velocity * 100));
+    input.oninput = (): void => {
+      n.velocity = Number(input.value) / 100;
+      clip.style.opacity = String(0.35 + 0.65 * n.velocity);
+      store.scheduleSave();
+    };
+    pop.append(label, input);
+    document.body.appendChild(pop);
+    const close = (ev: PointerEvent): void => {
+      if (pop.contains(ev.target as Node)) return;
+      pop.remove();
+      document.removeEventListener('pointerdown', close);
+      this.rebuildLivePartIfPlaying();
+    };
+    window.setTimeout(() => document.addEventListener('pointerdown', close), 0);
+  }
+
+  private buildPianoRoll(seq: Sequence): HTMLElement {
+    const totalSteps = seq.bars * STEPS_PER_BAR;
+    const grid = gridBackgroundSteps(totalSteps, this.qSteps());
+    const scroll = document.createElement('div');
+    scroll.className = 'roll-scroll';
+    const body = document.createElement('div');
+    body.className = 'roll-body';
+    body.style.width = `${Math.max(1, seq.bars / 4) * 100}%`;
+
+    const notes = [...pianoNotes()].reverse(); // C8 top -> A0 bottom
+    const lanes = new Map<string, HTMLElement>();
+    for (const note of notes) {
+      const row = document.createElement('div');
+      row.className = 'roll-row';
+      const isSharp = note.includes('#');
+
+      const key = document.createElement('div');
+      key.className = 'roll-key' + (isSharp ? ' black' : '');
+      key.dataset.note = note;
+      if (!isSharp && note.startsWith('C')) key.textContent = note;
+      key.title = `Play ${note}`;
+      key.onpointerdown = (e): void => {
+        e.preventDefault();
+        key.setPointerCapture(e.pointerId);
+        void engine.ensureStarted().then(() => this.noteOnInternal(note, 0.8));
+      };
+      const releaseKey = (): void => this.noteOffInternal(note);
+      key.onpointerup = releaseKey;
+      key.onpointerleave = releaseKey;
+      row.appendChild(key);
+
+      const lane = document.createElement('div');
+      lane.className = 'roll-lane';
+      lane.dataset.note = note;
+      lane.style.backgroundImage = grid.image;
+      lane.style.backgroundSize = grid.size;
+      lane.title = 'Click: add a note · drag: move/retarget pitch · right edge: resize · double-click: delete · right-click: velocity';
+      lane.onclick = (e): void => {
+        if (e.target !== lane) return; // clicks on clips are handled there
+        const q = this.qSteps();
+        const fraction = (e.clientX - lane.getBoundingClientRect().left) / lane.offsetWidth;
+        const step = Math.min(totalSteps - q, Math.max(0, floorSnapSteps(fraction * totalSteps, q)));
+        seq.notes.push({ step, note, duration: q, velocity: 0.8 });
+        this.commitNotes();
+      };
+      row.appendChild(lane);
+      lanes.set(note, lane);
+      body.appendChild(row);
+    }
+
+    for (const n of seq.notes) {
+      const lane = lanes.get(n.note);
+      if (lane) this.buildClip(seq, n, lane, lanes, totalSteps);
+    }
+
+    const playhead = document.createElement('div');
+    playhead.className = 'roll-playhead hidden';
+    body.appendChild(playhead);
+
+    scroll.appendChild(body);
+    return scroll;
+  }
+
   private render(): void {
+    const prevScroll = this.querySelector<HTMLElement>('.roll-scroll');
+    const savedTop = prevScroll?.scrollTop;
+    const savedLeft = prevScroll?.scrollLeft;
     this.innerHTML = '';
     const seq = this.seq();
     if (seq) this.seqId = seq.id;
 
     const bar = document.createElement('div');
     bar.className = 'toolbar';
-    const btn = (label: string, fn: () => void, cls = ''): HTMLButtonElement => {
-      const b = document.createElement('button');
-      b.textContent = label;
-      b.className = cls;
-      b.onclick = fn;
-      return b;
-    };
 
     const select = document.createElement('select');
-    for (const s of store.data.sequences) {
+    select.title = 'Switch sequence';
+    for (const s of sortedByName(store.data.sequences)) {
       const opt = document.createElement('option');
       opt.value = s.id;
       opt.textContent = s.name;
-      opt.selected = s.id === this.seqId;
+      opt.selected = seq?.id === s.id;
       select.appendChild(opt);
     }
     select.onchange = (): void => {
+      this.stop();
       this.selectSeq(select.value);
+      this.monitorKey = '';
       this.render();
     };
-    const recBtn = transportButton(
-      'record',
-      this.recording ? 'Stop recording' : 'Record MIDI — plays the sequence and captures note input',
-      async () => {
-        if (this.recording) {
-          this.stopPlayback();
-        } else if (this.seq()) {
-          this.recording = true;
-          await this.play();
-        }
-        this.render();
-      },
-    );
-    recBtn.classList.toggle('recording', this.recording);
+
     bar.append(
-      transportButton('play', 'Play the sequence (Space)', () => void this.play()),
-      transportButton('stop', 'Stop (Space)', () => {
-        this.stopPlayback();
-        this.render();
-      }),
-      recBtn,
       select,
-      btn('New', () => {
-        const s: Sequence = { id: uid(), name: `Sequence ${store.data.sequences.length + 1}`, bars: 2, tracks: [] };
-        store.update((d) => d.sequences.push(s));
-        this.selectSeq(s.id);
-        this.render();
-      }),
+      this.iconBtn(
+        'New sequence',
+        `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+          <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`,
+        () => {
+          const s: Sequence = {
+            id: uid(),
+            name: uniqueName(`Sequence ${store.data.sequences.length + 1}`, store.data.sequences.map((x) => x.name)),
+            bars: 2,
+            notes: [],
+          };
+          this.selectSeq(s.id);
+          store.update((d) => d.sequences.push(s));
+        },
+      ),
+      this.iconBtn(
+        'Duplicate sequence',
+        `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true">
+          <rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`,
+        () => {
+          if (!seq) return;
+          const copy = structuredClone(seq);
+          copy.id = uid();
+          copy.name = uniqueName(`${seq.name} copy`, store.data.sequences.map((x) => x.name));
+          delete copy.wavFile;
+          this.selectSeq(copy.id);
+          store.update((d) => d.sequences.push(copy));
+        },
+      ),
+      this.iconBtn(
+        'Rename sequence',
+        `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true">
+          <path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg>`,
+        () => {
+          if (!seq) return;
+          const name = prompt('Sequence name', seq.name);
+          if (!name?.trim()) return;
+          store.update(() => {
+            seq.name = uniqueName(name.trim(), store.data.sequences.filter((s) => s.id !== seq.id).map((s) => s.name));
+          });
+        },
+      ),
+      this.iconBtn(
+        'Delete sequence',
+        `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`,
+        () => {
+          if (!seq) return;
+          this.stop();
+          this.selectSeq('');
+          store.update((d) => (d.sequences = d.sequences.filter((s) => s.id !== seq.id)));
+        },
+      ),
     );
 
     if (seq) {
-      const barsSel = document.createElement('select');
-      for (const n of [1, 2, 4, 8]) {
+      const barsInput = document.createElement('input');
+      barsInput.type = 'number';
+      barsInput.min = '1';
+      barsInput.max = '64';
+      barsInput.value = String(seq.bars);
+      barsInput.title = 'Bars';
+      barsInput.onchange = (): void => {
+        const v = Math.min(64, Math.max(1, Math.round(Number(barsInput.value) || 1)));
+        barsInput.value = String(v);
+        store.update(() => (seq.bars = v));
+      };
+      const barsLabel = document.createElement('label');
+      barsLabel.className = 'hint check-toggle';
+      barsLabel.append(document.createTextNode('Bars '), barsInput);
+      bar.appendChild(barsLabel);
+
+      const quantSel = document.createElement('select');
+      quantSel.title = 'Quantize: recording rounds to the nearest step, note edits snap down to it';
+      for (const [value, label] of [
+        [1, '1 beat'],
+        [0.5, '1/2'],
+        [0.25, '1/4'],
+        [0.125, '1/8'],
+        [0.0625, '1/16'],
+        [0.03125, '1/32'],
+      ] as const) {
         const opt = document.createElement('option');
-        opt.value = String(n);
-        opt.textContent = `${n} bars`;
-        opt.selected = seq.bars === n;
-        barsSel.appendChild(opt);
+        opt.value = String(value);
+        opt.textContent = label;
+        opt.selected = uiState().sequence.quantize === value;
+        quantSel.appendChild(opt);
       }
-      barsSel.onchange = (): void => {
-        store.update(() => (seq.bars = Number(barsSel.value)));
+      quantSel.onchange = (): void => {
+        updateUi((s) => (s.sequence.quantize = Number(quantSel.value)));
         this.render();
       };
-      bar.append(
-        btn('Rename', () => {
-          const name = prompt('Sequence name', seq.name);
-          if (name) {
-            store.update(() => (seq.name = name));
-            this.render();
-          }
-        }),
-        btn('Delete', () => {
-          store.update((d) => (d.sequences = d.sequences.filter((s) => s.id !== seq.id)));
-          this.selectSeq('');
-          this.render();
-        }),
-        barsSel,
-        btn('Bounce to WAV', async () => {
-          const buffer = await renderSequence(seq);
-          const path = `sequences/${seq.name.replace(/[^\w-]+/g, '_')}.wav`;
-          const written = await store.saveWav(path, buffer);
-          store.update(() => (seq.wavFile = path));
-          this.flash(written ? `Bounced to ${path}` : `Bounced ${path} in memory — connect a project folder to write files`);
-        }),
-        btn('+ Audio track', () => this.addTrack(seq, 'audio')),
-        btn('+ MIDI track', () => this.addTrack(seq, 'midi')),
+      const quantWrap = document.createElement('label');
+      quantWrap.className = 'hint check-toggle';
+      quantWrap.append(document.createTextNode('Quantize '), quantSel);
+      bar.appendChild(quantWrap);
+
+      bar.appendChild(this.buildInstrumentSelect(seq));
+
+      const playBtn = transportButton('play', 'Play the sequence (Space)', () => {
+        if (this.playback && engine.started && engine.playing) {
+          this.stop();
+        } else {
+          void this.play();
+        }
+      });
+      this.lastPlayState = !!this.playback && engine.started && engine.playing;
+      this.paintPlayToggle(playBtn, this.lastPlayState);
+      const recBtn = transportButton(
+        'record',
+        seq.instrument
+          ? this.recording
+            ? 'Stop recording'
+            : 'Record MIDI — plays the sequence and captures note input'
+          : 'Set an instrument first',
+        () => void this.toggleRecord(),
       );
+      recBtn.classList.toggle('recording', this.recording);
+      recBtn.disabled = !seq.instrument;
+      bar.append(playBtn, recBtn);
     }
     this.appendChild(bar);
 
     if (!seq) {
       const hint = document.createElement('p');
       hint.className = 'hint';
-      hint.textContent = 'No sequences yet. Create one, or record a pad loop in the Sample tab.';
+      hint.textContent = 'No sequences yet. Create one to start recording notes.';
       this.appendChild(hint);
       return;
     }
 
-    const gridWrap = document.createElement('div');
-    gridWrap.className = 'seq-tracks';
-    this.appendChild(gridWrap);
-    this.renderGrid();
-  }
+    this.appendChild(this.buildBarIndicator(seq));
+    const roll = this.buildPianoRoll(seq);
+    this.appendChild(roll);
 
-  private addTrack(seq: Sequence, kind: 'audio' | 'midi'): void {
-    const track: SeqTrack = {
-      id: uid(),
-      name: kind === 'audio' ? 'Audio' : 'MIDI',
-      kind,
-      gain: 0.9,
-      ...(kind === 'audio' ? { source: {}, steps: [] } : { synth: 'synth' as SynthKind, notes: [] }),
-    };
-    store.update(() => seq.tracks.push(track));
-    this.selectTrack(track.id);
-    this.render();
-  }
-
-  private renderGrid(): void {
-    const wrap = this.querySelector('.seq-tracks');
-    const seq = this.seq();
-    if (!wrap || !seq) return;
-    wrap.innerHTML = '';
-    const totalSteps = seq.bars * STEPS_PER_BAR;
-
-    for (const track of seq.tracks) {
-      const row = document.createElement('div');
-      row.className = 'seq-track card' + (track.id === this.selectedTrackId ? ' selected' : '');
-
-      const head = document.createElement('div');
-      head.className = 'seq-track-head';
-      const title = document.createElement('span');
-      title.className = 'card-title';
-      title.textContent = `${track.name} (${track.kind})`;
-      title.onclick = (): void => {
-        this.selectTrack(track.id);
-        this.monitorSynth?.dispose();
-        this.monitorSynth = null;
-        this.renderGrid();
-      };
-      head.appendChild(title);
-
-      if (track.kind === 'audio') {
-        head.appendChild(this.sourceSelect(track));
-      } else {
-        head.appendChild(this.synthSelect(track));
-      }
-      head.appendChild(
-        knob({ label: 'Gain', min: 0, max: 1.2, step: 0.01, value: track.gain }, (v) => {
-          track.gain = v;
-          store.scheduleSave();
-        }),
-      );
-      const del = document.createElement('button');
-      del.textContent = '✕';
-      del.onclick = (): void => {
-        store.update(() => seq.tracks.splice(seq.tracks.indexOf(track), 1));
-        this.render();
-      };
-      head.appendChild(del);
-      row.appendChild(head);
-
-      if (track.kind === 'audio') {
-        row.appendChild(this.stepRow(track, totalSteps));
-      } else if (track.id === this.selectedTrackId) {
-        row.appendChild(this.pianoRoll(track, totalSteps));
-      } else {
-        row.appendChild(this.midiSummary(track, totalSteps));
-      }
-      wrap.appendChild(row);
+    if (savedTop !== undefined) {
+      roll.scrollTop = savedTop;
+      roll.scrollLeft = savedLeft ?? 0;
+    } else {
+      const notes = [...pianoNotes()].reverse();
+      const idx = notes.indexOf('C4');
+      roll.scrollTop = Math.max(0, idx * ROW_HEIGHT - roll.clientHeight / 2);
     }
-  }
-
-  private sourceSelect(track: SeqTrack): HTMLSelectElement {
-    const sel = document.createElement('select');
-    const none = document.createElement('option');
-    none.value = '';
-    none.textContent = '— source —';
-    sel.appendChild(none);
-    store.data.pads.forEach((pad, i) => {
-      if (!pad) return;
-      const opt = document.createElement('option');
-      opt.value = `pad:${i}`;
-      opt.textContent = `Pad ${i + 1}: ${pad.name}`;
-      opt.selected = track.source?.pad === i;
-      sel.appendChild(opt);
-    });
-    for (const patch of sortedByName(store.data.patches)) {
-      if (!patch.wavFile) continue;
-      const opt = document.createElement('option');
-      opt.value = `file:${patch.wavFile}`;
-      opt.textContent = `Tone: ${patch.name}`;
-      opt.selected = track.source?.file === patch.wavFile;
-      sel.appendChild(opt);
-    }
-    sel.onchange = (): void => {
-      const v = sel.value;
-      store.update(() => {
-        if (v.startsWith('pad:')) track.source = { pad: Number(v.slice(4)) };
-        else if (v.startsWith('file:')) track.source = { file: v.slice(5) };
-        else track.source = {};
-      });
-    };
-    return sel;
-  }
-
-  private synthSelect(track: SeqTrack): HTMLSelectElement {
-    const sel = document.createElement('select');
-    for (const [value, label] of [['synth', 'Synth'], ['fm', 'FM Synth'], ['am', 'AM Synth']] as const) {
-      const opt = document.createElement('option');
-      opt.value = value;
-      opt.textContent = label;
-      opt.selected = track.synth === value;
-      sel.appendChild(opt);
-    }
-    sel.onchange = (): void => {
-      store.update(() => (track.synth = sel.value as SynthKind));
-      this.monitorSynth?.dispose();
-      this.monitorSynth = null;
-    };
-    return sel;
-  }
-
-  private stepRow(track: SeqTrack, totalSteps: number): HTMLElement {
-    const grid = document.createElement('div');
-    grid.className = 'step-grid';
-    grid.style.gridTemplateColumns = `repeat(${totalSteps}, 1fr)`;
-    for (let s = 0; s < totalSteps; s++) {
-      const cell = document.createElement('div');
-      cell.className =
-        'step-cell' + ((track.steps ?? []).includes(s) ? ' on' : '') + (s % STEPS_PER_BAR === 0 ? ' bar-start' : '');
-      cell.onclick = (): void => {
-        store.update(() => {
-          track.steps = track.steps ?? [];
-          const idx = track.steps.indexOf(s);
-          if (idx >= 0) track.steps.splice(idx, 1);
-          else track.steps.push(s);
-        });
-        cell.classList.toggle('on');
-      };
-      grid.appendChild(cell);
-    }
-    return grid;
-  }
-
-  private pianoRoll(track: SeqTrack, totalSteps: number): HTMLElement {
-    const roll = document.createElement('div');
-    roll.className = 'piano-roll';
-    for (const note of PIANO_NOTES) {
-      const row = document.createElement('div');
-      row.className = 'roll-row';
-      const label = document.createElement('span');
-      label.className = 'roll-label' + (note.includes('#') ? ' black' : '');
-      label.textContent = note;
-      row.appendChild(label);
-      const grid = document.createElement('div');
-      grid.className = 'step-grid roll-grid';
-      grid.style.gridTemplateColumns = `repeat(${totalSteps}, 1fr)`;
-      for (let s = 0; s < totalSteps; s++) {
-        const cell = document.createElement('div');
-        const has = (track.notes ?? []).some((n) => n.note === note && n.step === s);
-        cell.className = 'step-cell' + (has ? ' on' : '') + (s % STEPS_PER_BAR === 0 ? ' bar-start' : '');
-        cell.onclick = (): void => {
-          store.update(() => {
-            track.notes = track.notes ?? [];
-            const idx = track.notes.findIndex((n) => n.note === note && n.step === s);
-            if (idx >= 0) track.notes.splice(idx, 1);
-            else track.notes.push({ step: s, note, duration: 1, velocity: 0.8 });
-          });
-          cell.classList.toggle('on');
-        };
-        grid.appendChild(cell);
-      }
-      row.appendChild(grid);
-      roll.appendChild(row);
-    }
-    return roll;
-  }
-
-  private midiSummary(track: SeqTrack, totalSteps: number): HTMLElement {
-    const grid = document.createElement('div');
-    grid.className = 'step-grid';
-    grid.style.gridTemplateColumns = `repeat(${totalSteps}, 1fr)`;
-    const stepsWithNotes = new Set((track.notes ?? []).map((n) => n.step));
-    for (let s = 0; s < totalSteps; s++) {
-      const cell = document.createElement('div');
-      cell.className =
-        'step-cell' + (stepsWithNotes.has(s) ? ' on midi' : '') + (s % STEPS_PER_BAR === 0 ? ' bar-start' : '');
-      grid.appendChild(cell);
-    }
-    grid.title = 'Click track name to open piano roll';
-    return grid;
-  }
-
-  private flash(msg: string): void {
-    const el = document.createElement('div');
-    el.className = 'flash';
-    el.textContent = msg;
-    this.appendChild(el);
-    setTimeout(() => el.remove(), 2500);
   }
 }
 
