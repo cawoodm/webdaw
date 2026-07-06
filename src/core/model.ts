@@ -36,6 +36,20 @@ export interface LfoConfig {
   on?: boolean;  // undefined = enabled (older projects)
 }
 
+export interface PitchEnv {
+  /** Semitones the pitch STARTS above base; 0 = off. */
+  amount: number;
+  /** Seconds to glide down to base. */
+  time: number;
+}
+
+export interface FilterEnv {
+  /** Cutoff starts at lpf * amount; 1 = off. */
+  amount: number;
+  /** Seconds to glide down to the resting cutoff. */
+  time: number;
+}
+
 export interface TonePatch {
   id: string;
   name: string;
@@ -45,7 +59,13 @@ export interface TonePatch {
   lfo?: { rate: number; depth: number; target: 'off' | 'pitch' | 'volume'; on?: boolean };
   lfoPitch?: LfoConfig;  // vibrato: +/- depth semitones on every oscillator
   lfoVolume?: LfoConfig; // tremolo: mix gain between 1-depth and 1
+  /** Pitch envelope: a percussive downward glide on top of the played note. */
+  pitchEnv?: PitchEnv;
+  /** Filter envelope: the low-pass cutoff glides down toward its resting value. */
+  filterEnv?: FilterEnv;
   filter?: PatchFilter; // optional: older projects predate it
+  /** Distortion amount, 0..1; 0 = off. */
+  drive?: number;
   /** @deprecated superseded by per-layer freq; kept as a fallback for old projects */
   sampleFreq?: number;
   sampleSeconds?: number; // total length of the rendered sample
@@ -60,6 +80,14 @@ export function defaultFilter(): PatchFilter {
 
 export function defaultLfo(): LfoConfig {
   return { rate: 4, depth: 0 };
+}
+
+export function defaultPitchEnv(): PitchEnv {
+  return { amount: 0, time: 0.05 };
+}
+
+export function defaultFilterEnv(): FilterEnv {
+  return { amount: 1, time: 0.1 };
 }
 
 /**
@@ -217,7 +245,10 @@ export function defaultPatch(): TonePatch {
     env: { attack: 0.01, decay: 0.2, sustain: 0.6, release: 0.4 },
     lfoPitch: defaultLfo(),
     lfoVolume: defaultLfo(),
+    pitchEnv: defaultPitchEnv(),
+    filterEnv: defaultFilterEnv(),
     filter: defaultFilter(),
+    drive: 0,
   };
 }
 

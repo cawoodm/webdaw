@@ -1,10 +1,12 @@
 import * as Tone from '../../core/tone';
 import { engine } from '../../core/audio-engine';
 import { bus } from '../../core/event-bus';
-import type { FilterSlope, LfoConfig, PatchFilter, TonePatch } from '../../core/model';
+import type { FilterEnv, FilterSlope, LfoConfig, PatchFilter, PitchEnv, TonePatch } from '../../core/model';
 import {
   defaultFilter,
+  defaultFilterEnv,
   defaultPatch,
+  defaultPitchEnv,
   resolveLfos,
   pianoNotes,
   SAMPLE_FREQ_DEFAULT,
@@ -377,6 +379,18 @@ export class ToneTab extends HTMLElement {
     return patch.filter;
   }
 
+  /** Pitch envelope, materialized for patches predating the field. */
+  private pitchEnv(patch: TonePatch): PitchEnv {
+    if (!patch.pitchEnv) patch.pitchEnv = defaultPitchEnv();
+    return patch.pitchEnv;
+  }
+
+  /** Filter envelope, materialized for patches predating the field. */
+  private filterEnv(patch: TonePatch): FilterEnv {
+    if (!patch.filterEnv) patch.filterEnv = defaultFilterEnv();
+    return patch.filterEnv;
+  }
+
   /** Pitch + volume LFOs, materialized so knobs mutate the persisted objects. */
   private lfos(patch: TonePatch): { pitch: LfoConfig; volume: LfoConfig } {
     const resolved = resolveLfos(patch);
@@ -702,6 +716,25 @@ export class ToneTab extends HTMLElement {
     }
     envCard.appendChild(envKnobs);
 
+    // --- pitch envelope: a percussive downward glide on top of the played note ---
+    const pitchEnvCard = document.createElement('div');
+    pitchEnvCard.className = 'card';
+    pitchEnvCard.innerHTML = '<div class="card-head"><span class="card-title">Pitch Env</span></div>';
+    const pitchEnvKnobs = document.createElement('div');
+    pitchEnvKnobs.className = 'knob-row';
+    const pitchEnv = this.pitchEnv(patch);
+    pitchEnvKnobs.append(
+      knob({ label: 'Amount', min: 0, max: 48, step: 1, value: pitchEnv.amount, unit: 'st' }, (v) => {
+        pitchEnv.amount = v;
+        this.save();
+      }),
+      knob({ label: 'Time', min: 0.005, max: 0.5, step: 0.005, value: pitchEnv.time, log: true, unit: 's' }, (v) => {
+        pitchEnv.time = v;
+        this.save();
+      }),
+    );
+    pitchEnvCard.appendChild(pitchEnvKnobs);
+
     // small enable/disable checkbox for a card section (LFO, HPF, LPF)
     const onToggle = (title: string, isOn: boolean, apply: (on: boolean) => void): HTMLLabelElement => {
       const l = document.createElement('label');
@@ -793,7 +826,31 @@ export class ToneTab extends HTMLElement {
         },
       ),
     );
+    const filterEnv = this.filterEnv(patch);
+    filterKnobs.append(
+      knob({ label: 'F.Env Amt', min: 1, max: 16, step: 0.1, value: filterEnv.amount, log: true, unit: 'x' }, (v) => {
+        filterEnv.amount = v;
+        this.save();
+      }),
+      knob({ label: 'F.Env Time', min: 0.005, max: 0.5, step: 0.005, value: filterEnv.time, log: true, unit: 's' }, (v) => {
+        filterEnv.time = v;
+        this.save();
+      }),
+    );
     filterCard.appendChild(filterKnobs);
+
+    const driveCard = document.createElement('div');
+    driveCard.className = 'card';
+    driveCard.innerHTML = '<div class="card-head"><span class="card-title">Drive</span></div>';
+    const driveKnobs = document.createElement('div');
+    driveKnobs.className = 'knob-row';
+    driveKnobs.append(
+      knob({ label: 'Drive', min: 0, max: 1, step: 0.01, value: patch.drive ?? 0 }, (v) => {
+        patch.drive = v;
+        this.save();
+      }),
+    );
+    driveCard.appendChild(driveKnobs);
 
     const sampleCard = document.createElement('div');
     sampleCard.className = 'card';
@@ -824,7 +881,7 @@ export class ToneTab extends HTMLElement {
       ),
     );
     sampleCard.appendChild(sampleKnobs);
-    row.append(envCard, lfoPitchCard, lfoVolCard, filterCard, sampleCard);
+    row.append(envCard, pitchEnvCard, lfoPitchCard, lfoVolCard, filterCard, driveCard, sampleCard);
     this.insertBefore(row, layers);
 
     // --- actions ---

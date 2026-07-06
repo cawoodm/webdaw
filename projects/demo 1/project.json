@@ -15,14 +15,14 @@
         },
         {
           "type": "triangle",
-          "gain": 0.15,
+          "gain": 0.05,
           "detune": 1200,
           "phase": 0
         }
       ],
       "env": {
         "attack": 0.001,
-        "decay": 0.45,
+        "decay": 0.2,
         "sustain": 0,
         "release": 0.08
       },
@@ -31,9 +31,13 @@
         "depth": 0,
         "target": "off"
       },
+      "pitchEnv": {
+        "amount": 24,
+        "time": 0.045
+      },
       "filter": {
         "hpf": 20,
-        "lpf": 1500
+        "lpf": 400
       },
       "sampleFreq": 50,
       "sampleSeconds": 0.8
