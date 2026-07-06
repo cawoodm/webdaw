@@ -3,12 +3,12 @@
 Mark in progress 🕜 and then move to done ✅ when complete and merge branch into main
 Once a task is done, show the user the dev URL, confirm with the user they are happy before marking done
 
-- feat: Allow drag and drop of sample pads to swap (dest is occupied) or move (if dest empty) 🕜
-- feat: Add a BPF (band pass filter) in yellow
-- feat: Add a solo button next to mute for tone layers so they play on their own
+- feat: Allow drag and drop of sample pads to swap (dest is occupied) or move (if dest empty)
+- feat: Add a solo button next to mute for tone layers so they play on their own 🕜
 
 # DONE
 
+- feat: Add a BPF (band pass filter) in yellow ✅ (opt-in checkbox, center-freq knob, slope applies)
 - feat: Add an option to increase slope of LPF/HPF ✅ (12/24/48 dB per octave)
 - feat: In "tone" when asdfghjkl are pressed play the current sample shifted by a half tone up per letter ✅ (physical key rows: q–p below, home row +0…+8, bottom row +9 and up)
 - feat: Change "Root Folder" button to just a Folder icon ✅

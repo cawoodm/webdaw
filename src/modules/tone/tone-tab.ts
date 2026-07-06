@@ -28,6 +28,7 @@ import {
   drawScope,
   drawSpectrumStatic,
   drawWaveformStatic,
+  BPF_TRACE,
   ENV_TRACE,
   HPF_TRACE,
   LFO_PITCH_TRACE,
@@ -670,7 +671,7 @@ export class ToneTab extends HTMLElement {
 
     const filterCard = document.createElement('div');
     filterCard.className = 'card';
-    filterCard.innerHTML = `<div class="card-head">${legendDot(HPF_TRACE)}${legendDot(LPF_TRACE)}<span class="card-title">Filter</span></div>`;
+    filterCard.innerHTML = `<div class="card-head">${legendDot(HPF_TRACE)}${legendDot(BPF_TRACE)}${legendDot(LPF_TRACE)}<span class="card-title">Filter</span></div>`;
     const filterKnobs = document.createElement('div');
     filterKnobs.className = 'knob-row';
     const filter = this.filter(patch);
@@ -689,6 +690,7 @@ export class ToneTab extends HTMLElement {
     };
     filterCard.querySelector('.card-head')!.append(
       onToggle('Enable/disable the high-pass filter', filter.hpfOn !== false, (on) => (filter.hpfOn = on)),
+      onToggle('Enable/disable the band-pass filter', filter.bpfOn === true, (on) => (filter.bpfOn = on)),
       onToggle('Enable/disable the low-pass filter', filter.lpfOn !== false, (on) => (filter.lpfOn = on)),
       slopeSel,
     );
@@ -697,6 +699,13 @@ export class ToneTab extends HTMLElement {
         { label: 'HPF', min: 20, max: 10000, step: 1, value: filter.hpf, log: true, unit: 'Hz', color: HPF_TRACE },
         (v) => {
           filter.hpf = v;
+          this.save();
+        },
+      ),
+      knob(
+        { label: 'BPF', min: 50, max: 15000, step: 1, value: filter.bpf ?? 1000, log: true, unit: 'Hz', color: BPF_TRACE },
+        (v) => {
+          filter.bpf = v;
           this.save();
         },
       ),

@@ -16,6 +16,7 @@ export class PatchVoice {
   private env: Tone.AmplitudeEnvelope;
   private mix: Tone.Gain;
   private hpFilter: Tone.Filter | null = null;
+  private bpFilter: Tone.Filter | null = null;
   private lpFilter: Tone.Filter | null = null;
   private oscs: Tone.Oscillator[] = [];
   /** Per-oscillator base frequency (the layer's pitch at C4). */
@@ -35,6 +36,11 @@ export class PatchVoice {
     if (filter.lpfOn !== false) {
       this.lpFilter = new Tone.Filter(filter.lpf, 'lowpass', slope).connect(next);
       next = this.lpFilter;
+    }
+    if (filter.bpfOn === true) {
+      // opt-in, unlike hpf/lpf: absent flag means no band-pass
+      this.bpFilter = new Tone.Filter(filter.bpf ?? 1000, 'bandpass', slope).connect(next);
+      next = this.bpFilter;
     }
     if (filter.hpfOn !== false) {
       this.hpFilter = new Tone.Filter(filter.hpf, 'highpass', slope).connect(next);
@@ -113,6 +119,7 @@ export class PatchVoice {
   dispose(): void {
     for (const n of [...this.oscs, ...this.noises, ...this.gains, this.mix, this.env]) n.dispose();
     this.hpFilter?.dispose();
+    this.bpFilter?.dispose();
     this.lpFilter?.dispose();
     this.lfoPitch?.dispose();
     this.lfoVolume?.dispose();

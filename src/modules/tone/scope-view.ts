@@ -169,6 +169,7 @@ export function drawFft(canvas: HTMLCanvasElement, analyser: Tone.Analyser, isAc
 
 export const HPF_TRACE = '#4da6ff';
 export const LPF_TRACE = '#ff5c5c';
+export const BPF_TRACE = '#ffd24d';
 
 /**
  * HPF (blue) and LPF (red) response curves over an already-drawn static
@@ -177,7 +178,7 @@ export const LPF_TRACE = '#ff5c5c';
  */
 export function drawFilterOverlay(
   canvas: HTMLCanvasElement,
-  filter: { hpf: number; lpf: number; hpfOn?: boolean; lpfOn?: boolean; slope?: number },
+  filter: { hpf: number; lpf: number; hpfOn?: boolean; lpfOn?: boolean; bpf?: number; bpfOn?: boolean; slope?: number },
 ): void {
   const slope = filter.slope ?? -12;
   const ctx = canvas.getContext('2d')!;
@@ -201,6 +202,10 @@ export function drawFilterOverlay(
   };
   if (filter.hpfOn !== false) curve(HPF_TRACE, (f) => (f < filter.hpf ? slope * Math.log2(filter.hpf / f) : 0));
   if (filter.lpfOn !== false) curve(LPF_TRACE, (f) => (f > filter.lpf ? slope * Math.log2(f / filter.lpf) : 0));
+  if (filter.bpfOn === true) {
+    const center = filter.bpf ?? 1000;
+    curve(BPF_TRACE, (f) => slope * Math.abs(Math.log2(f / center)));
+  }
 }
 
 export const ENV_TRACE = '#f6ad55';
