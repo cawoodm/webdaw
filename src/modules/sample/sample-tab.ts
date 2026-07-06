@@ -18,6 +18,7 @@ export class SampleTab extends HTMLElement {
   private transportEvents: number[] = [];
   private metroForced = false;
   private lastIndicatorBar = -2;
+  private lastPlayState = false;
 
   connectedCallback(): void {
     this.className = 'tab-panel sample-tab';
@@ -28,6 +29,7 @@ export class SampleTab extends HTMLElement {
     window.addEventListener('keydown', this.onKeyDown);
     const indicatorTick = (): void => {
       this.updateBarIndicator();
+      this.syncPlayToggle();
       requestAnimationFrame(indicatorTick);
     };
     requestAnimationFrame(indicatorTick);
@@ -262,6 +264,42 @@ export class SampleTab extends HTMLElement {
     });
   }
 
+  /** One button toggling loop playback: green Play when stopped, red Stop while playing. */
+  private buildPlayToggle(): HTMLButtonElement {
+    const button = document.createElement('button');
+    button.className = 'play-toggle';
+    button.onclick = async (): Promise<void> => {
+      if (engine.started && engine.playing) {
+        this.recording = false;
+        this.stopLoop();
+        this.render();
+      } else {
+        await engine.ensureStarted();
+        await this.startLoop(true);
+      }
+    };
+    this.paintPlayToggle(button, engine.started && engine.playing);
+    return button;
+  }
+
+  private paintPlayToggle(button: HTMLButtonElement, playing: boolean): void {
+    button.classList.toggle('playing', playing);
+    button.title = playing ? 'Stop the loop' : 'Play the loop';
+    button.innerHTML = playing
+      ? '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="1"/></svg> Stop'
+      : '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg> Play';
+  }
+
+  /** Keep the play toggle in sync with the transport (rAF-driven). */
+  private syncPlayToggle(): void {
+    const button = this.querySelector<HTMLButtonElement>('.play-toggle');
+    if (!button) return;
+    const playing = engine.started && engine.playing;
+    if (playing === this.lastPlayState) return;
+    this.lastPlayState = playing;
+    this.paintPlayToggle(button, playing);
+  }
+
   /** Grid of recorded hits: one row per pad with data, colored by pad color. */
   private buildEventGrid(): HTMLElement {
     const bars = store.data.padLoopBars;
@@ -428,11 +466,7 @@ export class SampleTab extends HTMLElement {
         updateUi((s) => (s.sample.overdub = v)),
       ),
       btn(this.recording ? '⏺ Stop rec' : '⏺ Record', () => void this.toggleRecord(), this.recording ? 'recording' : ''),
-      btn('▶ Play loop', async () => {
-        await engine.ensureStarted();
-        await this.startLoop(true);
-      }),
-      btn('⏹ Stop', () => this.stopLoop()),
+      this.buildPlayToggle(),
       btn('Clear events', () => {
         store.update((d) => (d.padEvents = []));
         this.updateStatus();
