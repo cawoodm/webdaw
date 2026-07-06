@@ -3,12 +3,11 @@
 - Synch with main
 - Read an unmarked TODO from the list below, don't take a task marked 🕜
 - Mark and move it to in-progress 🕜 and begin implementing (add name of branch you are on e.g. todos)
-- Once a task is done, show the user the full dev URL link (with http://), confirm with the user they are happy
+- Once a task is done, show the user the full dev URL link (with http://), confirm with the user they are happy explaining what was done and how to test it
 - Mark done ✅ and synch back to main
 
 # TODOs
 
-- feat: Sort names of patches and loops in their dropdowns by name
 - feat: When dragging a sample pad (mousedown) don't play it
 - feat: Add master volume knob to top
 - feat: Drag and drop has a nice overlay in tone but not in sample, add it. Also allow dragging to the tab name.
@@ -17,9 +16,11 @@
 
 - feat: BPF should have 0hz as minimum, it should also be able to boost not just attenuate 🕜 (todos2)
 - feat: Show quantize gridlines and bar numbers above sample grid 🕜 (todos2)
-- feat: Be consistent with play/stop/record buttons in the top left of each tab (only icons), global play/stop button (next to metronome, icons only) should play stop everything. In general, spacebar is play/stop. 🕜 (todos2 — implemented & merged to main; NB: was double-claimed by todos at 16:30)
+- feat: Sort names of patches and loops in their dropdowns by name 🕜 (todos)
 
 # DONE
+
+- feat: Be consistent with play/stop/record buttons in the top left of each tab (only icons), global play/stop button (next to metronome, icons only) should play stop everything. In general, spacebar is play/stop. ✅ (both sessions implemented it; todos variant merged — sample tab has a single play/stop toggle + record above the grid)
 
 - feat: Allow drag and drop of sample pads to swap (dest is occupied) or move (if dest empty) ✅
 - feat: Add a duplicate button (copy icon) to samples, make new, rename and delete just icons ✅
