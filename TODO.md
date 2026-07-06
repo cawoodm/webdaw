@@ -5,11 +5,11 @@ Once a task is done, show the user the dev URL, confirm with the user they are h
 
 - feat: Allow drag and drop of sample pads to swap (dest is occupied) or move (if dest empty)
 - feat: Show quantize gridlines and bar numbers above sample grid
-- feat: When dragging in a new patch with same name, prompt to overwrite or rename 🕜
-- feat: Add a duplicate button (copy icon) to samples, make new, rename and delete just icons
+- feat: Add a duplicate button (copy icon) to samples, make new, rename and delete just icons 🕜
 
 # DONE
 
+- feat: When dragging in a new patch with same name, prompt to overwrite or rename ✅ (overwrite keeps the patch id, so pad links survive)
 - feat: Move envelope (etc) controls to above the layers ✅
 - feat: Add a solo button next to mute for tone layers so they play on their own ✅
 - feat: Add a BPF (band pass filter) in yellow ✅ (opt-in checkbox, center-freq knob, slope applies)

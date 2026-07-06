@@ -179,7 +179,23 @@ export class ToneTab extends HTMLElement {
       const base = defaultPatch();
       const patch: TonePatch = { ...base, ...parsed, id: uid() };
       delete patch.wavFile; // file refs never survive an import
-      patch.name = this.uniquePatchName(parsed.name?.trim() || file.name.replace(/\.json$/i, ''));
+      const wanted = parsed.name?.trim() || file.name.replace(/\.json$/i, '');
+      const existing = store.data.patches.find((p) => p.name.toLowerCase() === wanted.toLowerCase());
+      if (existing) {
+        const overwrite = confirm(`A patch named "${wanted}" already exists.\n\nOK = overwrite it, Cancel = keep both`);
+        if (overwrite) {
+          // keep the existing id so pad links stay intact
+          store.update(() => Object.assign(existing, patch, { id: existing.id, name: existing.name }));
+          lastId = existing.id;
+          imported++;
+          continue;
+        }
+        const rename = prompt('Name for the imported patch', this.uniquePatchName(wanted));
+        if (rename === null) continue; // skip this file
+        patch.name = this.uniquePatchName(rename.trim() || wanted);
+      } else {
+        patch.name = wanted;
+      }
       store.update((d) => d.patches.push(patch));
       lastId = patch.id;
       imported++;
