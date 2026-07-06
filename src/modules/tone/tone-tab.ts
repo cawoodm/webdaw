@@ -91,6 +91,17 @@ export class ToneTab extends HTMLElement {
     bus.on('midi:noteoff', ({ note }) => {
       if (this.active) this.noteOff(note);
     });
+    // hotkey "1": play the sample preview (tone tab only)
+    window.addEventListener('keydown', (e) => {
+      if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+      if (!this.classList.contains('active-tab')) return;
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
+      if (e.code === 'Digit1' || e.code === 'Numpad1') {
+        e.preventDefault();
+        void this.playPreview();
+      }
+    });
     // drag a .json patch (Export WAV's settings sidecar) here to import it
     this.addEventListener('dragover', (e) => {
       if (!e.dataTransfer?.types.includes('Files')) return;
@@ -322,7 +333,7 @@ export class ToneTab extends HTMLElement {
     loopBtn.classList.toggle('active', this.looping);
     transport.append(
       iconBtn(
-        'Play preview (C4)',
+        'Play the sample (hotkey: 1)',
         `<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>`,
         () => void this.playPreview(),
       ),
