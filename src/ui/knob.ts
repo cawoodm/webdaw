@@ -48,6 +48,10 @@ export class DawKnob extends HTMLElement {
   }
 
   private onDown = (e: PointerEvent): void => {
+    if ((e.target as HTMLElement).closest?.('.knob-value')) {
+      this.promptValue();
+      return;
+    }
     this.dragging = true;
     this.startY = e.clientY;
     this.startValue = this.norm();
@@ -55,6 +59,16 @@ export class DawKnob extends HTMLElement {
     this.addEventListener('pointermove', this.onMove);
     this.addEventListener('pointerup', this.onUp);
   };
+
+  /** Click on the number: type an exact value (clamped and step-snapped). */
+  private promptValue(): void {
+    const raw = prompt(`${this.getAttribute('label') ?? 'Value'} (${this.min}–${this.max})`, String(this.value));
+    if (raw === null) return;
+    const num = Number(raw.replace(',', '.'));
+    if (!Number.isFinite(num)) return;
+    this.value = num;
+    this.dispatchEvent(new CustomEvent('input', { detail: this.value }));
+  }
 
   private onMove = (e: PointerEvent): void => {
     if (!this.dragging) return;

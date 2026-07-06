@@ -8,6 +8,8 @@ export interface ToneLayer {
   detune: number;  // cents
   phase: number;   // degrees
   muted?: boolean;
+  /** Base frequency in Hz — what the layer plays at C4 (default C4 itself). */
+  freq?: number;
   /** White-noise layers persist their PRNG seed so the signal is reproducible. */
   noiseSeed?: number;
 }
@@ -24,8 +26,9 @@ export interface TonePatch {
   env: { attack: number; decay: number; sustain: number; release: number };
   lfo: { rate: number; depth: number; target: 'off' | 'pitch' | 'volume' };
   filter?: PatchFilter; // optional: older projects predate it
-  sampleFreq?: number;    // Hz — render/preview pitch (default C4)
-  sampleSeconds?: number; // held-note length of the rendered sample
+  /** @deprecated superseded by per-layer freq; kept as a fallback for old projects */
+  sampleFreq?: number;
+  sampleSeconds?: number; // total length of the rendered sample
   wavFile?: string;
 }
 
@@ -144,7 +147,7 @@ export function defaultPatch(): TonePatch {
   return {
     id: uid(),
     name: 'Patch 1',
-    layers: [{ type: 'sine', gain: 0.8, detune: 0, phase: 0 }],
+    layers: [{ type: 'sine', gain: 0.8, detune: 0, phase: 0, freq: SAMPLE_FREQ_DEFAULT }],
     env: { attack: 0.01, decay: 0.2, sustain: 0.6, release: 0.4 },
     lfo: { rate: 4, depth: 0, target: 'off' },
     filter: defaultFilter(),
