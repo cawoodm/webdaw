@@ -805,9 +805,16 @@ export class ToneTab extends HTMLElement {
         },
       ),
       knob(
-        { label: 'BPF', min: 50, max: 15000, step: 1, value: filter.bpf ?? 1000, log: true, unit: 'Hz', color: BPF_TRACE },
+        { label: 'BPF', min: 0, max: 15000, step: 1, value: filter.bpf ?? 1000, log: true, unit: 'Hz', color: BPF_TRACE },
         (v) => {
           filter.bpf = v;
+          this.save();
+        },
+      ),
+      knob(
+        { label: 'B.Gain', min: -24, max: 24, step: 0.5, value: filter.bpfGain ?? 12, unit: 'dB', color: BPF_TRACE },
+        (v) => {
+          filter.bpfGain = v;
           this.save();
         },
       ),

@@ -43,8 +43,9 @@ export class PatchVoice {
       next = this.lpFilter;
     }
     if (filter.bpfOn === true) {
-      // opt-in, unlike hpf/lpf: absent flag means no band-pass
-      this.bpFilter = new Tone.Filter(filter.bpf ?? 1000, 'bandpass', slope).connect(next);
+      // opt-in bell: boosts or cuts around the center instead of a hard band-pass.
+      // no rolloff/slope here — cascaded peaking stages would multiply the dB gain
+      this.bpFilter = new Tone.Filter({ frequency: filter.bpf ?? 1000, type: 'peaking', gain: filter.bpfGain ?? 12 }).connect(next);
       next = this.bpFilter;
     }
     if (filter.hpfOn !== false) {

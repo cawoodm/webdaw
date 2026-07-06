@@ -26,6 +26,8 @@ export interface PatchFilter {
   /** Band-pass center Hz; unlike hpf/lpf it is OFF unless bpfOn is true. */
   bpf?: number;
   bpfOn?: boolean;
+  /** Peaking-bell gain in dB (+boost / −cut); legacy patches without it get +12. */
+  bpfGain?: number;
   /** Rolloff steepness in dB/octave for all filters (default -12). */
   slope?: FilterSlope;
 }

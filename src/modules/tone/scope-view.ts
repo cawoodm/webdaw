@@ -178,15 +178,28 @@ export const BPF_TRACE = '#ffd24d';
  */
 export function drawFilterOverlay(
   canvas: HTMLCanvasElement,
-  filter: { hpf: number; lpf: number; hpfOn?: boolean; lpfOn?: boolean; bpf?: number; bpfOn?: boolean; slope?: number },
+  filter: {
+    hpf: number;
+    lpf: number;
+    hpfOn?: boolean;
+    lpfOn?: boolean;
+    bpf?: number;
+    bpfOn?: boolean;
+    bpfGain?: number;
+    slope?: number;
+  },
 ): void {
   const slope = filter.slope ?? -12;
   const ctx = canvas.getContext('2d')!;
   const w = canvas.width;
   const h = canvas.height;
   const freqAt = (px: number): number => FMIN * Math.pow(FMAX / FMIN, px / w);
+  // the static spectrum's axis tops out at MAX_DB (0), but a boost bell can
+  // draw above 0 dB; extend the top of the range just for this overlay so
+  // positive gain stays visible instead of clipping flat at the top edge
+  const overlayMaxDb = filter.bpfOn === true ? Math.max(MAX_DB, filter.bpfGain ?? 12) : MAX_DB;
   const yAt = (db: number): number => {
-    const norm = (db - MIN_DB) / (MAX_DB - MIN_DB);
+    const norm = (db - MIN_DB) / (overlayMaxDb - MIN_DB);
     return h - Math.max(0, Math.min(1, norm)) * h;
   };
   const curve = (color: string, dbAt: (f: number) => number): void => {
@@ -203,8 +216,9 @@ export function drawFilterOverlay(
   if (filter.hpfOn !== false) curve(HPF_TRACE, (f) => (f < filter.hpf ? slope * Math.log2(filter.hpf / f) : 0));
   if (filter.lpfOn !== false) curve(LPF_TRACE, (f) => (f > filter.lpf ? slope * Math.log2(f / filter.lpf) : 0));
   if (filter.bpfOn === true) {
-    const center = filter.bpf ?? 1000;
-    curve(BPF_TRACE, (f) => slope * Math.abs(Math.log2(f / center)));
+    const center = Math.max(filter.bpf ?? 1000, 1);
+    const gain = filter.bpfGain ?? 12;
+    curve(BPF_TRACE, (f) => gain * Math.exp(-(Math.log2(f / center) ** 2) / 1.0));
   }
 }
 
