@@ -2,14 +2,14 @@ import * as Tone from './tone';
 import { engine } from './audio-engine';
 import { seededNoise } from './dsp';
 import type { TonePatch } from './model';
-import { defaultFilter, SAMPLE_FREQ_DEFAULT, SAMPLE_NOTE_DEFAULT, SAMPLE_SECONDS_DEFAULT, sampleHold } from './model';
+import { defaultFilter, resolveLfos, SAMPLE_FREQ_DEFAULT, SAMPLE_NOTE_DEFAULT, SAMPLE_SECONDS_DEFAULT, sampleHold } from './model';
 
 const NOISE_LOOP_SECONDS = 2;
 
 /**
  * One playable voice of a Tone-tab patch: oscillator layers -> layer gains
- * -> mix -> HPF -> LPF -> amplitude envelope, with optional LFO on pitch
- * or volume. Built against the active Tone context, so it also works
+ * -> mix -> HPF -> LPF -> amplitude envelope, with independent pitch and
+ * volume LFOs. Built against the active Tone context, so it also works
  * inside Tone.Offline.
  */
 export class PatchVoice {
@@ -22,7 +22,8 @@ export class PatchVoice {
   private baseFreqs: number[] = [];
   private noises: Tone.ToneBufferSource[] = [];
   private gains: Tone.Gain[] = [];
-  private lfo: Tone.LFO | null = null;
+  private lfoPitch: Tone.LFO | null = null;
+  private lfoVolume: Tone.LFO | null = null;
   private releaseSeconds: number;
 
   constructor(patch: TonePatch, destination: Tone.ToneAudioNode) {
@@ -60,17 +61,16 @@ export class PatchVoice {
         this.baseFreqs.push(layer.freq ?? patch.sampleFreq ?? SAMPLE_FREQ_DEFAULT);
       }
     }
-    const { target, rate, depth } = patch.lfo;
-    if (target !== 'off' && depth > 0 && patch.lfo.on !== false) {
-      if (target === 'pitch') {
-        // sums with each oscillator's detune param (+/- depth semitones)
-        this.lfo = new Tone.LFO(rate, -depth * 100, depth * 100);
-        for (const osc of this.oscs) this.lfo.connect(osc.detune);
-      } else {
-        this.mix.gain.value = 0;
-        this.lfo = new Tone.LFO(rate, 1 - depth, 1);
-        this.lfo.connect(this.mix.gain);
-      }
+    const { pitch, volume } = resolveLfos(patch);
+    if (pitch.on !== false && pitch.depth > 0) {
+      // sums with each oscillator's detune param (+/- depth semitones)
+      this.lfoPitch = new Tone.LFO(pitch.rate, -pitch.depth * 100, pitch.depth * 100);
+      for (const osc of this.oscs) this.lfoPitch.connect(osc.detune);
+    }
+    if (volume.on !== false && volume.depth > 0) {
+      this.mix.gain.value = 0;
+      this.lfoVolume = new Tone.LFO(volume.rate, 1 - volume.depth, 1);
+      this.lfoVolume.connect(this.mix.gain);
     }
   }
 
@@ -88,7 +88,8 @@ export class PatchVoice {
       osc.start(t);
     });
     for (const noise of this.noises) noise.start(t);
-    this.lfo?.start(t);
+    this.lfoPitch?.start(t);
+    this.lfoVolume?.start(t);
     this.env.triggerAttack(t, velocity);
   }
 
@@ -98,7 +99,8 @@ export class PatchVoice {
     const stopAt = t + this.releaseSeconds + 0.05;
     for (const osc of this.oscs) osc.stop(stopAt);
     for (const noise of this.noises) noise.stop(stopAt);
-    this.lfo?.stop(stopAt);
+    this.lfoPitch?.stop(stopAt);
+    this.lfoVolume?.stop(stopAt);
   }
 
   triggerAttackRelease(note: string | number, duration: number, time?: number, velocity = 1): void {
@@ -111,7 +113,8 @@ export class PatchVoice {
     for (const n of [...this.oscs, ...this.noises, ...this.gains, this.mix, this.env]) n.dispose();
     this.hpFilter?.dispose();
     this.lpFilter?.dispose();
-    this.lfo?.dispose();
+    this.lfoPitch?.dispose();
+    this.lfoVolume?.dispose();
   }
 }
 

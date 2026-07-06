@@ -21,12 +21,21 @@ export interface PatchFilter {
   lpfOn?: boolean;
 }
 
+export interface LfoConfig {
+  rate: number;  // Hz
+  depth: number; // 0..1; 0 = inactive
+  on?: boolean;  // undefined = enabled (older projects)
+}
+
 export interface TonePatch {
   id: string;
   name: string;
   layers: ToneLayer[];
   env: { attack: number; decay: number; sustain: number; release: number };
-  lfo: { rate: number; depth: number; target: 'off' | 'pitch' | 'volume'; on?: boolean };
+  /** @deprecated single LFO with a target selector; split into lfoPitch/lfoVolume */
+  lfo?: { rate: number; depth: number; target: 'off' | 'pitch' | 'volume'; on?: boolean };
+  lfoPitch?: LfoConfig;  // vibrato: +/- depth semitones on every oscillator
+  lfoVolume?: LfoConfig; // tremolo: mix gain between 1-depth and 1
   filter?: PatchFilter; // optional: older projects predate it
   /** @deprecated superseded by per-layer freq; kept as a fallback for old projects */
   sampleFreq?: number;
@@ -38,6 +47,24 @@ export interface TonePatch {
 
 export function defaultFilter(): PatchFilter {
   return { hpf: 20, lpf: 20000 };
+}
+
+export function defaultLfo(): LfoConfig {
+  return { rate: 4, depth: 0 };
+}
+
+/**
+ * The patch's pitch + volume LFOs, resolving the legacy single-LFO shape
+ * (its target routed it to one of the two slots) at read time.
+ */
+export function resolveLfos(patch: TonePatch): { pitch: LfoConfig; volume: LfoConfig } {
+  const legacy = patch.lfo;
+  const fromLegacy = (target: 'pitch' | 'volume'): LfoConfig | null =>
+    legacy && legacy.target === target ? { rate: legacy.rate, depth: legacy.depth, on: legacy.on } : null;
+  return {
+    pitch: patch.lfoPitch ?? fromLegacy('pitch') ?? defaultLfo(),
+    volume: patch.lfoVolume ?? fromLegacy('volume') ?? defaultLfo(),
+  };
 }
 
 /** Fallbacks for patches predating sampleFreq/sampleSeconds. */
@@ -167,7 +194,8 @@ export function defaultPatch(): TonePatch {
     name: 'Patch 1',
     layers: [{ type: 'sine', gain: 0.8, detune: 0, phase: 0, freq: SAMPLE_FREQ_DEFAULT }],
     env: { attack: 0.01, decay: 0.2, sustain: 0.6, release: 0.4 },
-    lfo: { rate: 4, depth: 0, target: 'off' },
+    lfoPitch: defaultLfo(),
+    lfoVolume: defaultLfo(),
     filter: defaultFilter(),
   };
 }

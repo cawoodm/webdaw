@@ -6,7 +6,8 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "deploy:demos": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/deploy-demos.ps1"
   },
   "dependencies": {
     "tone": "^15.0.4"

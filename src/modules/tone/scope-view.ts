@@ -204,29 +204,31 @@ export function drawFilterOverlay(
 
 export const ENV_TRACE = '#f6ad55';
 export const LFO_TRACE = '#ff4fd8';
+export const LFO_PITCH_TRACE = '#4fd8ff';
 
 /**
- * Magenta LFO modulation contour over an already-drawn static waveform
- * view: for a volume target the actual gain sweep (1-depth..1), for pitch
- * a centered oscillation scaled by depth. Off/zero-depth draws nothing.
+ * LFO modulation contour over an already-drawn static waveform view: for
+ * the volume LFO the actual gain sweep (1-depth..1), for the pitch LFO a
+ * centered oscillation scaled by depth. Disabled/zero-depth draws nothing.
  */
 export function drawLfoOverlay(
   canvas: HTMLCanvasElement,
-  lfo: { rate: number; depth: number; target: 'off' | 'pitch' | 'volume'; on?: boolean },
+  lfo: LfoConfig,
+  kind: 'pitch' | 'volume',
   seconds: number,
   startAt = 0.01,
 ): void {
-  if (lfo.target === 'off' || lfo.depth <= 0 || lfo.on === false) return;
+  if (lfo.depth <= 0 || lfo.on === false) return;
   const ctx = canvas.getContext('2d')!;
   const w = canvas.width;
   const h = canvas.height;
   const level = (t: number): number => {
     const phase = Math.sin(2 * Math.PI * lfo.rate * Math.max(0, t - startAt));
-    return lfo.target === 'volume'
+    return kind === 'volume'
       ? 1 - lfo.depth + lfo.depth * (0.5 + 0.5 * phase)
       : 0.5 + 0.5 * lfo.depth * phase;
   };
-  ctx.strokeStyle = LFO_TRACE;
+  ctx.strokeStyle = kind === 'volume' ? LFO_TRACE : LFO_PITCH_TRACE;
   ctx.lineWidth = 1.5;
   ctx.beginPath();
   for (let px = 0; px < w; px++) {
