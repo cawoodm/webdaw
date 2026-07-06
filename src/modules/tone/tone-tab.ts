@@ -1,7 +1,7 @@
 import * as Tone from '../../core/tone';
 import { engine } from '../../core/audio-engine';
 import { bus } from '../../core/event-bus';
-import type { LfoConfig, PatchFilter, TonePatch } from '../../core/model';
+import type { FilterSlope, LfoConfig, PatchFilter, TonePatch } from '../../core/model';
 import {
   defaultFilter,
   defaultPatch,
@@ -28,6 +28,7 @@ import {
   drawScope,
   drawSpectrumStatic,
   drawWaveformStatic,
+  BPF_TRACE,
   ENV_TRACE,
   HPF_TRACE,
   LFO_PITCH_TRACE,
@@ -670,19 +671,41 @@ export class ToneTab extends HTMLElement {
 
     const filterCard = document.createElement('div');
     filterCard.className = 'card';
-    filterCard.innerHTML = `<div class="card-head">${legendDot(HPF_TRACE)}${legendDot(LPF_TRACE)}<span class="card-title">Filter</span></div>`;
+    filterCard.innerHTML = `<div class="card-head">${legendDot(HPF_TRACE)}${legendDot(BPF_TRACE)}${legendDot(LPF_TRACE)}<span class="card-title">Filter</span></div>`;
     const filterKnobs = document.createElement('div');
     filterKnobs.className = 'knob-row';
     const filter = this.filter(patch);
+    const slopeSel = document.createElement('select');
+    slopeSel.title = 'Filter steepness (dB per octave) for both filters';
+    for (const s of [-12, -24, -48] as const) {
+      const opt = document.createElement('option');
+      opt.value = String(s);
+      opt.textContent = `${-s} dB`;
+      opt.selected = (filter.slope ?? -12) === s;
+      slopeSel.appendChild(opt);
+    }
+    slopeSel.onchange = (): void => {
+      filter.slope = Number(slopeSel.value) as FilterSlope;
+      this.save();
+    };
     filterCard.querySelector('.card-head')!.append(
       onToggle('Enable/disable the high-pass filter', filter.hpfOn !== false, (on) => (filter.hpfOn = on)),
+      onToggle('Enable/disable the band-pass filter', filter.bpfOn === true, (on) => (filter.bpfOn = on)),
       onToggle('Enable/disable the low-pass filter', filter.lpfOn !== false, (on) => (filter.lpfOn = on)),
+      slopeSel,
     );
     filterKnobs.append(
       knob(
         { label: 'HPF', min: 20, max: 10000, step: 1, value: filter.hpf, log: true, unit: 'Hz', color: HPF_TRACE },
         (v) => {
           filter.hpf = v;
+          this.save();
+        },
+      ),
+      knob(
+        { label: 'BPF', min: 50, max: 15000, step: 1, value: filter.bpf ?? 1000, log: true, unit: 'Hz', color: BPF_TRACE },
+        (v) => {
+          filter.bpf = v;
           this.save();
         },
       ),

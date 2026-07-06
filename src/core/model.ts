@@ -14,11 +14,18 @@ export interface ToneLayer {
   noiseSeed?: number;
 }
 
+export type FilterSlope = -12 | -24 | -48;
+
 export interface PatchFilter {
   hpf: number; // high-pass cutoff Hz (20 = off)
   lpf: number; // low-pass cutoff Hz (20000 = off)
   hpfOn?: boolean; // undefined = enabled (older projects)
   lpfOn?: boolean;
+  /** Band-pass center Hz; unlike hpf/lpf it is OFF unless bpfOn is true. */
+  bpf?: number;
+  bpfOn?: boolean;
+  /** Rolloff steepness in dB/octave for all filters (default -12). */
+  slope?: FilterSlope;
 }
 
 export interface LfoConfig {
