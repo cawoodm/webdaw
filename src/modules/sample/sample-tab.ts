@@ -102,7 +102,10 @@ export class SampleTab extends HTMLElement {
     }
     let rendered = false;
     for (const pad of store.data.pads) {
-      if (!pad?.toneId || store.getBuffer(toneBufferKey(pad.toneId))) continue;
+      if (!pad?.toneId) continue;
+      // re-render buffers made pre-gesture against the 44.1 kHz stub context
+      const cached = store.getBuffer(toneBufferKey(pad.toneId));
+      if (cached && cached.sampleRate === Tone.getContext().sampleRate) continue;
       const patch = store.data.patches.find((p) => p.id === pad.toneId);
       if (!patch) continue;
       store.setBuffer(toneBufferKey(pad.toneId), await renderPatch(patch));

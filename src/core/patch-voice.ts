@@ -73,7 +73,10 @@ export class PatchVoice {
     // no explicit time = a live key press: skip the scheduling look-ahead
     const t = time ?? Tone.immediate();
     this.oscs.forEach((osc, i) => {
-      osc.frequency.value = this.baseFreqs[i] * ratio;
+      // schedule at t: a live trigger starts at immediate(), BEFORE the
+      // now()+lookAhead point where a plain .value write would land, so the
+      // oscillator would open at its default 440 Hz until the write applied
+      osc.frequency.setValueAtTime(this.baseFreqs[i] * ratio, t);
       osc.start(t);
     });
     for (const noise of this.noises) noise.start(t);
