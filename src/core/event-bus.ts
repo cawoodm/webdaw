@@ -10,6 +10,10 @@ export interface BusEvents {
   'tab:activate': TabId;
   /** A module is taking over playback — everyone else releases their scheduled parts. */
   'transport:claim': { owner: TabId };
+  /** Global play — the header's play button or spacebar. The ACTIVE tab starts playback. */
+  'transport:play': Record<string, never>;
+  /** Global stop — the header's stop button or spacebar. Every tab stops. */
+  'transport:stop': Record<string, never>;
   'midi:noteon': { note: string; velocity: number };
   'midi:noteoff': { note: string };
 }
