@@ -13,6 +13,7 @@ import {
   SAMPLE_NOTE_DEFAULT,
   SAMPLE_SECONDS_DEFAULT,
   sampleHold,
+  sortedByName,
   toneBufferKey,
   uid,
 } from '../../core/model';
@@ -500,7 +501,7 @@ export class ToneTab extends HTMLElement {
     const bar = document.createElement('div');
     bar.className = 'toolbar';
     const select = document.createElement('select');
-    for (const p of store.data.patches) {
+    for (const p of sortedByName(store.data.patches)) {
       const opt = document.createElement('option');
       opt.value = p.id;
       opt.textContent = p.name;
