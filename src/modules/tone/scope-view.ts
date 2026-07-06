@@ -173,12 +173,13 @@ export const LPF_TRACE = '#ff5c5c';
 /**
  * HPF (blue) and LPF (red) response curves over an already-drawn static
  * spectrum view, on the same log-frequency / dB axes. Slopes match the
- * patch voice's Tone.Filter default rolloff (-12 dB/octave).
+ * patch voice's Tone.Filter rolloff.
  */
 export function drawFilterOverlay(
   canvas: HTMLCanvasElement,
-  filter: { hpf: number; lpf: number; hpfOn?: boolean; lpfOn?: boolean },
+  filter: { hpf: number; lpf: number; hpfOn?: boolean; lpfOn?: boolean; slope?: number },
 ): void {
+  const slope = filter.slope ?? -12;
   const ctx = canvas.getContext('2d')!;
   const w = canvas.width;
   const h = canvas.height;
@@ -198,8 +199,8 @@ export function drawFilterOverlay(
     }
     ctx.stroke();
   };
-  if (filter.hpfOn !== false) curve(HPF_TRACE, (f) => (f < filter.hpf ? -12 * Math.log2(filter.hpf / f) : 0));
-  if (filter.lpfOn !== false) curve(LPF_TRACE, (f) => (f > filter.lpf ? -12 * Math.log2(f / filter.lpf) : 0));
+  if (filter.hpfOn !== false) curve(HPF_TRACE, (f) => (f < filter.hpf ? slope * Math.log2(filter.hpf / f) : 0));
+  if (filter.lpfOn !== false) curve(LPF_TRACE, (f) => (f > filter.lpf ? slope * Math.log2(f / filter.lpf) : 0));
 }
 
 export const ENV_TRACE = '#f6ad55';

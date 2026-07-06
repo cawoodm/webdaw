@@ -30,13 +30,14 @@ export class PatchVoice {
     const filter = patch.filter ?? defaultFilter();
     this.env = new Tone.AmplitudeEnvelope(patch.env).connect(destination);
     // disabled filters are left out of the chain entirely
+    const slope = filter.slope ?? -12;
     let next: Tone.ToneAudioNode = this.env;
     if (filter.lpfOn !== false) {
-      this.lpFilter = new Tone.Filter(filter.lpf, 'lowpass').connect(next);
+      this.lpFilter = new Tone.Filter(filter.lpf, 'lowpass', slope).connect(next);
       next = this.lpFilter;
     }
     if (filter.hpfOn !== false) {
-      this.hpFilter = new Tone.Filter(filter.hpf, 'highpass').connect(next);
+      this.hpFilter = new Tone.Filter(filter.hpf, 'highpass', slope).connect(next);
       next = this.hpFilter;
     }
     this.mix = new Tone.Gain(1).connect(next);
