@@ -8,7 +8,7 @@ import { store } from '../core/project-store';
 import { uiState, updateUi } from '../core/ui-state';
 import type { PluginChainEl } from '../plugins/chain';
 import { openKeymapDialog } from '../ui/keymap-dialog';
-import { PLAY_ICON, STOP_ICON } from '../ui/transport-icons';
+import { PLAY_ICON, STOP_ICON } from '../ui/transport-buttons';
 
 const TABS: { id: TabId; label: string }[] = [
   { id: 'tone', label: 'Tone' },
@@ -28,8 +28,6 @@ export class AppShell extends HTMLElement {
         <nav class="tab-bar"></nav>
         <div class="transport">
           <label>BPM <input type="number" class="bpm" min="40" max="240" value="120"></label>
-          <button class="play-all icon-btn" title="Play (Space)" aria-label="Play">${PLAY_ICON}</button>
-          <button class="stop-all icon-btn" title="Stop everything (Space)" aria-label="Stop">${STOP_ICON}</button>
           <button class="metro icon-btn" title="Metronome" aria-label="Toggle metronome">
             <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
               <path d="M9.2 3.5h5.6L19 20.5H5L9.2 3.5z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
@@ -39,6 +37,7 @@ export class AppShell extends HTMLElement {
               </g>
             </svg>
           </button>
+          <button class="play-all icon-btn" title="Play/stop everything (Space)" aria-label="Play or stop everything"></button>
         </div>
         <div class="project-menu">
           <button class="master-fx">Master FX</button>
@@ -91,14 +90,52 @@ export class AppShell extends HTMLElement {
       metro.classList.toggle('active', engine.metronomeOn);
       updateUi((s) => (s.metronomeOn = engine.metronomeOn));
     };
-    this.querySelector<HTMLButtonElement>('.play-all')!.onclick = async (): Promise<void> => {
-      await engine.ensureStarted();
-      bus.emit('transport:play', {});
+    // --- global play/stop: play starts the ACTIVE tab, stop halts everything ---
+    const playAll = this.querySelector<HTMLButtonElement>('.play-all')!;
+    const togglePlayback = async (): Promise<void> => {
+      if (engine.started && engine.playing) {
+        bus.emit('transport:stop');
+        engine.stop();
+      } else {
+        await engine.ensureStarted();
+        bus.emit('transport:play');
+      }
     };
-    this.querySelector<HTMLButtonElement>('.stop-all')!.onclick = (): void => {
-      bus.emit('transport:stop', {});
-      engine.stop();
+    playAll.onclick = (): void => void togglePlayback();
+    let lastPlaying: boolean | null = null;
+    const paintPlayAll = (): void => {
+      const playing = engine.started && engine.playing;
+      if (playing === lastPlaying) return;
+      lastPlaying = playing;
+      playAll.classList.toggle('active', playing);
+      playAll.innerHTML = playing ? STOP_ICON : PLAY_ICON;
     };
+    paintPlayAll();
+    const playAllTick = (): void => {
+      paintPlayAll();
+      requestAnimationFrame(playAllTick);
+    };
+    requestAnimationFrame(playAllTick);
+    // Space = play/stop. Capture + stopPropagation keeps it away from the
+    // piano keymap (midi-input) and from activating whichever button has focus.
+    window.addEventListener(
+      'keydown',
+      (e) => {
+        if (e.code !== 'Space' || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+        const target = e.target as HTMLElement;
+        if (
+          target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable
+        )
+          return;
+        e.preventDefault();
+        e.stopPropagation();
+        void togglePlayback();
+      },
+      { capture: true },
+    );
     this.querySelector<HTMLButtonElement>('.keys')!.onclick = (): void => openKeymapDialog();
     this.querySelector<HTMLButtonElement>('.folder')!.onclick = async (): Promise<void> => {
       await projects.chooseRoot();
@@ -138,19 +175,6 @@ export class AppShell extends HTMLElement {
         if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
           e.preventDefault();
           void doSave();
-          return;
-        }
-        if (e.code === 'Space') {
-          const target = e.target as HTMLElement;
-          if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable)
-            return;
-          e.preventDefault();
-          if (engine.playing) {
-            bus.emit('transport:stop', {});
-            engine.stop();
-          } else {
-            void engine.ensureStarted().then(() => bus.emit('transport:play', {}));
-          }
         }
       },
       { capture: true },

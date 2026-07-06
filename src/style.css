@@ -368,6 +368,10 @@ daw-knob {
 }
 
 /* ---- sample tab ---- */
+.sample-transport {
+  margin-bottom: 10px;
+}
+
 .bar-indicator {
   display: flex;
   gap: 6px;
@@ -538,26 +542,6 @@ button.recording {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-}
-
-.play-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: #2f855a;
-  border-color: #2f855a;
-  color: #eafaf0;
-  font-weight: 600;
-}
-
-.play-toggle:hover {
-  border-color: #48bb78;
-}
-
-.play-toggle.playing {
-  background: var(--danger);
-  border-color: var(--danger);
-  color: #2a1215;
 }
 
 @keyframes rec-blink {

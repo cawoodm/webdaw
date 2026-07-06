@@ -8,9 +8,9 @@ import { uniqueName } from '../../core/project-names';
 import { store } from '../../core/project-store';
 import { beatsToTransportTime } from '../../core/time';
 import { uiState, updateUi } from '../../core/ui-state';
+import { PLAY_ICON, STOP_ICON, transportButton } from '../../ui/transport-buttons';
 import { encodeWav } from '../../core/wav';
 import { knob } from '../../ui/knob';
-import { PLAY_ICON, RECORD_ICON, STOP_ICON } from '../../ui/transport-icons';
 
 /** Trigger a browser download of a generated file. */
 function download(filename: string, blob: Blob): void {
@@ -43,6 +43,8 @@ interface SamplePadEntry {
 export class SampleTab extends HTMLElement {
   private selected = 0;
   private recording = false;
+  /** True while this tab's loop playback owns the transport (even with no events scheduled). */
+  private loopActive = false;
   private loopPart: Tone.Part | null = null;
   /** Beats of count-in preceding the loop region (0 when none). */
   private countInBeats = 0;
@@ -61,17 +63,17 @@ export class SampleTab extends HTMLElement {
     // playback survives tab switches; release only when another module claims it
     bus.on('transport:claim', ({ owner }) => {
       if (owner === 'sample') return;
-      const wasActive = this.loopPart !== null || this.recording;
+      const wasActive = this.loopActive || this.recording;
       this.releaseLoop();
       if (wasActive) this.render();
     });
-    // global play/stop (header button or spacebar)
+    // global play/stop (Space / shell button)
     bus.on('transport:play', () => {
-      if (!this.classList.contains('active-tab') || engine.playing) return;
-      void this.startLoop(true);
+      if (!this.classList.contains('active-tab')) return;
+      void engine.ensureStarted().then(() => this.startLoop(true));
     });
     bus.on('transport:stop', () => {
-      if (!(engine.started && engine.playing) && !this.recording) return;
+      if (!this.loopActive && !this.recording) return;
       this.recording = false;
       this.stopLoop();
       this.render();
@@ -265,6 +267,7 @@ export class SampleTab extends HTMLElement {
   private async startLoop(withExisting: boolean, countIn = false): Promise<void> {
     this.loopPart?.dispose();
     engine.claimTransport('sample');
+    this.loopActive = true;
     const bars = this.loop().bars;
     const countBars = countIn ? 1 : 0;
     this.countInBeats = countBars * 4;
@@ -319,6 +322,7 @@ export class SampleTab extends HTMLElement {
 
   /** Drop everything we scheduled on the transport, without touching it. */
   private releaseLoop(): void {
+    this.loopActive = false;
     this.loopPart?.dispose();
     this.loopPart = null;
     const transport = Tone.getTransport();
@@ -389,39 +393,20 @@ export class SampleTab extends HTMLElement {
     overlay.classList.add('pop');
   }
 
-  /** One button toggling loop playback: green Play when stopped, red Stop while playing. */
-  private buildPlayToggle(): HTMLButtonElement {
-    const button = document.createElement('button');
-    button.className = 'play-toggle icon-btn';
-    button.onclick = async (): Promise<void> => {
-      if (engine.started && engine.playing) {
-        this.recording = false;
-        this.stopLoop();
-        this.render();
-      } else {
-        await engine.ensureStarted();
-        await this.startLoop(true);
-      }
-    };
-    this.paintPlayToggle(button, engine.started && engine.playing);
-    return button;
-  }
-
-  private paintPlayToggle(button: HTMLButtonElement, playing: boolean): void {
-    button.classList.toggle('playing', playing);
-    button.title = playing ? 'Stop (Space)' : 'Play loop (Space)';
-    button.setAttribute('aria-label', playing ? 'Stop' : 'Play loop');
-    button.innerHTML = playing ? STOP_ICON : PLAY_ICON;
-  }
-
-  /** Keep the play toggle in sync with the transport (rAF-driven). */
+  /** Keep the play/stop toggle in sync with this tab's loop (rAF-driven). */
   private syncPlayToggle(): void {
-    const button = this.querySelector<HTMLButtonElement>('.play-toggle');
+    const button = this.querySelector<HTMLButtonElement>('.transport-play');
     if (!button) return;
-    const playing = engine.started && engine.playing;
+    const playing = this.loopActive && engine.started && engine.playing;
     if (playing === this.lastPlayState) return;
     this.lastPlayState = playing;
     this.paintPlayToggle(button, playing);
+  }
+
+  private paintPlayToggle(button: HTMLButtonElement, playing: boolean): void {
+    button.classList.toggle('active', playing);
+    button.innerHTML = playing ? STOP_ICON : PLAY_ICON;
+    button.title = playing ? 'Stop the loop (Space)' : 'Play the loop (Space)';
   }
 
   /** Current quantization in beats (from the Quantize dropdown). */
@@ -796,6 +781,29 @@ export class SampleTab extends HTMLElement {
     countOverlay.className = 'count-overlay hidden';
     this.appendChild(countOverlay);
 
+    // --- transport (top left, above the grid): play/stop toggle + record ---
+    const transport = document.createElement('div');
+    transport.className = 'toolbar sample-transport';
+    const playBtn = transportButton('play', 'Play the loop (Space)', () => {
+      if (this.loopActive && engine.started && engine.playing) {
+        this.recording = false;
+        this.stopLoop();
+        this.render();
+      } else {
+        void engine.ensureStarted().then(() => this.startLoop(true));
+      }
+    });
+    this.lastPlayState = this.loopActive && engine.started && engine.playing;
+    this.paintPlayToggle(playBtn, this.lastPlayState);
+    const recBtn = transportButton(
+      'record',
+      this.recording ? 'Stop recording' : 'Record pad hits into the loop',
+      () => void this.toggleRecord(),
+    );
+    recBtn.classList.toggle('recording', this.recording);
+    transport.append(playBtn, recBtn);
+    this.appendChild(transport);
+
     // --- bar indicator (bar number + one dot per beat) + recorded-event grid ---
     const indicator = document.createElement('div');
     indicator.className = 'bar-indicator';
@@ -900,12 +908,7 @@ export class SampleTab extends HTMLElement {
       '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Export';
     exportBtn.onclick = (): void => void this.exportLoop();
 
-    const recordBtn = iconBtn(this.recording ? 'Stop recording' : 'Record pad hits', RECORD_ICON, () => void this.toggleRecord());
-    recordBtn.classList.toggle('recording', this.recording);
-
     bar.append(
-      this.buildPlayToggle(),
-      recordBtn,
       loopSel,
       iconBtn(
         'New sample',

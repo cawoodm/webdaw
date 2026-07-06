@@ -5,7 +5,7 @@ import { STEPS_PER_BAR, uid } from '../../core/model';
 import { store } from '../../core/project-store';
 import { uiState, updateUi } from '../../core/ui-state';
 import { knob } from '../../ui/knob';
-import { PLAY_ICON, RECORD_ICON, STOP_ICON } from '../../ui/transport-icons';
+import { transportButton } from '../../ui/transport-buttons';
 import { makeSynth, playSequenceLive, renderSequence, type LivePlayback } from './sequence-playback';
 import * as Tone from '../../core/tone';
 
@@ -46,18 +46,17 @@ export class SequenceTab extends HTMLElement {
         this.render();
       }
     });
-    bus.on('midi:noteon', ({ note, velocity }) => this.onNoteOn(note, velocity));
-    bus.on('midi:noteoff', ({ note }) => this.onNoteOff(note));
-    // global play/stop (header button or spacebar)
+    // global play/stop (Space / shell button)
     bus.on('transport:play', () => {
-      if (!this.isActive() || engine.playing) return;
-      void this.play();
+      if (this.isActive()) void this.play();
     });
     bus.on('transport:stop', () => {
-      if (!engine.playing && !this.playback && !this.recording) return;
+      if (!this.playback && !this.recording) return;
       this.stopPlayback();
       this.render();
     });
+    bus.on('midi:noteon', ({ note, velocity }) => this.onNoteOn(note, velocity));
+    bus.on('midi:noteoff', ({ note }) => this.onNoteOff(note));
     this.render();
   }
 
@@ -159,30 +158,6 @@ export class SequenceTab extends HTMLElement {
       b.onclick = fn;
       return b;
     };
-    const iconBtn = (title: string, svg: string, fn: () => void): HTMLButtonElement => {
-      const b = document.createElement('button');
-      b.className = 'icon-btn';
-      b.title = title;
-      b.setAttribute('aria-label', title);
-      b.innerHTML = svg;
-      b.onclick = fn;
-      return b;
-    };
-    const recordBtn = iconBtn(this.recording ? 'Stop recording' : 'Record MIDI', RECORD_ICON, async () => {
-      if (this.recording) {
-        this.stopPlayback();
-      } else if (this.seq()) {
-        this.recording = true;
-        await this.play();
-      }
-      this.render();
-    });
-    recordBtn.classList.toggle('recording', this.recording);
-    bar.append(
-      iconBtn('Play sequence (Space)', PLAY_ICON, () => void this.play()),
-      iconBtn('Stop (Space)', STOP_ICON, () => this.stopPlayback()),
-      recordBtn,
-    );
 
     const select = document.createElement('select');
     for (const s of store.data.sequences) {
@@ -196,7 +171,27 @@ export class SequenceTab extends HTMLElement {
       this.selectSeq(select.value);
       this.render();
     };
+    const recBtn = transportButton(
+      'record',
+      this.recording ? 'Stop recording' : 'Record MIDI — plays the sequence and captures note input',
+      async () => {
+        if (this.recording) {
+          this.stopPlayback();
+        } else if (this.seq()) {
+          this.recording = true;
+          await this.play();
+        }
+        this.render();
+      },
+    );
+    recBtn.classList.toggle('recording', this.recording);
     bar.append(
+      transportButton('play', 'Play the sequence (Space)', () => void this.play()),
+      transportButton('stop', 'Stop (Space)', () => {
+        this.stopPlayback();
+        this.render();
+      }),
+      recBtn,
       select,
       btn('New', () => {
         const s: Sequence = { id: uid(), name: `Sequence ${store.data.sequences.length + 1}`, bars: 2, tracks: [] };
