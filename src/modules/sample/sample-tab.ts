@@ -375,6 +375,7 @@ export class SampleTab extends HTMLElement {
 
       const lane = document.createElement('div');
       lane.className = 'event-lane';
+      lane.title = 'Click: add a 1-beat clip · drag: move · right edge: resize · double-click: delete';
       // beat + bar gridlines sized to the loop
       lane.style.backgroundImage =
         'linear-gradient(90deg, var(--text-dim) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px)';
