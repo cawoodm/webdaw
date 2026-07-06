@@ -16,7 +16,7 @@
 # In-Progress
 
 - feat: Show quantize gridlines and bar numbers above sample grid 🕜 (todos2)
-- feat: Be consistent with play/stop/record buttons in the top left of each tab (only icons), global play/stop button (next to metronome, icons only) should play stop everything. In general, spacebar is play/stop. 🕜 (todos)
+- feat: Be consistent with play/stop/record buttons in the top left of each tab (only icons), global play/stop button (next to metronome, icons only) should play stop everything. In general, spacebar is play/stop. 🕜 (todos2 — implemented & merged to main; NB: was double-claimed by todos at 16:30)
 
 # DONE
 
