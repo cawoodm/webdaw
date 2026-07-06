@@ -7,6 +7,7 @@ import { store } from '../../core/project-store';
 import { uiState, updateUi } from '../../core/ui-state';
 import { connectChain, PluginChainEl } from '../../plugins/chain';
 import { knob } from '../../ui/knob';
+import { PLAY_ICON, STOP_ICON } from '../../ui/transport-icons';
 import { renderSequence } from '../sequence/sequence-playback';
 
 const MIN_BARS = 32;
@@ -36,6 +37,12 @@ export class ArrangeTab extends HTMLElement {
     bus.on('transport:claim', ({ owner }) => {
       if (owner !== 'arrange') this.stop();
     });
+    // global play/stop (header button or spacebar)
+    bus.on('transport:play', () => {
+      if (!this.classList.contains('active-tab') || this.playing.length > 0) return;
+      void this.play();
+    });
+    bus.on('transport:stop', () => this.stop());
     this.render();
   }
 
@@ -118,9 +125,16 @@ export class ArrangeTab extends HTMLElement {
         this.playing.push(src);
       }
     }
+    // the transport itself carries no audio here (sources are scheduled at
+    // absolute times above) but running it makes engine.playing true, so
+    // spacebar/global stop and the metronome work during song playback
+    engine.play();
   }
 
   private stop(): void {
+    // idempotent + non-recursive: no-op when this tab isn't the one
+    // playing, so a global stop doesn't reset a transport owned elsewhere
+    if (this.playing.length === 0) return;
     for (const src of this.playing) {
       try {
         src.stop();
@@ -130,6 +144,7 @@ export class ArrangeTab extends HTMLElement {
       }
     }
     this.playing = [];
+    engine.stop();
   }
 
   private async exportSong(): Promise<void> {
@@ -173,6 +188,19 @@ export class ArrangeTab extends HTMLElement {
       b.onclick = fn;
       return b;
     };
+    const iconBtn = (title: string, svg: string, fn: () => void): HTMLButtonElement => {
+      const b = document.createElement('button');
+      b.className = 'icon-btn';
+      b.title = title;
+      b.setAttribute('aria-label', title);
+      b.innerHTML = svg;
+      b.onclick = fn;
+      return b;
+    };
+    bar.append(
+      iconBtn('Play song (Space)', PLAY_ICON, () => void this.play()),
+      iconBtn('Stop (Space)', STOP_ICON, () => this.stop()),
+    );
 
     const palette = document.createElement('select');
     const none = document.createElement('option');
@@ -215,8 +243,6 @@ export class ArrangeTab extends HTMLElement {
         );
         this.render();
       }),
-      btn('▶ Play song', () => void this.play()),
-      btn('⏹ Stop', () => this.stop()),
       btn('Export song WAV', () => void this.exportSong()),
     );
     const hint = document.createElement('span');

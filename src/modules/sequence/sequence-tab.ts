@@ -5,6 +5,7 @@ import { STEPS_PER_BAR, uid } from '../../core/model';
 import { store } from '../../core/project-store';
 import { uiState, updateUi } from '../../core/ui-state';
 import { knob } from '../../ui/knob';
+import { PLAY_ICON, RECORD_ICON, STOP_ICON } from '../../ui/transport-icons';
 import { makeSynth, playSequenceLive, renderSequence, type LivePlayback } from './sequence-playback';
 import * as Tone from '../../core/tone';
 
@@ -47,6 +48,16 @@ export class SequenceTab extends HTMLElement {
     });
     bus.on('midi:noteon', ({ note, velocity }) => this.onNoteOn(note, velocity));
     bus.on('midi:noteoff', ({ note }) => this.onNoteOff(note));
+    // global play/stop (header button or spacebar)
+    bus.on('transport:play', () => {
+      if (!this.isActive() || engine.playing) return;
+      void this.play();
+    });
+    bus.on('transport:stop', () => {
+      if (!engine.playing && !this.playback && !this.recording) return;
+      this.stopPlayback();
+      this.render();
+    });
     this.render();
   }
 
@@ -148,6 +159,30 @@ export class SequenceTab extends HTMLElement {
       b.onclick = fn;
       return b;
     };
+    const iconBtn = (title: string, svg: string, fn: () => void): HTMLButtonElement => {
+      const b = document.createElement('button');
+      b.className = 'icon-btn';
+      b.title = title;
+      b.setAttribute('aria-label', title);
+      b.innerHTML = svg;
+      b.onclick = fn;
+      return b;
+    };
+    const recordBtn = iconBtn(this.recording ? 'Stop recording' : 'Record MIDI', RECORD_ICON, async () => {
+      if (this.recording) {
+        this.stopPlayback();
+      } else if (this.seq()) {
+        this.recording = true;
+        await this.play();
+      }
+      this.render();
+    });
+    recordBtn.classList.toggle('recording', this.recording);
+    bar.append(
+      iconBtn('Play sequence (Space)', PLAY_ICON, () => void this.play()),
+      iconBtn('Stop (Space)', STOP_ICON, () => this.stopPlayback()),
+      recordBtn,
+    );
 
     const select = document.createElement('select');
     for (const s of store.data.sequences) {
@@ -198,17 +233,6 @@ export class SequenceTab extends HTMLElement {
           this.render();
         }),
         barsSel,
-        btn('▶ Play', () => void this.play()),
-        btn('⏹ Stop', () => this.stopPlayback()),
-        btn(this.recording ? '⏺ Recording…' : '⏺ Record MIDI', async () => {
-          if (this.recording) {
-            this.stopPlayback();
-          } else {
-            this.recording = true;
-            await this.play();
-          }
-          this.render();
-        }, this.recording ? 'active' : ''),
         btn('Bounce to WAV', async () => {
           const buffer = await renderSequence(seq);
           const path = `sequences/${seq.name.replace(/[^\w-]+/g, '_')}.wav`;

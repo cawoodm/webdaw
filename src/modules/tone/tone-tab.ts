@@ -116,6 +116,11 @@ export class ToneTab extends HTMLElement {
     bus.on('midi:noteoff', ({ note }) => {
       if (this.active) this.noteOff(note);
     });
+    // global play/stop (header button or spacebar)
+    bus.on('transport:play', () => {
+      if (this.classList.contains('active-tab')) void this.playPreview();
+    });
+    bus.on('transport:stop', () => this.stopPreview());
     // hotkey "1": play the sample preview (tone tab only)
     window.addEventListener('keydown', (e) => {
       if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;

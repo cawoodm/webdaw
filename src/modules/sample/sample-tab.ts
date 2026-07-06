@@ -10,6 +10,7 @@ import { beatsToTransportTime } from '../../core/time';
 import { uiState, updateUi } from '../../core/ui-state';
 import { encodeWav } from '../../core/wav';
 import { knob } from '../../ui/knob';
+import { PLAY_ICON, RECORD_ICON, STOP_ICON } from '../../ui/transport-icons';
 
 /** Trigger a browser download of a generated file. */
 function download(filename: string, blob: Blob): void {
@@ -63,6 +64,17 @@ export class SampleTab extends HTMLElement {
       const wasActive = this.loopPart !== null || this.recording;
       this.releaseLoop();
       if (wasActive) this.render();
+    });
+    // global play/stop (header button or spacebar)
+    bus.on('transport:play', () => {
+      if (!this.classList.contains('active-tab') || engine.playing) return;
+      void this.startLoop(true);
+    });
+    bus.on('transport:stop', () => {
+      if (!(engine.started && engine.playing) && !this.recording) return;
+      this.recording = false;
+      this.stopLoop();
+      this.render();
     });
     window.addEventListener('keydown', this.onKeyDown);
     const indicatorTick = (): void => {
@@ -380,7 +392,7 @@ export class SampleTab extends HTMLElement {
   /** One button toggling loop playback: green Play when stopped, red Stop while playing. */
   private buildPlayToggle(): HTMLButtonElement {
     const button = document.createElement('button');
-    button.className = 'play-toggle';
+    button.className = 'play-toggle icon-btn';
     button.onclick = async (): Promise<void> => {
       if (engine.started && engine.playing) {
         this.recording = false;
@@ -397,10 +409,9 @@ export class SampleTab extends HTMLElement {
 
   private paintPlayToggle(button: HTMLButtonElement, playing: boolean): void {
     button.classList.toggle('playing', playing);
-    button.title = playing ? 'Stop the loop' : 'Play the loop';
-    button.innerHTML = playing
-      ? '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="1"/></svg> Stop'
-      : '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg> Play';
+    button.title = playing ? 'Stop (Space)' : 'Play loop (Space)';
+    button.setAttribute('aria-label', playing ? 'Stop' : 'Play loop');
+    button.innerHTML = playing ? STOP_ICON : PLAY_ICON;
   }
 
   /** Keep the play toggle in sync with the transport (rAF-driven). */
@@ -889,7 +900,12 @@ export class SampleTab extends HTMLElement {
       '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Export';
     exportBtn.onclick = (): void => void this.exportLoop();
 
+    const recordBtn = iconBtn(this.recording ? 'Stop recording' : 'Record pad hits', RECORD_ICON, () => void this.toggleRecord());
+    recordBtn.classList.toggle('recording', this.recording);
+
     bar.append(
+      this.buildPlayToggle(),
+      recordBtn,
       loopSel,
       iconBtn(
         'New sample',
@@ -940,8 +956,6 @@ export class SampleTab extends HTMLElement {
       check('Overdub', 'Keep recording every pass; unchecked stops recording after one pass', uiState().sample.overdub, (v) =>
         updateUi((s) => (s.sample.overdub = v)),
       ),
-      btn(this.recording ? '⏺ Stop rec' : '⏺ Record', () => void this.toggleRecord(), this.recording ? 'recording' : ''),
-      this.buildPlayToggle(),
       btn('Clear events', () => {
         store.update(() => (this.loop().events = []));
         this.updateStatus();
