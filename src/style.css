@@ -810,3 +810,9 @@ dialog td {
 .btn-with-icon svg {
   display: block;
 }
+
+.solo-btn.active {
+  background: var(--accent-2);
+  border-color: var(--accent-2);
+  color: #2a2010;
+}

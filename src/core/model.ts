@@ -8,6 +8,8 @@ export interface ToneLayer {
   detune: number;  // cents
   phase: number;   // degrees
   muted?: boolean;
+  /** Solo: when any unmuted layer is soloed, only soloed layers sound. */
+  solo?: boolean;
   /** Base frequency in Hz — what the layer plays at C4 (default C4 itself). */
   freq?: number;
   /** White-noise layers persist their PRNG seed so the signal is reproducible. */

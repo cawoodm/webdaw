@@ -48,8 +48,10 @@ export class PatchVoice {
     }
     this.mix = new Tone.Gain(1).connect(next);
     this.releaseSeconds = patch.env.release;
+    // solo: when any unmuted layer is soloed, only soloed layers sound
+    const anySolo = patch.layers.some((l) => l.solo && !l.muted);
     for (const layer of patch.layers) {
-      if (layer.muted) continue;
+      if (layer.muted || (anySolo && !layer.solo)) continue;
       const g = new Tone.Gain(layer.gain).connect(this.mix);
       this.gains.push(g);
       if (layer.type === 'noise') {
