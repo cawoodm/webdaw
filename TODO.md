@@ -8,10 +8,11 @@
 
 # TODOs
 
+- feat: BPF should have 0hz as minimum, it should also be able to boost not just attenuate
 - feat: Sort names of patches and loops in their dropdowns by name
 - feat: When dragging a sample pad (mousedown) don't play it
 - feat: Add master volume knob to top
-- feat:
+- feat: Drag and drop has a nice overlay in tone but not in sample, add it. Also allow dragging to the tab name.
 
 # In-Progress
 
