@@ -8,6 +8,7 @@ import { store } from '../core/project-store';
 import { uiState, updateUi } from '../core/ui-state';
 import type { PluginChainEl } from '../plugins/chain';
 import { openKeymapDialog } from '../ui/keymap-dialog';
+import { PLAY_ICON, STOP_ICON } from '../ui/transport-buttons';
 
 const TABS: { id: TabId; label: string }[] = [
   { id: 'tone', label: 'Tone' },
@@ -36,7 +37,7 @@ export class AppShell extends HTMLElement {
               </g>
             </svg>
           </button>
-          <button class="stop-all">⏹ Stop</button>
+          <button class="play-all icon-btn" title="Play/stop everything (Space)" aria-label="Play or stop everything"></button>
         </div>
         <div class="project-menu">
           <button class="master-fx">Master FX</button>
@@ -89,7 +90,52 @@ export class AppShell extends HTMLElement {
       metro.classList.toggle('active', engine.metronomeOn);
       updateUi((s) => (s.metronomeOn = engine.metronomeOn));
     };
-    this.querySelector<HTMLButtonElement>('.stop-all')!.onclick = (): void => engine.stop();
+    // --- global play/stop: play starts the ACTIVE tab, stop halts everything ---
+    const playAll = this.querySelector<HTMLButtonElement>('.play-all')!;
+    const togglePlayback = async (): Promise<void> => {
+      if (engine.started && engine.playing) {
+        bus.emit('transport:stop');
+        engine.stop();
+      } else {
+        await engine.ensureStarted();
+        bus.emit('transport:play');
+      }
+    };
+    playAll.onclick = (): void => void togglePlayback();
+    let lastPlaying: boolean | null = null;
+    const paintPlayAll = (): void => {
+      const playing = engine.started && engine.playing;
+      if (playing === lastPlaying) return;
+      lastPlaying = playing;
+      playAll.classList.toggle('active', playing);
+      playAll.innerHTML = playing ? STOP_ICON : PLAY_ICON;
+    };
+    paintPlayAll();
+    const playAllTick = (): void => {
+      paintPlayAll();
+      requestAnimationFrame(playAllTick);
+    };
+    requestAnimationFrame(playAllTick);
+    // Space = play/stop. Capture + stopPropagation keeps it away from the
+    // piano keymap (midi-input) and from activating whichever button has focus.
+    window.addEventListener(
+      'keydown',
+      (e) => {
+        if (e.code !== 'Space' || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+        const target = e.target as HTMLElement;
+        if (
+          target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable
+        )
+          return;
+        e.preventDefault();
+        e.stopPropagation();
+        void togglePlayback();
+      },
+      { capture: true },
+    );
     this.querySelector<HTMLButtonElement>('.keys')!.onclick = (): void => openKeymapDialog();
     this.querySelector<HTMLButtonElement>('.folder')!.onclick = async (): Promise<void> => {
       await projects.chooseRoot();

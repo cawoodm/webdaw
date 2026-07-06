@@ -5,6 +5,7 @@ import { STEPS_PER_BAR, uid } from '../../core/model';
 import { store } from '../../core/project-store';
 import { uiState, updateUi } from '../../core/ui-state';
 import { knob } from '../../ui/knob';
+import { transportButton } from '../../ui/transport-buttons';
 import { makeSynth, playSequenceLive, renderSequence, type LivePlayback } from './sequence-playback';
 import * as Tone from '../../core/tone';
 
@@ -44,6 +45,15 @@ export class SequenceTab extends HTMLElement {
         this.recording = false;
         this.render();
       }
+    });
+    // global play/stop (Space / shell button)
+    bus.on('transport:play', () => {
+      if (this.isActive()) void this.play();
+    });
+    bus.on('transport:stop', () => {
+      if (!this.playback && !this.recording) return;
+      this.stopPlayback();
+      this.render();
     });
     bus.on('midi:noteon', ({ note, velocity }) => this.onNoteOn(note, velocity));
     bus.on('midi:noteoff', ({ note }) => this.onNoteOff(note));
@@ -161,7 +171,27 @@ export class SequenceTab extends HTMLElement {
       this.selectSeq(select.value);
       this.render();
     };
+    const recBtn = transportButton(
+      'record',
+      this.recording ? 'Stop recording' : 'Record MIDI — plays the sequence and captures note input',
+      async () => {
+        if (this.recording) {
+          this.stopPlayback();
+        } else if (this.seq()) {
+          this.recording = true;
+          await this.play();
+        }
+        this.render();
+      },
+    );
+    recBtn.classList.toggle('recording', this.recording);
     bar.append(
+      transportButton('play', 'Play the sequence (Space)', () => void this.play()),
+      transportButton('stop', 'Stop (Space)', () => {
+        this.stopPlayback();
+        this.render();
+      }),
+      recBtn,
       select,
       btn('New', () => {
         const s: Sequence = { id: uid(), name: `Sequence ${store.data.sequences.length + 1}`, bars: 2, tracks: [] };
@@ -198,17 +228,6 @@ export class SequenceTab extends HTMLElement {
           this.render();
         }),
         barsSel,
-        btn('▶ Play', () => void this.play()),
-        btn('⏹ Stop', () => this.stopPlayback()),
-        btn(this.recording ? '⏺ Recording…' : '⏺ Record MIDI', async () => {
-          if (this.recording) {
-            this.stopPlayback();
-          } else {
-            this.recording = true;
-            await this.play();
-          }
-          this.render();
-        }, this.recording ? 'active' : ''),
         btn('Bounce to WAV', async () => {
           const buffer = await renderSequence(seq);
           const path = `sequences/${seq.name.replace(/[^\w-]+/g, '_')}.wav`;

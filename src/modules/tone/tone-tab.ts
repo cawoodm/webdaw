@@ -18,6 +18,7 @@ import { store } from '../../core/project-store';
 import { beatsToTransportTime } from '../../core/time';
 import { uiState, updateUi } from '../../core/ui-state';
 import { knob } from '../../ui/knob';
+import { transportButton } from '../../ui/transport-buttons';
 import { PatchVoice, renderPatch } from '../../core/patch-voice';
 import { encodeWav } from '../../core/wav';
 import {
@@ -111,6 +112,11 @@ export class ToneTab extends HTMLElement {
       this.previewStartedTransport = false;
       this.stopPreview();
     });
+    // global play/stop (Space / shell button)
+    bus.on('transport:play', () => {
+      if (this.classList.contains('active-tab')) void this.playPreview();
+    });
+    bus.on('transport:stop', () => this.stopPreview());
     bus.on('midi:noteoff', ({ note }) => {
       if (this.active) this.noteOff(note);
     });
@@ -415,16 +421,8 @@ export class ToneTab extends HTMLElement {
     );
     loopBtn.classList.toggle('active', this.looping);
     transport.append(
-      iconBtn(
-        'Play the sample (hotkey: 1)',
-        `<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>`,
-        () => void this.playPreview(),
-      ),
-      iconBtn(
-        'Stop preview',
-        `<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>`,
-        () => this.stopPreview(),
-      ),
+      transportButton('play', 'Play the sample (Space or hotkey 1)', () => void this.playPreview()),
+      transportButton('stop', 'Stop preview (Space)', () => this.stopPreview()),
       loopBtn,
     );
     scopesHead.appendChild(transport);

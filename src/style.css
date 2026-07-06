@@ -540,26 +540,6 @@ button.recording {
   gap: 6px;
 }
 
-.play-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: #2f855a;
-  border-color: #2f855a;
-  color: #eafaf0;
-  font-weight: 600;
-}
-
-.play-toggle:hover {
-  border-color: #48bb78;
-}
-
-.play-toggle.playing {
-  background: var(--danger);
-  border-color: var(--danger);
-  color: #2a1215;
-}
-
 @keyframes rec-blink {
   from {
     opacity: 1;

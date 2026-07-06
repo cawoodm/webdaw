@@ -7,6 +7,7 @@ import { store } from '../../core/project-store';
 import { uiState, updateUi } from '../../core/ui-state';
 import { connectChain, PluginChainEl } from '../../plugins/chain';
 import { knob } from '../../ui/knob';
+import { transportButton } from '../../ui/transport-buttons';
 import { renderSequence } from '../sequence/sequence-playback';
 
 const MIN_BARS = 32;
@@ -36,6 +37,11 @@ export class ArrangeTab extends HTMLElement {
     bus.on('transport:claim', ({ owner }) => {
       if (owner !== 'arrange') this.stop();
     });
+    // global play/stop (Space / shell button)
+    bus.on('transport:play', () => {
+      if (this.classList.contains('active-tab')) void this.play();
+    });
+    bus.on('transport:stop', () => this.stop());
     this.render();
   }
 
@@ -118,6 +124,9 @@ export class ArrangeTab extends HTMLElement {
         this.playing.push(src);
       }
     }
+    // clips run on absolute time, but starting the transport keeps the
+    // metronome ticking and lets the global play/stop button see the state
+    engine.play();
   }
 
   private stop(): void {
@@ -202,6 +211,11 @@ export class ArrangeTab extends HTMLElement {
     };
 
     bar.append(
+      transportButton('play', 'Play the song (Space)', () => void this.play()),
+      transportButton('stop', 'Stop (Space)', () => {
+        this.stop();
+        if (engine.started) engine.stop();
+      }),
       palette,
       btn('+ Track', () => {
         store.update((d) =>
@@ -215,8 +229,6 @@ export class ArrangeTab extends HTMLElement {
         );
         this.render();
       }),
-      btn('▶ Play song', () => void this.play()),
-      btn('⏹ Stop', () => this.stop()),
       btn('Export song WAV', () => void this.exportSong()),
     );
     const hint = document.createElement('span');
