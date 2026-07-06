@@ -1,0 +1,34 @@
+{
+  "name": "Kick",
+  "layers": [
+    {
+      "type": "sine",
+      "gain": 1,
+      "detune": 0,
+      "phase": 90
+    },
+    {
+      "type": "triangle",
+      "gain": 0.15,
+      "detune": 1200,
+      "phase": 0
+    }
+  ],
+  "env": {
+    "attack": 0.001,
+    "decay": 0.45,
+    "sustain": 0,
+    "release": 0.08
+  },
+  "lfo": {
+    "rate": 4,
+    "depth": 0,
+    "target": "off"
+  },
+  "filter": {
+    "hpf": 20,
+    "lpf": 1500
+  },
+  "sampleFreq": 50,
+  "sampleSeconds": 0.8
+}

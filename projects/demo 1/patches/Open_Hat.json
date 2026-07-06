@@ -1,0 +1,29 @@
+{
+  "name": "Open Hat",
+  "layers": [
+    {
+      "type": "noise",
+      "gain": 0.8,
+      "detune": 0,
+      "phase": 0,
+      "noiseSeed": 3
+    }
+  ],
+  "env": {
+    "attack": 0.001,
+    "decay": 0.6,
+    "sustain": 0,
+    "release": 0.25
+  },
+  "lfo": {
+    "rate": 4,
+    "depth": 0,
+    "target": "off"
+  },
+  "filter": {
+    "hpf": 6000,
+    "lpf": 20000
+  },
+  "sampleFreq": 261.63,
+  "sampleSeconds": 1.2
+}

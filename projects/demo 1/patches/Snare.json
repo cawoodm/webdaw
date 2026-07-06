@@ -1,0 +1,41 @@
+{
+  "name": "Snare",
+  "layers": [
+    {
+      "type": "triangle",
+      "gain": 0.55,
+      "detune": 0,
+      "phase": 0
+    },
+    {
+      "type": "triangle",
+      "gain": 0.3,
+      "detune": 1002,
+      "phase": 0
+    },
+    {
+      "type": "noise",
+      "gain": 0.75,
+      "detune": 0,
+      "phase": 0,
+      "noiseSeed": 42
+    }
+  ],
+  "env": {
+    "attack": 0.001,
+    "decay": 0.18,
+    "sustain": 0,
+    "release": 0.06
+  },
+  "lfo": {
+    "rate": 4,
+    "depth": 0,
+    "target": "off"
+  },
+  "filter": {
+    "hpf": 150,
+    "lpf": 9000
+  },
+  "sampleFreq": 185,
+  "sampleSeconds": 0.5
+}

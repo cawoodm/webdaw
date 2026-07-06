@@ -91,7 +91,60 @@ export class ToneTab extends HTMLElement {
     bus.on('midi:noteoff', ({ note }) => {
       if (this.active) this.noteOff(note);
     });
+    // drag a .json patch (Export WAV's settings sidecar) here to import it
+    this.addEventListener('dragover', (e) => {
+      if (!e.dataTransfer?.types.includes('Files')) return;
+      e.preventDefault();
+      this.classList.add('drag-over');
+    });
+    this.addEventListener('dragleave', () => this.classList.remove('drag-over'));
+    this.addEventListener('drop', (e) => {
+      this.classList.remove('drag-over');
+      if (!e.dataTransfer?.files.length) return;
+      e.preventDefault();
+      void this.importPatchFiles([...e.dataTransfer.files]);
+    });
     this.render();
+  }
+
+  /** Import dropped .json patch files as new tones. */
+  private async importPatchFiles(files: File[]): Promise<void> {
+    let lastId = '';
+    let imported = 0;
+    for (const file of files) {
+      if (!file.name.toLowerCase().endsWith('.json')) continue;
+      let parsed: Partial<TonePatch>;
+      try {
+        parsed = JSON.parse(await file.text()) as Partial<TonePatch>;
+      } catch {
+        this.flash(`${file.name}: not valid JSON`);
+        continue;
+      }
+      if (!Array.isArray(parsed.layers) || parsed.layers.length === 0 || !parsed.env) {
+        this.flash(`${file.name}: not a tone patch`);
+        continue;
+      }
+      const base = defaultPatch();
+      const patch: TonePatch = { ...base, ...parsed, id: uid() };
+      delete patch.wavFile; // file refs never survive an import
+      patch.name = this.uniquePatchName(parsed.name?.trim() || file.name.replace(/\.json$/i, ''));
+      store.update((d) => d.patches.push(patch));
+      lastId = patch.id;
+      imported++;
+    }
+    if (imported > 0) {
+      this.selectPatch(lastId);
+      this.render();
+      this.flash(imported === 1 ? `Imported "${this.patch().name}"` : `Imported ${imported} patches`);
+    }
+  }
+
+  private uniquePatchName(wanted: string): string {
+    const names = new Set(store.data.patches.map((p) => p.name.toLowerCase()));
+    if (!names.has(wanted.toLowerCase())) return wanted;
+    let n = 2;
+    while (names.has(`${wanted} ${n}`.toLowerCase())) n++;
+    return `${wanted} ${n}`;
   }
 
   private patch(): TonePatch {
@@ -616,7 +669,8 @@ export class ToneTab extends HTMLElement {
     );
     const hint = document.createElement('span');
     hint.className = 'hint';
-    hint.textContent = 'Play with keys A W S E D F T G Y H U J K (or a MIDI keyboard)';
+    hint.textContent =
+      'Play with keys A W S E D F T G Y H U J K (or a MIDI keyboard) — drop a .json patch here to import it';
     actions.appendChild(hint);
     this.appendChild(actions);
   }

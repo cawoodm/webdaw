@@ -1,0 +1,47 @@
+{
+  "name": "Crash",
+  "layers": [
+    {
+      "type": "noise",
+      "gain": 0.85,
+      "detune": 0,
+      "phase": 0,
+      "noiseSeed": 11
+    },
+    {
+      "type": "square",
+      "gain": 0.05,
+      "detune": 0,
+      "phase": 0
+    },
+    {
+      "type": "square",
+      "gain": 0.04,
+      "detune": 702,
+      "phase": 0
+    },
+    {
+      "type": "square",
+      "gain": 0.04,
+      "detune": -498,
+      "phase": 0
+    }
+  ],
+  "env": {
+    "attack": 0.001,
+    "decay": 2.2,
+    "sustain": 0,
+    "release": 0.8
+  },
+  "lfo": {
+    "rate": 4,
+    "depth": 0,
+    "target": "off"
+  },
+  "filter": {
+    "hpf": 3800,
+    "lpf": 16000
+  },
+  "sampleFreq": 987,
+  "sampleSeconds": 3.5
+}

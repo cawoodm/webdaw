@@ -260,6 +260,11 @@ daw-knob {
   margin-bottom: 12px;
 }
 
+.tone-tab.drag-over {
+  outline: 2px dashed var(--accent);
+  outline-offset: -6px;
+}
+
 .tone-scopes-head {
   display: flex;
   justify-content: space-between;

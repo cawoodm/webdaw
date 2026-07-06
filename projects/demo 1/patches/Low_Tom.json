@@ -1,0 +1,41 @@
+{
+  "name": "Low Tom",
+  "layers": [
+    {
+      "type": "sine",
+      "gain": 0.9,
+      "detune": 0,
+      "phase": 90
+    },
+    {
+      "type": "triangle",
+      "gain": 0.35,
+      "detune": 0,
+      "phase": 0
+    },
+    {
+      "type": "noise",
+      "gain": 0.07,
+      "detune": 0,
+      "phase": 0,
+      "noiseSeed": 5
+    }
+  ],
+  "env": {
+    "attack": 0.001,
+    "decay": 0.35,
+    "sustain": 0,
+    "release": 0.1
+  },
+  "lfo": {
+    "rate": 4,
+    "depth": 0,
+    "target": "off"
+  },
+  "filter": {
+    "hpf": 20,
+    "lpf": 2500
+  },
+  "sampleFreq": 98,
+  "sampleSeconds": 0.7
+}
