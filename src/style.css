@@ -368,6 +368,10 @@ daw-knob {
 }
 
 /* ---- sample tab ---- */
+.sample-transport {
+  margin-bottom: 10px;
+}
+
 .bar-indicator {
   display: flex;
   gap: 6px;
