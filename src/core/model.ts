@@ -219,6 +219,8 @@ export interface ProjectData {
   version: 1;
   name: string;
   bpm: number;
+  /** Master output volume 0..1 (default 0.9). */
+  masterVolume?: number;
   patches: TonePatch[];
   pads: (PadConfig | null)[];
   padLoops: PadLoop[];

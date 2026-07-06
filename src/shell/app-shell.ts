@@ -8,6 +8,7 @@ import { store } from '../core/project-store';
 import { uiState, updateUi } from '../core/ui-state';
 import type { PluginChainEl } from '../plugins/chain';
 import { openKeymapDialog } from '../ui/keymap-dialog';
+import { knob } from '../ui/knob';
 import { PLAY_ICON, STOP_ICON } from '../ui/transport-buttons';
 
 const TABS: { id: TabId; label: string }[] = [
@@ -83,6 +84,15 @@ export class AppShell extends HTMLElement {
       engine.bpm = value;
       store.update((d) => (d.bpm = value));
     };
+    // master volume: bare mutation + scheduleSave, like other knobs
+    const volKnob = knob({ label: 'Vol', min: 0, max: 1, step: 0.01, value: engine.volume }, (v) => {
+      engine.volume = v;
+      store.data.masterVolume = v;
+      store.scheduleSave();
+    });
+    volKnob.classList.add('master-vol');
+    volKnob.title = 'Master volume';
+    this.querySelector('.transport')!.appendChild(volKnob);
     const metro = this.querySelector<HTMLButtonElement>('.metro')!;
     metro.onclick = async (): Promise<void> => {
       await engine.ensureStarted();
@@ -203,6 +213,8 @@ export class AppShell extends HTMLElement {
     bus.on('project:loaded', () => {
       engine.bpm = store.data.bpm;
       bpm.value = String(store.data.bpm);
+      engine.volume = store.data.masterVolume ?? 0.9;
+      volKnob.value = engine.volume;
       this.updateProjectUi();
       void this.refreshProjects();
       if (this.masterChain) this.ensureMasterChain(true);

@@ -20,6 +20,7 @@ class AudioEngine {
   private exclusiveChain: Promise<unknown> = Promise.resolve();
   private readyQueue: (() => void)[] = [];
   private bpmValue = 120;
+  private volumeValue = 0.9;
   private metroGain: Tone.Gain | null = null;
   private metroLoop: Tone.Loop | null = null;
   private clickBuffer: Tone.ToneAudioBuffer | null = null;
@@ -34,8 +35,18 @@ class AudioEngine {
   }
 
   get master(): Tone.Gain {
-    if (!this._master) this._master = new Tone.Gain(0.9).toDestination();
+    if (!this._master) this._master = new Tone.Gain(this.volumeValue).toDestination();
     return this._master;
+  }
+
+  /** Master output volume (0..1); safe to set before the context exists. */
+  get volume(): number {
+    return this.volumeValue;
+  }
+
+  set volume(v: number) {
+    this.volumeValue = v;
+    if (this._master) this._master.gain.rampTo(v, 0.02);
   }
 
   get started(): boolean {
