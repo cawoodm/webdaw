@@ -36,6 +36,13 @@ export class DawKnob extends HTMLElement {
     if (this.log && this.min > 0) {
       return Math.log(this.value / this.min) / Math.log(this.max / this.min);
     }
+    if (this.log && this.min <= 0) {
+      // min<=0 has no logarithm of its own: treat [min, lo] as a linear
+      // ramp into norm 0, then log-scale [lo, max] above that
+      const lo = Math.max(this.step, 1);
+      if (this.value <= lo) return 0;
+      return Math.log(this.value / lo) / Math.log(this.max / lo);
+    }
     return (this.value - this.min) / (this.max - this.min);
   }
 
@@ -43,6 +50,11 @@ export class DawKnob extends HTMLElement {
     const c = Math.min(1, Math.max(0, n));
     if (this.log && this.min > 0) {
       return this.min * Math.pow(this.max / this.min, c);
+    }
+    if (this.log && this.min <= 0) {
+      const lo = Math.max(this.step, 1);
+      if (c === 0) return this.min;
+      return lo * Math.pow(this.max / lo, c);
     }
     return this.min + c * (this.max - this.min);
   }
