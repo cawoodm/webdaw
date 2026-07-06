@@ -4,12 +4,13 @@ Mark in progress 🕜 and then move to done ✅ when complete and merge branch i
 Once a task is done, show the user the dev URL, confirm with the user they are happy before marking done
 
 - feat: Allow drag and drop of sample pads to swap (dest is occupied) or move (if dest empty)
-- feat: Move envelope (etc) controls to above the layers
 - feat: Show quantize gridlines and bar numbers above sample grid
-- feat: When dragging in a new patch with same name, prompt to overwrite or rename
+- feat: When dragging in a new patch with same name, prompt to overwrite or rename 🕜
+- feat: Add a duplicate button (copy icon) to samples, make new, rename and delete just icons
 
 # DONE
 
+- feat: Move envelope (etc) controls to above the layers ✅
 - feat: Add a solo button next to mute for tone layers so they play on their own ✅
 - feat: Add a BPF (band pass filter) in yellow ✅ (opt-in checkbox, center-freq knob, slope applies)
 - feat: Add an option to increase slope of LPF/HPF ✅ (12/24/48 dB per octave)

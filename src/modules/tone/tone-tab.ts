@@ -615,7 +615,7 @@ export class ToneTab extends HTMLElement {
     });
     this.appendChild(layers);
 
-    // --- envelope + LFO ---
+    // --- envelope + LFO (shown ABOVE the layers) ---
     const row = document.createElement('div');
     row.className = 'tone-mod-row';
     const envCard = document.createElement('div');
@@ -763,7 +763,7 @@ export class ToneTab extends HTMLElement {
     );
     sampleCard.appendChild(sampleKnobs);
     row.append(envCard, lfoPitchCard, lfoVolCard, filterCard, sampleCard);
-    this.appendChild(row);
+    this.insertBefore(row, layers);
 
     // --- actions ---
     const actions = document.createElement('div');
