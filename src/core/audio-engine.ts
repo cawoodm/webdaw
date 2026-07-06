@@ -1,6 +1,8 @@
 import * as Tone from './tone';
 import metronomeMp3 from '../assets/metronome-85688.mp3';
 import { extractClick } from './click-trim';
+import { bus } from './event-bus';
+import type { TabId } from './model';
 
 /**
  * Wraps Tone.js: transport, metronome, master bus.
@@ -134,6 +136,17 @@ class AudioEngine {
     t.position = 0;
     // back to the free-running clock so a standalone metronome keeps ticking
     if (this.metronomeOn) this.startTicker(false);
+  }
+
+  /**
+   * Take over playback for one module: every other module releases its
+   * scheduled parts (via the bus event) without touching the transport,
+   * then the transport is stopped and rewound so the claimer starts clean.
+   * Call at the top of any play path.
+   */
+  claimTransport(owner: TabId): void {
+    bus.emit('transport:claim', { owner });
+    if (this._started) this.stop();
   }
 
   /**
