@@ -1,7 +1,7 @@
 # Instructions
 
 - Synch with main
-- Read an unmarked TODO from the list below
+- Read an unmarked TODO from the list below, don't take a task marked 🕜
 - Mark and move it to in-progress 🕜 and begin implementing (add name of branch you are on e.g. todos)
 - Once a task is done, show the user the full dev URL link (with http://), confirm with the user they are happy
 - Mark done ✅ and synch back to main
