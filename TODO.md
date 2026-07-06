@@ -10,13 +10,13 @@
 
 # In-Progress
 
-- feat: Drag and drop has a nice overlay in tone but not in sample, add it. Also allow dragging to the tab name. 🕜 (todos2 — implemented, awaiting confirmation)
 - feat: Sort names of patches and loops in their dropdowns by name 🕜 (todos)
-- feat: Add master volume knob to top 🕜 (todos2 — implemented, awaiting confirmation)
-- feat: When dragging a sample pad (mousedown) don't play it 🕜 (todos2 — implemented, awaiting confirmation)
 
 # DONE
 
+- feat: Drag and drop has a nice overlay in tone but not in sample, add it. Also allow dragging to the tab name. ✅ (overlay on all tab panels; tab names switch mid-drag and accept drops)
+- feat: Add master volume knob to top ✅ (compact dial in the header, persisted per project)
+- feat: When dragging a sample pad (mousedown) don't play it ✅ (pads play on click; drags stay silent)
 - feat: BPF should have 0hz as minimum, it should also be able to boost not just attenuate ✅ (peaking bell with ±24 dB gain knob)
 - feat: Show quantize gridlines and bar numbers above sample grid ✅
 - feat: Be consistent with play/stop/record buttons in the top left of each tab (only icons), global play/stop button (next to metronome, icons only) should play stop everything. In general, spacebar is play/stop. ✅ (both sessions implemented it; todos variant merged — sample tab has a single play/stop toggle + record above the grid)
