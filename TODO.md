@@ -8,7 +8,6 @@
 
 # TODOs
 
-- feat: BPF should have 0hz as minimum, it should also be able to boost not just attenuate
 - feat: Sort names of patches and loops in their dropdowns by name
 - feat: When dragging a sample pad (mousedown) don't play it
 - feat: Add master volume knob to top
@@ -16,6 +15,7 @@
 
 # In-Progress
 
+- feat: BPF should have 0hz as minimum, it should also be able to boost not just attenuate 🕜 (todos2)
 - feat: Show quantize gridlines and bar numbers above sample grid 🕜 (todos2)
 - feat: Be consistent with play/stop/record buttons in the top left of each tab (only icons), global play/stop button (next to metronome, icons only) should play stop everything. In general, spacebar is play/stop. 🕜 (todos2 — implemented & merged to main; NB: was double-claimed by todos at 16:30)
 
