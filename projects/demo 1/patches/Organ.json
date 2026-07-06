@@ -1,0 +1,59 @@
+{
+  "name": "Organ",
+  "layers": [
+    {
+      "type": "sine",
+      "gain": 0.36,
+      "detune": 0,
+      "phase": 0,
+      "freq": 261.63
+    },
+    {
+      "type": "sine",
+      "gain": 0.25,
+      "detune": 0,
+      "phase": 0,
+      "freq": 523.25
+    },
+    {
+      "type": "sine",
+      "gain": 0.16,
+      "detune": 0,
+      "phase": 0,
+      "freq": 784.89
+    },
+    {
+      "type": "sine",
+      "gain": 0.14,
+      "detune": 0,
+      "phase": 0,
+      "freq": 1046.5
+    },
+    {
+      "type": "sine",
+      "gain": 0.05,
+      "detune": 0,
+      "phase": 0,
+      "freq": 2093
+    }
+  ],
+  "env": {
+    "attack": 0.005,
+    "decay": 0.05,
+    "sustain": 1,
+    "release": 0.06
+  },
+  "lfoPitch": {
+    "rate": 4,
+    "depth": 0
+  },
+  "lfoVolume": {
+    "rate": 6,
+    "depth": 0.1
+  },
+  "filter": {
+    "hpf": 20,
+    "lpf": 20000
+  },
+  "sampleSeconds": 1.5
+}

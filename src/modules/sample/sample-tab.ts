@@ -165,7 +165,8 @@ export class SampleTab extends HTMLElement {
       // during a count-in the position is still before the loop region
       const posBeats = engine.positionBeats - this.countInBeats;
       if (posBeats < 0) return;
-      const time = posBeats % this.loopBeats();
+      // round to the nearest quantize step (may wrap past the loop end)
+      const time = this.nearestSnap(posBeats % this.loopBeats()) % this.loopBeats();
       store.update((d) => d.padEvents.push({ pad: index, time }));
       this.updateStatus();
     }
@@ -330,9 +331,21 @@ export class SampleTab extends HTMLElement {
     this.paintPlayToggle(button, playing);
   }
 
-  /** Snap beats to the 16th grid. */
-  private static snap(beats: number): number {
-    return Math.round(beats * 4) / 4;
+  /** Current quantization in beats (from the Quantize dropdown). */
+  private quantize(): number {
+    return uiState().sample.quantize || 0.25;
+  }
+
+  /** Round DOWN to the quantize grid — placing/dragging clips. */
+  private floorSnap(beats: number): number {
+    const q = this.quantize();
+    return Math.floor(beats / q + 1e-6) * q;
+  }
+
+  /** Round to the NEAREST quantize step — recorded hits. */
+  private nearestSnap(beats: number): number {
+    const q = this.quantize();
+    return Math.round(beats / q) * q;
   }
 
   /** After direct mutations of padEvents: persist, re-render, re-schedule. */
@@ -382,9 +395,10 @@ export class SampleTab extends HTMLElement {
       lane.style.backgroundSize = `${100 / store.data.padLoopBars}% 100%, ${100 / loopBeats}% 100%`;
       lane.onclick = (e): void => {
         if (e.target !== lane) return; // clicks on clips are handled there
+        const q = this.quantize();
         const fraction = (e.clientX - lane.getBoundingClientRect().left) / lane.offsetWidth;
-        const time = Math.min(loopBeats - 0.25, Math.max(0, SampleTab.snap(fraction * loopBeats)));
-        store.data.padEvents.push({ pad: padIndex, time, duration: 1 });
+        const time = Math.min(loopBeats - q, Math.max(0, this.floorSnap(fraction * loopBeats)));
+        store.data.padEvents.push({ pad: padIndex, time, duration: Math.min(1, loopBeats - time) });
         this.commitGridEdit();
       };
       row.appendChild(lane);
@@ -445,11 +459,13 @@ export class SampleTab extends HTMLElement {
       clip.onpointermove = (m): void => {
         if (Math.abs(m.clientX - start.x) + Math.abs(m.clientY - start.y) < 3 && !moved) return;
         moved = true;
-        const deltaBeats = SampleTab.snap((m.clientX - start.x) * beatsPerPx);
+        const q = this.quantize();
+        const deltaBeats = (m.clientX - start.x) * beatsPerPx;
         if (resizing) {
-          ev.duration = Math.min(loopBeats - ev.time, Math.max(0.25, start.duration + deltaBeats));
+          ev.duration = Math.min(loopBeats - ev.time, Math.max(q, this.nearestSnap(start.duration + deltaBeats)));
         } else {
-          ev.time = Math.min(loopBeats - 0.25, Math.max(0, SampleTab.snap(start.time + deltaBeats)));
+          // drag snaps DOWN to the quantize grid
+          ev.time = Math.min(loopBeats - q, Math.max(0, this.floorSnap(start.time + deltaBeats)));
           // vertical drag moves the clip to another pad's lane
           for (const [padIndex, otherLane] of lanes) {
             const r = otherLane.getBoundingClientRect();
@@ -572,6 +588,28 @@ export class SampleTab extends HTMLElement {
     barsSel.onchange = (): void => {
       store.update((d) => (d.padLoopBars = Number(barsSel.value)));
     };
+    const quantSel = document.createElement('select');
+    quantSel.title = 'Quantize: recording rounds to the nearest step, grid edits snap down to it';
+    for (const [value, label] of [
+      [1, '1 beat'],
+      [0.5, '1/2'],
+      [0.25, '1/4'],
+      [0.125, '1/8'],
+      [0.0625, '1/16'],
+      [0.03125, '1/32'],
+    ] as const) {
+      const opt = document.createElement('option');
+      opt.value = String(value);
+      opt.textContent = label;
+      opt.selected = uiState().sample.quantize === value;
+      quantSel.appendChild(opt);
+    }
+    quantSel.onchange = (): void => {
+      updateUi((s) => (s.sample.quantize = Number(quantSel.value)));
+    };
+    const quantWrap = document.createElement('label');
+    quantWrap.className = 'hint check-toggle';
+    quantWrap.append(document.createTextNode('Quantize '), quantSel);
     const check = (label: string, title: string, value: boolean, onChange: (v: boolean) => void): HTMLLabelElement => {
       const wrap = document.createElement('label');
       wrap.className = 'hint check-toggle';
@@ -585,6 +623,7 @@ export class SampleTab extends HTMLElement {
     };
     bar.append(
       barsSel,
+      quantWrap,
       check('Count-in', 'One bar of metronome clicks before recording starts', uiState().sample.countIn, (v) =>
         updateUi((s) => (s.sample.countIn = v)),
       ),

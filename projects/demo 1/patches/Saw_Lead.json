@@ -1,0 +1,45 @@
+{
+  "name": "Saw Lead",
+  "layers": [
+    {
+      "type": "sawtooth",
+      "gain": 0.32,
+      "detune": 0,
+      "phase": 0,
+      "freq": 261.63
+    },
+    {
+      "type": "sawtooth",
+      "gain": 0.24,
+      "detune": 12,
+      "phase": 0,
+      "freq": 261.63
+    },
+    {
+      "type": "sawtooth",
+      "gain": 0.24,
+      "detune": -12,
+      "phase": 0,
+      "freq": 261.63
+    }
+  ],
+  "env": {
+    "attack": 0.01,
+    "decay": 0.15,
+    "sustain": 0.7,
+    "release": 0.2
+  },
+  "lfoPitch": {
+    "rate": 5.5,
+    "depth": 0.04
+  },
+  "lfoVolume": {
+    "rate": 4,
+    "depth": 0
+  },
+  "filter": {
+    "hpf": 20,
+    "lpf": 6000
+  },
+  "sampleSeconds": 1.5
+}

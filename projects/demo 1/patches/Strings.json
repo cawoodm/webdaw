@@ -1,0 +1,52 @@
+{
+  "name": "Strings",
+  "layers": [
+    {
+      "type": "sawtooth",
+      "gain": 0.25,
+      "detune": 0,
+      "phase": 0,
+      "freq": 261.63
+    },
+    {
+      "type": "sawtooth",
+      "gain": 0.22,
+      "detune": 8,
+      "phase": 0,
+      "freq": 261.63
+    },
+    {
+      "type": "sawtooth",
+      "gain": 0.22,
+      "detune": -8,
+      "phase": 0,
+      "freq": 261.63
+    },
+    {
+      "type": "sawtooth",
+      "gain": 0.14,
+      "detune": 0,
+      "phase": 0,
+      "freq": 130.81
+    }
+  ],
+  "env": {
+    "attack": 0.35,
+    "decay": 0.2,
+    "sustain": 0.85,
+    "release": 0.7
+  },
+  "lfoPitch": {
+    "rate": 5,
+    "depth": 0.05
+  },
+  "lfoVolume": {
+    "rate": 4,
+    "depth": 0
+  },
+  "filter": {
+    "hpf": 80,
+    "lpf": 5000
+  },
+  "sampleSeconds": 3
+}

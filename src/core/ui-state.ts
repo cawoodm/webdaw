@@ -10,7 +10,7 @@ export interface UiState {
   activeTab: TabId;
   metronomeOn: boolean;
   tone: { patchId: string; live: boolean; loop: boolean };
-  sample: { selectedPad: number; countIn: boolean; overdub: boolean };
+  sample: { selectedPad: number; countIn: boolean; overdub: boolean; quantize: number };
   sequence: { seqId: string; trackId: string };
   arrange: { palette: string; openFx: string[] };
 }
@@ -20,7 +20,7 @@ function defaults(): UiState {
     activeTab: 'tone',
     metronomeOn: false,
     tone: { patchId: '', live: false, loop: false },
-    sample: { selectedPad: 0, countIn: false, overdub: false },
+    sample: { selectedPad: 0, countIn: false, overdub: false, quantize: 0.25 },
     sequence: { seqId: '', trackId: '' },
     arrange: { palette: '', openFx: [] },
   };

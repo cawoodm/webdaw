@@ -1,0 +1,45 @@
+{
+  "name": "Flute",
+  "layers": [
+    {
+      "type": "sine",
+      "gain": 0.75,
+      "detune": 0,
+      "phase": 0,
+      "freq": 523.25
+    },
+    {
+      "type": "triangle",
+      "gain": 0.2,
+      "detune": 0,
+      "phase": 0,
+      "freq": 523.25
+    },
+    {
+      "type": "noise",
+      "gain": 0.04,
+      "detune": 0,
+      "phase": 0,
+      "noiseSeed": 12
+    }
+  ],
+  "env": {
+    "attack": 0.09,
+    "decay": 0.1,
+    "sustain": 0.9,
+    "release": 0.25
+  },
+  "lfoPitch": {
+    "rate": 5,
+    "depth": 0.03
+  },
+  "lfoVolume": {
+    "rate": 4,
+    "depth": 0
+  },
+  "filter": {
+    "hpf": 250,
+    "lpf": 4500
+  },
+  "sampleSeconds": 2
+}

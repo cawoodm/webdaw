@@ -1,0 +1,38 @@
+{
+  "name": "Pluck",
+  "layers": [
+    {
+      "type": "triangle",
+      "gain": 0.8,
+      "detune": 0,
+      "phase": 0,
+      "freq": 261.63
+    },
+    {
+      "type": "square",
+      "gain": 0.15,
+      "detune": 0,
+      "phase": 0,
+      "freq": 523.25
+    }
+  ],
+  "env": {
+    "attack": 0.001,
+    "decay": 0.22,
+    "sustain": 0,
+    "release": 0.08
+  },
+  "lfoPitch": {
+    "rate": 4,
+    "depth": 0
+  },
+  "lfoVolume": {
+    "rate": 4,
+    "depth": 0
+  },
+  "filter": {
+    "hpf": 20,
+    "lpf": 3800
+  },
+  "sampleSeconds": 0.6
+}

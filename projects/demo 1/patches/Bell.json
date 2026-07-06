@@ -1,0 +1,52 @@
+{
+  "name": "Bell",
+  "layers": [
+    {
+      "type": "sine",
+      "gain": 0.5,
+      "detune": 0,
+      "phase": 0,
+      "freq": 261.63
+    },
+    {
+      "type": "sine",
+      "gain": 0.25,
+      "detune": 0,
+      "phase": 0,
+      "freq": 722.1
+    },
+    {
+      "type": "sine",
+      "gain": 0.14,
+      "detune": 0,
+      "phase": 0,
+      "freq": 1412.8
+    },
+    {
+      "type": "sine",
+      "gain": 0.07,
+      "detune": 0,
+      "phase": 0,
+      "freq": 2328.5
+    }
+  ],
+  "env": {
+    "attack": 0.001,
+    "decay": 2.2,
+    "sustain": 0,
+    "release": 0.7
+  },
+  "lfoPitch": {
+    "rate": 4,
+    "depth": 0
+  },
+  "lfoVolume": {
+    "rate": 4,
+    "depth": 0
+  },
+  "filter": {
+    "hpf": 100,
+    "lpf": 20000
+  },
+  "sampleSeconds": 3.5
+}

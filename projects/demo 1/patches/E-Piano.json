@@ -1,0 +1,45 @@
+{
+  "name": "E-Piano",
+  "layers": [
+    {
+      "type": "sine",
+      "gain": 0.85,
+      "detune": 0,
+      "phase": 0,
+      "freq": 261.63
+    },
+    {
+      "type": "triangle",
+      "gain": 0.2,
+      "detune": 0,
+      "phase": 0,
+      "freq": 523.25
+    },
+    {
+      "type": "sine",
+      "gain": 0.12,
+      "detune": 0,
+      "phase": 0,
+      "freq": 1308.15
+    }
+  ],
+  "env": {
+    "attack": 0.002,
+    "decay": 1.1,
+    "sustain": 0.25,
+    "release": 0.35
+  },
+  "lfoPitch": {
+    "rate": 4,
+    "depth": 0
+  },
+  "lfoVolume": {
+    "rate": 4.5,
+    "depth": 0.12
+  },
+  "filter": {
+    "hpf": 20,
+    "lpf": 5000
+  },
+  "sampleSeconds": 2.5
+}

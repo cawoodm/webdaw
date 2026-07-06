@@ -1,0 +1,52 @@
+{
+  "name": "Warm Pad",
+  "layers": [
+    {
+      "type": "sawtooth",
+      "gain": 0.32,
+      "detune": 0,
+      "phase": 0,
+      "freq": 261.63
+    },
+    {
+      "type": "sawtooth",
+      "gain": 0.25,
+      "detune": 9,
+      "phase": 0,
+      "freq": 261.63
+    },
+    {
+      "type": "sawtooth",
+      "gain": 0.25,
+      "detune": -9,
+      "phase": 0,
+      "freq": 261.63
+    },
+    {
+      "type": "triangle",
+      "gain": 0.16,
+      "detune": 0,
+      "phase": 0,
+      "freq": 523.25
+    }
+  ],
+  "env": {
+    "attack": 0.6,
+    "decay": 0.3,
+    "sustain": 0.8,
+    "release": 1.2
+  },
+  "lfoPitch": {
+    "rate": 4,
+    "depth": 0
+  },
+  "lfoVolume": {
+    "rate": 0.5,
+    "depth": 0.15
+  },
+  "filter": {
+    "hpf": 60,
+    "lpf": 2200
+  },
+  "sampleSeconds": 4
+}

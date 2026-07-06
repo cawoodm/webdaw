@@ -1,0 +1,38 @@
+{
+  "name": "Sub Bass",
+  "layers": [
+    {
+      "type": "sine",
+      "gain": 0.9,
+      "detune": 0,
+      "phase": 0,
+      "freq": 65.41
+    },
+    {
+      "type": "triangle",
+      "gain": 0.2,
+      "detune": 0,
+      "phase": 0,
+      "freq": 130.81
+    }
+  ],
+  "env": {
+    "attack": 0.005,
+    "decay": 0.15,
+    "sustain": 0.8,
+    "release": 0.15
+  },
+  "lfoPitch": {
+    "rate": 4,
+    "depth": 0
+  },
+  "lfoVolume": {
+    "rate": 4,
+    "depth": 0
+  },
+  "filter": {
+    "hpf": 20,
+    "lpf": 400
+  },
+  "sampleSeconds": 1.5
+}

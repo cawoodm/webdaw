@@ -1,0 +1,38 @@
+{
+  "name": "Wobble Bass",
+  "layers": [
+    {
+      "type": "square",
+      "gain": 0.6,
+      "detune": 0,
+      "phase": 0,
+      "freq": 65.41
+    },
+    {
+      "type": "sawtooth",
+      "gain": 0.5,
+      "detune": 5,
+      "phase": 0,
+      "freq": 130.81
+    }
+  ],
+  "env": {
+    "attack": 0.005,
+    "decay": 0.1,
+    "sustain": 0.9,
+    "release": 0.1
+  },
+  "lfoPitch": {
+    "rate": 4,
+    "depth": 0
+  },
+  "lfoVolume": {
+    "rate": 2,
+    "depth": 0.7
+  },
+  "filter": {
+    "hpf": 20,
+    "lpf": 900
+  },
+  "sampleSeconds": 2
+}
