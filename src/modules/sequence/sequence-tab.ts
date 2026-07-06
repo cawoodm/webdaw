@@ -35,8 +35,15 @@ export class SequenceTab extends HTMLElement {
       this.selectSeq(sequenceId);
       this.render();
     });
-    bus.on('tab:activate', (tab) => {
-      if (tab !== 'sequence') this.stopPlayback();
+    // playback survives tab switches; release only when another module claims it
+    bus.on('transport:claim', ({ owner }) => {
+      if (owner === 'sequence') return;
+      this.playback?.dispose();
+      this.playback = null;
+      if (this.recording) {
+        this.recording = false;
+        this.render();
+      }
     });
     bus.on('midi:noteon', ({ note, velocity }) => this.onNoteOn(note, velocity));
     bus.on('midi:noteoff', ({ note }) => this.onNoteOff(note));
@@ -109,6 +116,7 @@ export class SequenceTab extends HTMLElement {
     if (!seq) return;
     await engine.ensureStarted();
     this.stopPlayback(false);
+    engine.claimTransport('sequence');
     this.playback = playSequenceLive(seq, engine.master);
     engine.setLoop(seq.bars);
     engine.play();

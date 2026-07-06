@@ -8,6 +8,8 @@ export interface BusEvents {
   'tone:sendToPad': { patchId: string; name: string; buffer: AudioBuffer };
   'sample:editInSequencer': { sequenceId: string };
   'tab:activate': TabId;
+  /** A module is taking over playback — everyone else releases their scheduled parts. */
+  'transport:claim': { owner: TabId };
   'midi:noteon': { note: string; velocity: number };
   'midi:noteoff': { note: string };
 }
