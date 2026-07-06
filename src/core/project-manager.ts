@@ -42,6 +42,17 @@ class ProjectManager {
     }
     this.activeName = (await idbGet<string>(ACTIVE_KEY)) ?? DEFAULT_NAME;
     store.setMirrorKey(() => projectDataKey(this.activeName));
+    // Cross-tab sync: a save in one tab refreshes every other tab showing the
+    // same project (unless that tab has its own unsaved edits — then last
+    // writer still wins, as before).
+    if (typeof BroadcastChannel !== 'undefined') {
+      const channel = new BroadcastChannel('webdaw-project-sync');
+      store.setOnSaved(() => channel.postMessage({ name: this.activeName }));
+      channel.onmessage = (e: MessageEvent<{ name: string }>): void => {
+        if (e.data.name !== this.activeName || store.dirty) return;
+        void this.refreshFromMirror();
+      };
+    }
     setUiStatePersister(async (snapshot) => {
       await idbSet(projectUiKey(this.activeName), snapshot);
       await store.writeJson('ui.json', snapshot);
@@ -159,14 +170,30 @@ class ProjectManager {
     }
   }
 
-  /** Load a project (disk first, IndexedDB mirror fallback) and notify the UI. */
+  /** Re-read the active project's mirror after another tab saved it. */
+  private async refreshFromMirror(): Promise<void> {
+    const data = await idbGet<ProjectData>(projectDataKey(this.activeName));
+    if (!data) return;
+    const resolved: ProjectData = { ...defaultProject(), ...data };
+    resolved.name = this.activeName;
+    store.resetTo(normalizeProject(resolved));
+    void store.preloadBuffers();
+    bus.emit('ui:loaded');
+    bus.emit('project:loaded');
+  }
+
+  /** Load a project (newer of folder copy and IndexedDB mirror) and notify the UI. */
   private async load(name: string): Promise<void> {
     this.activeName = name;
     const dir = await this.projectDir(name, this.dirAvailable());
     store.setDir(dir);
 
-    let data = dir ? await store.readJson<ProjectData>('project.json') : null;
-    data ??= (await idbGet<ProjectData>(projectDataKey(name))) ?? null;
+    // Two copies can exist (folder + IndexedDB mirror); when both do, take
+    // the newer one — a tab without folder permission saves only the mirror.
+    const diskData = dir ? await store.readJson<ProjectData>('project.json') : null;
+    const mirrorData = (await idbGet<ProjectData>(projectDataKey(name))) ?? null;
+    let data = diskData;
+    if (mirrorData && (!diskData || (mirrorData.savedAt ?? 0) > (diskData.savedAt ?? 0))) data = mirrorData;
     const resolved: ProjectData = { ...defaultProject(), ...(data ?? {}) };
     resolved.name = name;
     store.resetTo(normalizeProject(resolved));

@@ -232,6 +232,8 @@ export interface ProjectData {
   /** Legacy single-loop fields (pre-padLoops) — folded in by normalizeProject. */
   padLoopBars?: number;
   padEvents?: PadEvent[];
+  /** Epoch ms of the last save — newer copy wins when disk and mirror disagree. */
+  savedAt: number;
 }
 
 export const PAD_COUNT = 16;
@@ -275,11 +277,13 @@ export function defaultProject(): ProjectData {
     padLoops: [defaultLoop()],
     sequences: [],
     arrangement: { tracks: [], masterPlugins: [] },
+    savedAt: 0,
   };
 }
 
 /** Upgrade loaded data in place: legacy single-loop fields become padLoops[0]. */
 export function normalizeProject(data: ProjectData): ProjectData {
+  data.savedAt ??= 0;
   if (!Array.isArray(data.padLoops) || data.padLoops.length === 0) {
     data.padLoops = [
       {

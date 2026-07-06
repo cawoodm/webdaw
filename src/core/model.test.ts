@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { defaultLfo, defaultPatch, defaultProject, PAD_COUNT, pianoNotes, resolveLfos, uid } from './model';
+import { defaultLfo, defaultPatch, defaultProject, normalizeProject, PAD_COUNT, pianoNotes, resolveLfos, uid } from './model';
 import { DEFAULT_KEYMAP } from '../midi/keymap';
 
 describe('project model', () => {
@@ -17,6 +17,11 @@ describe('project model', () => {
   it('generates unique ids', () => {
     const ids = new Set(Array.from({ length: 100 }, () => uid()));
     expect(ids.size).toBe(100);
+  });
+
+  it('defaults savedAt to 0 for old project.json files missing the field', () => {
+    const stale = JSON.parse(JSON.stringify({ ...defaultProject(), savedAt: undefined }));
+    expect(normalizeProject(stale).savedAt).toBe(0);
   });
 });
 
