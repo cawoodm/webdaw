@@ -31,6 +31,11 @@ export class ArrangeTab extends HTMLElement {
       this.render();
     });
     bus.on('project:changed', () => this.seqRenderCache.clear());
+    // absolute-time playback survives tab switches; yield when another
+    // module claims playback
+    bus.on('transport:claim', ({ owner }) => {
+      if (owner !== 'arrange') this.stop();
+    });
     this.render();
   }
 
@@ -98,6 +103,7 @@ export class ArrangeTab extends HTMLElement {
   private async play(): Promise<void> {
     await engine.ensureStarted();
     this.stop();
+    engine.claimTransport('arrange');
     const buffers = await this.resolveClips();
     const barSeconds = engine.secondsPerBeat() * 4;
     const startAt = Tone.now() + 0.15;

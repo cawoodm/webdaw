@@ -104,6 +104,13 @@ export class ToneTab extends HTMLElement {
     bus.on('midi:noteon', ({ note, velocity }) => {
       if (this.active) void this.noteOn(note, velocity);
     });
+    // loop preview survives tab switches; yield when another module claims
+    // the transport (which now belongs to the claimer — don't stop it)
+    bus.on('transport:claim', ({ owner }) => {
+      if (owner === 'tone') return;
+      this.previewStartedTransport = false;
+      this.stopPreview();
+    });
     bus.on('midi:noteoff', ({ note }) => {
       if (this.active) this.noteOff(note);
     });
@@ -176,12 +183,25 @@ export class ToneTab extends HTMLElement {
         this.flash(`${file.name}: not a tone patch`);
         continue;
       }
-      const base = defaultPatch();
-      const patch: TonePatch = { ...base, ...parsed, id: uid() };
-      delete patch.wavFile; // file refs never survive an import
-      patch.name = this.uniquePatchName(parsed.name?.trim() || file.name.replace(/\.json$/i, ''));
-      store.update((d) => d.patches.push(patch));
-      lastId = patch.id;
+      const name = parsed.name?.trim() || file.name.replace(/\.json$/i, '');
+      const existing = store.data.patches.find((p) => p.name.toLowerCase() === name.toLowerCase());
+      if (existing) {
+        // same name = overwrite in place: the id (and thus pad links) survives
+        const patch: TonePatch = { ...defaultPatch(), ...parsed, id: existing.id, name: existing.name };
+        delete patch.wavFile; // file refs never survive an import
+        store.update((d) => {
+          const i = d.patches.findIndex((p) => p.id === existing.id);
+          d.patches[i] = patch;
+        });
+        // linked pads always play the latest render
+        store.setBuffer(toneBufferKey(existing.id), await renderPatch(patch));
+        lastId = existing.id;
+      } else {
+        const patch: TonePatch = { ...defaultPatch(), ...parsed, id: uid(), name };
+        delete patch.wavFile; // file refs never survive an import
+        store.update((d) => d.patches.push(patch));
+        lastId = patch.id;
+      }
       imported++;
     }
     if (imported > 0) {
@@ -189,14 +209,6 @@ export class ToneTab extends HTMLElement {
       this.render();
       this.flash(imported === 1 ? `Imported "${this.patch().name}"` : `Imported ${imported} patches`);
     }
-  }
-
-  private uniquePatchName(wanted: string): string {
-    const names = new Set(store.data.patches.map((p) => p.name.toLowerCase()));
-    if (!names.has(wanted.toLowerCase())) return wanted;
-    let n = 2;
-    while (names.has(`${wanted} ${n}`.toLowerCase())) n++;
-    return `${wanted} ${n}`;
   }
 
   private patch(): TonePatch {
@@ -256,6 +268,7 @@ export class ToneTab extends HTMLElement {
     const patch = this.patch();
     const hold = sampleHold(patch);
     if (this.looping) {
+      engine.claimTransport('tone');
       const intervalBeats = Math.max(1, Math.ceil(hold / engine.secondsPerBeat()));
       this.previewLoop = new Tone.Loop((time) => {
         const p = this.patch();
@@ -503,6 +516,8 @@ export class ToneTab extends HTMLElement {
       btn('Delete', () => {
         store.update((d) => {
           d.patches = d.patches.filter((p) => p.id !== patch.id);
+          // a deleted tone disappears from the sampler pads too
+          d.pads = d.pads.map((p) => (p?.toneId === patch.id ? null : p));
         });
         this.selectPatch('');
         this.render();

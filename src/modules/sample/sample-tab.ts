@@ -56,6 +56,13 @@ export class SampleTab extends HTMLElement {
       this.selected = Math.min(PAD_COUNT - 1, Math.max(0, uiState().sample.selectedPad));
       this.render();
     });
+    // playback survives tab switches; release only when another module claims it
+    bus.on('transport:claim', ({ owner }) => {
+      if (owner === 'sample') return;
+      const wasActive = this.loopPart !== null || this.recording;
+      this.releaseLoop();
+      if (wasActive) this.render();
+    });
     window.addEventListener('keydown', this.onKeyDown);
     const indicatorTick = (): void => {
       this.updateBarIndicator();
@@ -243,6 +250,7 @@ export class SampleTab extends HTMLElement {
 
   private async startLoop(withExisting: boolean, countIn = false): Promise<void> {
     this.loopPart?.dispose();
+    engine.claimTransport('sample');
     const bars = this.loop().bars;
     const countBars = countIn ? 1 : 0;
     this.countInBeats = countBars * 4;
@@ -298,6 +306,13 @@ export class SampleTab extends HTMLElement {
   }
 
   private stopLoop(): void {
+    this.releaseLoop();
+    engine.stop();
+    engine.setLoop(0);
+  }
+
+  /** Drop everything we scheduled on the transport, without touching it. */
+  private releaseLoop(): void {
     this.loopPart?.dispose();
     this.loopPart = null;
     const transport = Tone.getTransport();
@@ -308,8 +323,7 @@ export class SampleTab extends HTMLElement {
       void engine.setMetronome(false);
     }
     this.countInBeats = 0;
-    engine.stop();
-    engine.setLoop(0);
+    this.recording = false;
   }
 
   /** Highlight the current bar (or count-in) while the transport runs. */
