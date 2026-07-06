@@ -22,20 +22,31 @@ class MidiInput {
   async init(): Promise<void> {
     window.addEventListener('keydown', this.onKeyDown);
     window.addEventListener('keyup', this.onKeyUp);
-    if (!navigator.requestMIDIAccess) return;
+    if (!navigator.requestMIDIAccess) {
+      console.warn('[midi] Web MIDI is not supported in this browser');
+      return;
+    }
     try {
       const access = await navigator.requestMIDIAccess();
+      console.info('[midi] access granted');
       const attach = (): void => {
         this.deviceNames = [];
         access.inputs.forEach((input) => {
           this.deviceNames.push(input.name ?? 'MIDI device');
           input.onmidimessage = this.onMessage;
         });
+        console.info('[midi] inputs (' + this.deviceNames.length + '):', this.deviceNames.join(', ') || '(none)');
       };
-      access.onstatechange = attach;
+      access.onstatechange = (e: MIDIConnectionEvent): void => {
+        const port = e.port;
+        if (port) {
+          console.debug('[midi] ' + port.type + ' "' + port.name + '" ' + port.state);
+        }
+        attach();
+      };
       attach();
     } catch (err) {
-      console.warn('Web MIDI unavailable', err);
+      console.warn('[midi] access denied or unavailable', err);
     }
   }
 
@@ -44,11 +55,16 @@ class MidiInput {
     if (!data || data.length < 3) return;
     const [status, key, velocity] = data;
     const cmd = status & 0xf0;
-    const note = midiToNote(key);
     if (cmd === 0x90 && velocity > 0) {
+      const note = midiToNote(key);
+      console.debug('[midi] noteon ' + note + ' vel ' + velocity);
       bus.emit('midi:noteon', { note, velocity: velocity / 127 });
     } else if (cmd === 0x80 || (cmd === 0x90 && velocity === 0)) {
+      const note = midiToNote(key);
+      console.debug('[midi] noteoff ' + note);
       bus.emit('midi:noteoff', { note });
+    } else {
+      console.debug('[midi] message', Array.from(data));
     }
   };
 
