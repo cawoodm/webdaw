@@ -136,13 +136,17 @@ class AudioEngine {
     t.position = 0;
   }
 
-  /** Configure transport looping over `bars` (4/4). Pass 0 to disable. */
-  setLoop(bars: number): void {
+  /**
+   * Configure transport looping over `bars` (4/4). Pass 0 to disable.
+   * `offsetBars` shifts the loop region (used for a count-in: the transport
+   * plays 0..offset once, then loops offset..offset+bars).
+   */
+  setLoop(bars: number, offsetBars = 0): void {
     const t = Tone.getTransport();
     if (bars > 0) {
       t.loop = true;
-      t.loopStart = 0;
-      t.loopEnd = `${bars}m`;
+      t.loopStart = `${offsetBars}m`;
+      t.loopEnd = `${offsetBars + bars}m`;
     } else {
       t.loop = false;
     }

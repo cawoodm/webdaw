@@ -325,6 +325,54 @@ daw-knob {
 }
 
 /* ---- sample tab ---- */
+.bar-indicator {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.bar-block {
+  width: 46px;
+  height: 26px;
+  border-radius: 4px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bar-block.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #10231f;
+}
+
+.bar-block.counting {
+  animation: count-pulse 0.25s ease-in-out infinite alternate;
+  border-color: var(--accent-2);
+  color: var(--accent-2);
+}
+
+@keyframes count-pulse {
+  from {
+    background: var(--bg-panel);
+  }
+  to {
+    background: #4a3620;
+  }
+}
+
+.check-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  user-select: none;
+}
+
 .sample-main {
   display: flex;
   gap: 16px;
@@ -358,8 +406,28 @@ daw-knob {
 
 .pad:active {
   transform: scale(0.97);
-  background: var(--accent);
-  color: #10231f;
+}
+
+.pad .pad-key {
+  display: block;
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-bottom: 2px;
+}
+
+.pad.hit {
+  animation: pad-hit 0.2s ease-out;
+}
+
+@keyframes pad-hit {
+  from {
+    box-shadow: 0 0 0 3px var(--accent), 0 0 18px var(--accent);
+    filter: brightness(1.9);
+  }
+  to {
+    box-shadow: none;
+    filter: brightness(1);
+  }
 }
 
 .pad-editor {

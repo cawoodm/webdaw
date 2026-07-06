@@ -52,6 +52,8 @@ export interface PadConfig {
   file?: string;
   /** Linked tone patch — the pad always plays the patch's latest render. */
   toneId?: string;
+  /** User-picked pad color (CSS hex). */
+  color?: string;
   gain: number;
   trimStart: number; // seconds
   trimEnd: number;   // seconds, 0 = to end

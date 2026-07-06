@@ -13,6 +13,11 @@ export class SampleTab extends HTMLElement {
   private selected = 0;
   private recording = false;
   private loopPart: Tone.Part | null = null;
+  /** Beats of count-in preceding the loop region (0 when none). */
+  private countInBeats = 0;
+  private transportEvents: number[] = [];
+  private metroForced = false;
+  private lastIndicatorBar = -2;
 
   connectedCallback(): void {
     this.className = 'tab-panel sample-tab';
@@ -20,6 +25,12 @@ export class SampleTab extends HTMLElement {
       this.selected = Math.min(PAD_COUNT - 1, Math.max(0, uiState().sample.selectedPad));
       this.render();
     });
+    window.addEventListener('keydown', this.onKeyDown);
+    const indicatorTick = (): void => {
+      this.updateBarIndicator();
+      requestAnimationFrame(indicatorTick);
+    };
+    requestAnimationFrame(indicatorTick);
     bus.on('project:loaded', () => {
       this.render();
       void this.ensureToneBuffers();
@@ -28,6 +39,42 @@ export class SampleTab extends HTMLElement {
     bus.on('project:changed', () => this.render());
     bus.on('tone:sendToPad', ({ patchId, name, buffer }) => this.receiveTone(patchId, name, buffer));
     this.render();
+  }
+
+  /** Keypad 1-8 fire pads 1-8; Shift+1-8 fire pads 9-16 (sample tab only). */
+  private onKeyDown = (e: KeyboardEvent): void => {
+    if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+    if (!this.classList.contains('active-tab')) return;
+    const target = e.target as HTMLElement;
+    if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
+    const match = /^(?:Digit|Numpad)([1-8])$/.exec(e.code);
+    if (!match) return;
+    e.preventDefault();
+    const index = Number(match[1]) - 1 + (e.shiftKey ? 8 : 0);
+    this.selected = index;
+    updateUi((s) => (s.sample.selectedPad = index));
+    this.onPadHit(index);
+    this.refreshSelection();
+  };
+
+  /** Update pad selection highlight + editor without a full re-render. */
+  private refreshSelection(): void {
+    this.querySelectorAll('.pad').forEach((p, j) => p.classList.toggle('selected', j === this.selected));
+    const editor = this.querySelector<HTMLElement>('.pad-editor');
+    if (editor) this.renderEditor(editor);
+  }
+
+  /** Flash a pad at (or near) its scheduled play time. */
+  private flashPad(index: number, time?: number): void {
+    const delayMs = time !== undefined && engine.started ? Math.max(0, (time - Tone.now()) * 1000) : 0;
+    window.setTimeout(() => {
+      const el = this.querySelectorAll<HTMLElement>('.pad')[index];
+      if (!el) return;
+      el.classList.remove('hit');
+      void el.offsetWidth; // restart the CSS animation
+      el.classList.add('hit');
+      window.setTimeout(() => el.classList.remove('hit'), 200);
+    }, delayMs);
   }
 
   /** Link a pad to the patch — it will always play the latest render. */
@@ -82,6 +129,7 @@ export class SampleTab extends HTMLElement {
       gainNode.dispose();
     };
     src.start(time ?? Tone.now(), pad.trimStart, duration);
+    if (time !== undefined) this.flashPad(index, time); // scheduled loop hits
   }
 
   private loopBeats(): number {
@@ -89,9 +137,13 @@ export class SampleTab extends HTMLElement {
   }
 
   private onPadHit(index: number): void {
+    this.flashPad(index); // immediate visual feedback, even on empty pads
     void engine.ensureStarted().then(() => this.playPad(index));
     if (this.recording && engine.playing) {
-      const time = engine.positionBeats % this.loopBeats();
+      // during a count-in the position is still before the loop region
+      const posBeats = engine.positionBeats - this.countInBeats;
+      if (posBeats < 0) return;
+      const time = posBeats % this.loopBeats();
       store.update((d) => d.padEvents.push({ pad: index, time }));
       this.updateStatus();
     }
@@ -104,14 +156,17 @@ export class SampleTab extends HTMLElement {
       this.stopLoop();
     } else {
       this.recording = true;
-      this.startLoop(true);
+      this.startLoop(true, uiState().sample.countIn);
     }
     this.render();
   }
 
-  private startLoop(withExisting: boolean): void {
+  private startLoop(withExisting: boolean, countIn = false): void {
     this.loopPart?.dispose();
-    engine.setLoop(store.data.padLoopBars);
+    const bars = store.data.padLoopBars;
+    const countBars = countIn ? 1 : 0;
+    this.countInBeats = countBars * 4;
+    engine.setLoop(bars, countBars);
     if (withExisting && store.data.padEvents.length > 0) {
       // musical time, not seconds: the transport (= metronome) is the clock,
       // so BPM changes keep pad hits and clicks locked together
@@ -120,8 +175,33 @@ export class SampleTab extends HTMLElement {
         store.data.padEvents.map((e) => [beatsToTransportTime(e.time), { pad: e.pad }] as [string, { pad: number }]),
       );
       this.loopPart.loop = true;
-      this.loopPart.loopEnd = `${store.data.padLoopBars}m`;
-      this.loopPart.start(0);
+      this.loopPart.loopEnd = `${bars}m`;
+      this.loopPart.start(`${countBars}m`);
+    }
+    const transport = Tone.getTransport();
+    if (countIn) {
+      // the count-in IS metronome clicks — force it on for that bar
+      if (!engine.metronomeOn) {
+        this.metroForced = true;
+        void engine.setMetronome(true);
+      }
+      this.transportEvents.push(
+        transport.scheduleOnce(() => {
+          if (this.metroForced) {
+            this.metroForced = false;
+            void engine.setMetronome(false);
+          }
+        }, `${countBars}m`),
+      );
+    }
+    if (this.recording && !uiState().sample.overdub) {
+      // no overdub: disarm recording after exactly one pass (playback continues)
+      this.transportEvents.push(
+        transport.scheduleOnce(() => {
+          this.recording = false;
+          this.render();
+        }, `${countBars + bars - 0.02}m`),
+      );
     }
     engine.play();
   }
@@ -129,8 +209,38 @@ export class SampleTab extends HTMLElement {
   private stopLoop(): void {
     this.loopPart?.dispose();
     this.loopPart = null;
+    const transport = Tone.getTransport();
+    for (const id of this.transportEvents) transport.clear(id);
+    this.transportEvents = [];
+    if (this.metroForced) {
+      this.metroForced = false;
+      void engine.setMetronome(false);
+    }
+    this.countInBeats = 0;
     engine.stop();
     engine.setLoop(0);
+  }
+
+  /** Highlight the current bar (or count-in) while the transport runs. */
+  private updateBarIndicator(): void {
+    const blocks = this.querySelectorAll<HTMLElement>('.bar-block');
+    if (blocks.length === 0) return;
+    let current = -1; // -1 = idle, -2 hasn't rendered yet
+    let counting = false;
+    if (engine.started && engine.playing) {
+      const posBeats = engine.positionBeats - this.countInBeats;
+      if (posBeats < 0) {
+        counting = true;
+      } else {
+        current = Math.floor(posBeats / 4) % store.data.padLoopBars;
+      }
+    }
+    if (current === this.lastIndicatorBar && !counting) return;
+    this.lastIndicatorBar = counting ? -1 : current;
+    blocks.forEach((b, i) => {
+      b.classList.toggle('active', i === current);
+      b.classList.toggle('counting', counting);
+    });
   }
 
   private async exportLoop(): Promise<void> {
@@ -191,6 +301,18 @@ export class SampleTab extends HTMLElement {
   private render(): void {
     this.innerHTML = '';
     const pads = store.data.pads;
+    this.lastIndicatorBar = -2;
+
+    // --- bar indicator ---
+    const indicator = document.createElement('div');
+    indicator.className = 'bar-indicator';
+    for (let b = 0; b < store.data.padLoopBars; b++) {
+      const block = document.createElement('div');
+      block.className = 'bar-block';
+      block.textContent = String(b + 1);
+      indicator.appendChild(block);
+    }
+    this.appendChild(indicator);
 
     // --- controls ---
     const bar = document.createElement('div');
@@ -213,8 +335,25 @@ export class SampleTab extends HTMLElement {
     barsSel.onchange = (): void => {
       store.update((d) => (d.padLoopBars = Number(barsSel.value)));
     };
+    const check = (label: string, title: string, value: boolean, onChange: (v: boolean) => void): HTMLLabelElement => {
+      const wrap = document.createElement('label');
+      wrap.className = 'hint check-toggle';
+      wrap.title = title;
+      const box = document.createElement('input');
+      box.type = 'checkbox';
+      box.checked = value;
+      box.onchange = (): void => onChange(box.checked);
+      wrap.append(box, document.createTextNode(` ${label}`));
+      return wrap;
+    };
     bar.append(
       barsSel,
+      check('Count-in', 'One bar of metronome clicks before recording starts', uiState().sample.countIn, (v) =>
+        updateUi((s) => (s.sample.countIn = v)),
+      ),
+      check('Overdub', 'Keep recording every pass; unchecked stops recording after one pass', uiState().sample.overdub, (v) =>
+        updateUi((s) => (s.sample.overdub = v)),
+      ),
       btn(this.recording ? '⏺ Stop rec' : '⏺ Record', () => void this.toggleRecord(), this.recording ? 'active' : ''),
       btn('▶ Play loop', async () => {
         await engine.ensureStarted();
@@ -243,7 +382,13 @@ export class SampleTab extends HTMLElement {
       const pad = pads[i];
       const el = document.createElement('button');
       el.className = 'pad' + (pad ? ' loaded' : '') + (i === this.selected ? ' selected' : '');
-      el.textContent = pad?.name ?? String(i + 1);
+      const key = i < 8 ? `${i + 1}` : `⇧${i - 7}`;
+      el.innerHTML = `<span class="pad-key">${key}</span>${pad?.name ?? ''}`;
+      el.title = i < 8 ? `Play with key ${i + 1}` : `Play with Shift+${i - 7}`;
+      if (pad?.color) {
+        el.style.borderColor = pad.color;
+        el.style.background = `${pad.color}2e`; // translucent fill of the pad color
+      }
       el.onpointerdown = (): void => {
         this.selected = i;
         updateUi((s) => (s.sample.selectedPad = i));
@@ -356,6 +501,20 @@ export class SampleTab extends HTMLElement {
       editor.appendChild(warn);
     }
 
+    const colorRow = document.createElement('label');
+    colorRow.className = 'hint check-toggle';
+    const colorInput = document.createElement('input');
+    colorInput.type = 'color';
+    colorInput.value = pad.color ?? '#4fd1c5';
+    colorInput.title = 'Pad color';
+    colorInput.oninput = (): void => {
+      pad.color = colorInput.value;
+      store.scheduleSave();
+      this.paintPad(index);
+    };
+    colorRow.append(colorInput, document.createTextNode(' Pad color'));
+    editor.appendChild(colorRow);
+
     const clear = document.createElement('button');
     clear.textContent = 'Clear pad';
     clear.onclick = (): void => {
@@ -363,6 +522,15 @@ export class SampleTab extends HTMLElement {
       this.render();
     };
     editor.appendChild(clear);
+  }
+
+  /** Apply a pad's color to its button without a full re-render. */
+  private paintPad(index: number): void {
+    const el = this.querySelectorAll<HTMLElement>('.pad')[index];
+    const pad = store.data.pads[index];
+    if (!el || !pad?.color) return;
+    el.style.borderColor = pad.color;
+    el.style.background = `${pad.color}2e`;
   }
 
   private updateStatus(): void {
