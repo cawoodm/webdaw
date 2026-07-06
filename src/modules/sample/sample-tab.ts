@@ -991,10 +991,12 @@ export class SampleTab extends HTMLElement {
       el.onpointerdown = (): void => {
         this.selected = i;
         updateUi((s) => (s.sample.selectedPad = i));
-        this.onPadHit(i);
         grid.querySelectorAll('.pad').forEach((p, j) => p.classList.toggle('selected', j === i));
         this.renderEditor(editor);
       };
+      // play on click, not pointerdown: click never fires after a drag,
+      // so dragging a pad to another slot stays silent
+      el.onclick = (): void => this.onPadHit(i);
       // drag a pad onto another: occupied target = swap, empty target = move.
       // Recorded loop events follow their pads.
       el.draggable = !!pad;
