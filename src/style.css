@@ -273,6 +273,22 @@ daw-knob {
   color: var(--text-dim);
 }
 
+/* compact master-volume knob in the header: dial only, no label/value */
+.transport daw-knob.master-vol {
+  width: auto;
+}
+
+.transport daw-knob.master-vol svg {
+  width: 26px;
+  height: 26px;
+  display: block;
+}
+
+.transport daw-knob.master-vol .knob-label,
+.transport daw-knob.master-vol .knob-value {
+  display: none;
+}
+
 .knob-value {
   font-size: 11px;
   cursor: text;
