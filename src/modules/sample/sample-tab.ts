@@ -388,7 +388,7 @@ export class SampleTab extends HTMLElement {
 
       const lane = document.createElement('div');
       lane.className = 'event-lane';
-      lane.title = 'Click: add a 1-beat clip · drag: move · right edge: resize · double-click: delete';
+      lane.title = 'Click: add a clip (quantize length) · drag: move · right edge: resize · double-click: delete';
       // beat + bar gridlines sized to the loop
       lane.style.backgroundImage =
         'linear-gradient(90deg, var(--text-dim) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px)';
@@ -398,7 +398,8 @@ export class SampleTab extends HTMLElement {
         const q = this.quantize();
         const fraction = (e.clientX - lane.getBoundingClientRect().left) / lane.offsetWidth;
         const time = Math.min(loopBeats - q, Math.max(0, this.floorSnap(fraction * loopBeats)));
-        store.data.padEvents.push({ pad: padIndex, time, duration: Math.min(1, loopBeats - time) });
+        // new clips are one quantize step long
+        store.data.padEvents.push({ pad: padIndex, time, duration: q });
         this.commitGridEdit();
       };
       row.appendChild(lane);
