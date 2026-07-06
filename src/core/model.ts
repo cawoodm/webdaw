@@ -241,6 +241,11 @@ export function uid(): string {
   return crypto.randomUUID().slice(0, 8);
 }
 
+/** Copy of `items` sorted by display name (case-insensitive, locale-aware). */
+export function sortedByName<T extends { name: string }>(items: readonly T[]): T[] {
+  return [...items].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+}
+
 export function defaultPatch(): TonePatch {
   return {
     id: uid(),

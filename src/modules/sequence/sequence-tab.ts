@@ -1,7 +1,7 @@
 import { engine } from '../../core/audio-engine';
 import { bus } from '../../core/event-bus';
 import type { SeqTrack, Sequence, SynthKind } from '../../core/model';
-import { STEPS_PER_BAR, uid } from '../../core/model';
+import { sortedByName, STEPS_PER_BAR, uid } from '../../core/model';
 import { store } from '../../core/project-store';
 import { uiState, updateUi } from '../../core/ui-state';
 import { knob } from '../../ui/knob';
@@ -337,7 +337,7 @@ export class SequenceTab extends HTMLElement {
       opt.selected = track.source?.pad === i;
       sel.appendChild(opt);
     });
-    for (const patch of store.data.patches) {
+    for (const patch of sortedByName(store.data.patches)) {
       if (!patch.wavFile) continue;
       const opt = document.createElement('option');
       opt.value = `file:${patch.wavFile}`;

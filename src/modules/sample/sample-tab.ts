@@ -2,7 +2,7 @@ import * as Tone from '../../core/tone';
 import { engine } from '../../core/audio-engine';
 import { bus } from '../../core/event-bus';
 import type { PadConfig, PadEvent, PadLoop, TonePatch } from '../../core/model';
-import { defaultLoop, defaultPatch, PAD_COUNT, STEPS_PER_BAR, toneBufferKey, uid } from '../../core/model';
+import { defaultLoop, defaultPatch, PAD_COUNT, sortedByName, STEPS_PER_BAR, toneBufferKey, uid } from '../../core/model';
 import { renderPatch } from '../../core/patch-voice';
 import { uniqueName } from '../../core/project-names';
 import { store } from '../../core/project-store';
@@ -842,7 +842,7 @@ export class SampleTab extends HTMLElement {
     const loop = this.loop();
     const loopSel = document.createElement('select');
     loopSel.title = 'Switch sample';
-    for (const l of store.data.padLoops) {
+    for (const l of sortedByName(store.data.padLoops)) {
       const opt = document.createElement('option');
       opt.value = l.id;
       opt.textContent = l.name;
@@ -1052,7 +1052,7 @@ export class SampleTab extends HTMLElement {
     noneOpt.value = '';
     noneOpt.textContent = '— load tone —';
     toneSel.appendChild(noneOpt);
-    for (const patch of store.data.patches) {
+    for (const patch of sortedByName(store.data.patches)) {
       const opt = document.createElement('option');
       opt.value = patch.id;
       opt.textContent = patch.name;
