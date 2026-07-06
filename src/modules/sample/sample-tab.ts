@@ -442,6 +442,31 @@ export class SampleTab extends HTMLElement {
    * 1-beat clip; drag = move (across lanes too); right edge = resize;
    * double-click = delete.
    */
+  /**
+   * Hierarchical gridlines down to the quantize step: bars heaviest, then
+   * halving levels (2 beats, 1 beat, 1/8, 1/16 …) progressively thinner
+   * and fainter. Layered coarse-first so heavy lines win where they meet.
+   */
+  private gridBackground(loopBeats: number): { image: string; size: string } {
+    const q = this.quantize();
+    const style = (level: number): { w: number; a: number } =>
+      [
+        { w: 2, a: 0.6 },  // bar
+        { w: 2, a: 0.32 }, // 1/2
+        { w: 1, a: 0.32 }, // 1/4 (beat)
+        { w: 1, a: 0.2 },  // 1/8
+        { w: 1, a: 0.12 }, // 1/16 and finer
+      ][Math.min(level, 4)];
+    const images: string[] = [];
+    const sizes: string[] = [];
+    for (let s = 4, level = 0; s >= q - 1e-6; s /= 2, level++) {
+      const { w, a } = style(level);
+      images.push(`linear-gradient(90deg, rgb(148 163 184 / ${a * 100}%) ${w}px, transparent ${w}px)`);
+      sizes.push(`${100 / (loopBeats / s)}% 100%`);
+    }
+    return { image: images.join(', '), size: sizes.join(', ') };
+  }
+
   private buildEventGrid(): HTMLElement {
     const loopBeats = this.loopBeats();
     const grid = document.createElement('div');
@@ -458,7 +483,7 @@ export class SampleTab extends HTMLElement {
 
     // ruler: bar numbers + quantize ticks above the lanes
     const bars = this.loop().bars;
-    const q = this.quantize();
+    const gridBg = this.gridBackground(loopBeats);
     const ruler = document.createElement('div');
     ruler.className = 'event-row event-ruler';
     const rulerSpacer = document.createElement('span');
@@ -466,9 +491,8 @@ export class SampleTab extends HTMLElement {
     ruler.appendChild(rulerSpacer);
     const scale = document.createElement('div');
     scale.className = 'event-scale';
-    scale.style.backgroundImage =
-      'linear-gradient(90deg, var(--text-dim) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px)';
-    scale.style.backgroundSize = `${100 / bars}% 100%, ${100 / (loopBeats / q)}% 100%`;
+    scale.style.backgroundImage = gridBg.image;
+    scale.style.backgroundSize = gridBg.size;
     for (let b = 0; b < bars; b++) {
       const num = document.createElement('span');
       num.className = 'event-bar-num';
@@ -494,10 +518,9 @@ export class SampleTab extends HTMLElement {
       const lane = document.createElement('div');
       lane.className = 'event-lane';
       lane.title = 'Click: add a clip (quantize length) · drag: move · right edge: resize · double-click: delete';
-      // bar + quantize gridlines sized to the loop (matches clip snapping)
-      lane.style.backgroundImage =
-        'linear-gradient(90deg, var(--text-dim) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px)';
-      lane.style.backgroundSize = `${100 / this.loop().bars}% 100%, ${100 / (loopBeats / q)}% 100%`;
+      // hierarchical bar/beat/quantize gridlines (matches clip snapping)
+      lane.style.backgroundImage = gridBg.image;
+      lane.style.backgroundSize = gridBg.size;
       lane.onclick = (e): void => {
         if (e.target !== lane) return; // clicks on clips are handled there
         const q = this.quantize();
