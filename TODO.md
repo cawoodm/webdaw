@@ -13,8 +13,8 @@
 
 # In-Progress
 
-- feat: When dragging a sample pad (mousedown) don't play it 🕜 (todos2)
 - feat: Sort names of patches and loops in their dropdowns by name 🕜 (todos)
+- feat: When dragging a sample pad (mousedown) don't play it 🕜 (todos2)
 
 # DONE
 
