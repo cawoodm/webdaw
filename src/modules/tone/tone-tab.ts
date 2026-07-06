@@ -497,32 +497,61 @@ export class ToneTab extends HTMLElement {
     };
     bar.append(
       select,
-      btn('New', () => {
-        const p = defaultPatch();
-        p.id = uid();
-        p.name = `Patch ${store.data.patches.length + 1}`;
-        store.update((d) => d.patches.push(p));
-        this.selectPatch(p.id);
-        this.render();
-      }),
-      btn('Rename', () => {
-        const name = prompt('Patch name', patch.name);
-        if (name) {
-          store.update((d) => {
-            patch.name = name;
-            // pads linked to this tone carry a copy of its name
-            for (const pad of d.pads) if (pad?.toneId === patch.id) pad.name = name;
-          });
+      iconBtn(
+        'New patch',
+        `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+          <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`,
+        () => {
+          const p = defaultPatch();
+          p.id = uid();
+          p.name = this.uniquePatchName(`Patch ${store.data.patches.length + 1}`);
+          store.update((d) => d.patches.push(p));
+          this.selectPatch(p.id);
           this.render();
-        }
-      }),
-      btn('Delete', () => {
-        store.update((d) => {
-          d.patches = d.patches.filter((p) => p.id !== patch.id);
-        });
-        this.selectPatch('');
-        this.render();
-      }),
+        },
+      ),
+      iconBtn(
+        'Duplicate patch',
+        `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true">
+          <rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`,
+        () => {
+          const copy = structuredClone(patch);
+          copy.id = uid();
+          copy.name = this.uniquePatchName(`${patch.name} copy`);
+          delete copy.wavFile;
+          store.update((d) => d.patches.push(copy));
+          this.selectPatch(copy.id);
+          this.render();
+        },
+      ),
+      iconBtn(
+        'Rename patch',
+        `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true">
+          <path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg>`,
+        () => {
+          const name = prompt('Patch name', patch.name);
+          if (name) {
+            store.update((d) => {
+              patch.name = name;
+              // pads linked to this tone carry a copy of its name
+              for (const pad of d.pads) if (pad?.toneId === patch.id) pad.name = name;
+            });
+            this.render();
+          }
+        },
+      ),
+      iconBtn(
+        'Delete patch',
+        `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`,
+        () => {
+          store.update((d) => {
+            d.patches = d.patches.filter((p) => p.id !== patch.id);
+          });
+          this.selectPatch('');
+          this.render();
+        },
+      ),
     );
     this.appendChild(bar);
 
