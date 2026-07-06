@@ -21,6 +21,7 @@ class AudioEngine {
   private readyQueue: (() => void)[] = [];
   private bpmValue = 120;
   private volumeValue = 0.9;
+  private _meter: Tone.Meter | null = null;
   private metroGain: Tone.Gain | null = null;
   private metroLoop: Tone.Loop | null = null;
   private clickBuffer: Tone.ToneAudioBuffer | null = null;
@@ -37,6 +38,20 @@ class AudioEngine {
   get master(): Tone.Gain {
     if (!this._master) this._master = new Tone.Gain(this.volumeValue).toDestination();
     return this._master;
+  }
+
+  /**
+   * Current master output level in dB (-Infinity before the first gesture).
+   * The meter node is created on first use so no audio graph exists at boot.
+   */
+  masterLevelDb(): number {
+    if (!this._started) return -Infinity;
+    if (!this._meter) {
+      this._meter = new Tone.Meter({ smoothing: 0.85 });
+      this.master.connect(this._meter);
+    }
+    const v = this._meter.getValue();
+    return Array.isArray(v) ? Math.max(...v) : v;
   }
 
   /** Master output volume (0..1); safe to set before the context exists. */

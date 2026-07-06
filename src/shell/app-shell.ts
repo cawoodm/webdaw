@@ -110,6 +110,12 @@ export class AppShell extends HTMLElement {
     volKnob.classList.add('master-vol');
     volKnob.title = 'Master volume';
     this.querySelector('.transport')!.appendChild(volKnob);
+    // level gauge next to the volume knob: green = level, red = clipping
+    const meterEl = document.createElement('div');
+    meterEl.className = 'level-meter';
+    meterEl.title = 'Master level (red = clipping)';
+    meterEl.innerHTML = '<div class="level-fill"></div>';
+    this.querySelector('.transport')!.appendChild(meterEl);
     const metro = this.querySelector<HTMLButtonElement>('.metro')!;
     metro.onclick = async (): Promise<void> => {
       await engine.ensureStarted();
@@ -138,8 +144,20 @@ export class AppShell extends HTMLElement {
       playAll.innerHTML = playing ? STOP_ICON : PLAY_ICON;
     };
     paintPlayAll();
+    // meter maps -60..0 dB onto the bar; clipping (>= 0 dB) holds red briefly
+    const meterFill = meterEl.querySelector<HTMLElement>('.level-fill')!;
+    let clipUntil = 0;
+    const paintMeter = (): void => {
+      const db = engine.masterLevelDb();
+      const norm = Math.max(0, Math.min(1, (db + 60) / 60));
+      meterFill.style.height = `${(norm * 100).toFixed(1)}%`;
+      const now = performance.now();
+      if (db >= 0) clipUntil = now + 400;
+      meterEl.classList.toggle('clip', now < clipUntil);
+    };
     const playAllTick = (): void => {
       paintPlayAll();
+      paintMeter();
       requestAnimationFrame(playAllTick);
     };
     requestAnimationFrame(playAllTick);
