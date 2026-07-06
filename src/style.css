@@ -309,9 +309,15 @@ daw-knob {
   margin-bottom: 12px;
 }
 
-.tone-tab.drag-over {
+.tab-panel.drag-over {
   outline: 2px dashed var(--accent);
   outline-offset: -6px;
+}
+
+/* dragging files over a tab name: highlight + spring-loaded switch */
+.tab-bar button.drag-over {
+  outline: 2px dashed var(--accent);
+  outline-offset: -2px;
 }
 
 .tone-scopes-head {

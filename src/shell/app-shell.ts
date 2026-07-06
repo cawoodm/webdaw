@@ -70,6 +70,23 @@ export class AppShell extends HTMLElement {
       b.textContent = tab.label;
       b.dataset.tab = tab.id;
       b.onclick = (): void => bus.emit('tab:activate', tab.id);
+      // spring-loaded tabs: dragging files over a tab name switches to it,
+      // and dropping on the name forwards the files to that tab's handler
+      b.ondragover = (e): void => {
+        if (!e.dataTransfer?.types.includes('Files')) return;
+        e.preventDefault();
+        if (!b.classList.contains('drag-over')) {
+          b.classList.add('drag-over');
+          bus.emit('tab:activate', tab.id);
+        }
+      };
+      b.ondragleave = (): void => b.classList.remove('drag-over');
+      b.ondrop = (e): void => {
+        b.classList.remove('drag-over');
+        if (!e.dataTransfer?.files.length) return;
+        e.preventDefault();
+        this.querySelector(`${tab.id}-tab`)?.dispatchEvent(new DragEvent('drop', { dataTransfer: e.dataTransfer }));
+      };
       nav.appendChild(b);
     }
 
