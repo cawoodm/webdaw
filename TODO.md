@@ -3,13 +3,15 @@
 Mark in progress 🕜 and then move to done ✅ when complete and merge branch into main
 Once a task is done, show the user the dev URL, confirm with the user they are happy before marking done
 
-- feat: Add a small toggle to enable/disable LPF/HPF completely (same for LFO) 🕜
+- bug: When count-in is finished, recording stops
 - feat: Add an option to increase slope of LPF/HPF
+- feat: Allow drag and drop of sample pads to swap (dest is occupied) or move (if dest empty)
 - feat: Add a BPF (band pass filter) in yellow
 - feat: Add a solo button next to mute for tone layers so they play on their own
 
 # DONE
 
+- feat: Add a small toggle to enable/disable LPF/HPF completely (same for LFO) ✅
 - feat: Add a dropdown to the "Sample" box which let's the user choose a note (88 notes) ✅
 - feat: The Sample frequency should be moved to the layer so it's layer-specific ✅ (notes transpose relative to C4; click a knob's number to type a value)
 - feat: Export tone should export .json settings of that tone ✅ (browser download of .wav + .json; Ctrl+S writes tones/\*.wav to the project folder)

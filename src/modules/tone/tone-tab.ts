@@ -505,11 +505,30 @@ export class ToneTab extends HTMLElement {
     }
     envCard.appendChild(envKnobs);
 
+    // small enable/disable checkbox for a card section (LFO, HPF, LPF)
+    const onToggle = (title: string, isOn: boolean, apply: (on: boolean) => void): HTMLLabelElement => {
+      const l = document.createElement('label');
+      l.className = 'check-toggle hint';
+      l.title = title;
+      const c = document.createElement('input');
+      c.type = 'checkbox';
+      c.checked = isOn;
+      c.onchange = (): void => {
+        apply(c.checked);
+        this.save();
+      };
+      l.appendChild(c);
+      return l;
+    };
+
     const lfoCard = document.createElement('div');
     lfoCard.className = 'card';
     const lfoHead = document.createElement('div');
     lfoHead.className = 'card-head';
     lfoHead.innerHTML = `${legendDot(LFO_TRACE)}<span class="card-title">LFO</span>`;
+    lfoHead.appendChild(
+      onToggle('Enable/disable the LFO', patch.lfo.on !== false, (on) => (patch.lfo.on = on)),
+    );
     const targetSel = document.createElement('select');
     for (const t of LFO_TARGETS) {
       const opt = document.createElement('option');
@@ -544,6 +563,10 @@ export class ToneTab extends HTMLElement {
     const filterKnobs = document.createElement('div');
     filterKnobs.className = 'knob-row';
     const filter = this.filter(patch);
+    filterCard.querySelector('.card-head')!.append(
+      onToggle('Enable/disable the high-pass filter', filter.hpfOn !== false, (on) => (filter.hpfOn = on)),
+      onToggle('Enable/disable the low-pass filter', filter.lpfOn !== false, (on) => (filter.lpfOn = on)),
+    );
     filterKnobs.append(
       knob(
         { label: 'HPF', min: 20, max: 10000, step: 1, value: filter.hpf, log: true, unit: 'Hz', color: HPF_TRACE },
