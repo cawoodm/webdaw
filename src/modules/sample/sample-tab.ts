@@ -226,22 +226,89 @@ export class SampleTab extends HTMLElement {
   private updateBarIndicator(): void {
     const blocks = this.querySelectorAll<HTMLElement>('.bar-block');
     if (blocks.length === 0) return;
-    let current = -1; // -1 = idle, -2 hasn't rendered yet
+    let bar = -1;
+    let beat = -1;
     let counting = false;
+    let fraction = -1; // playhead position 0..1 across the loop
     if (engine.started && engine.playing) {
       const posBeats = engine.positionBeats - this.countInBeats;
       if (posBeats < 0) {
         counting = true;
       } else {
-        current = Math.floor(posBeats / 4) % store.data.padLoopBars;
+        const inLoop = posBeats % this.loopBeats();
+        bar = Math.floor(inLoop / 4) % store.data.padLoopBars;
+        beat = Math.floor(inLoop % 4);
+        fraction = inLoop / this.loopBeats();
       }
     }
-    if (current === this.lastIndicatorBar && !counting) return;
-    this.lastIndicatorBar = counting ? -1 : current;
+    // playhead moves every frame; block/beat classes only on change
+    const playhead = this.querySelector<HTMLElement>('.event-playhead');
+    if (playhead) {
+      const cells = this.querySelector<HTMLElement>('.event-cells');
+      if (fraction < 0 || !cells) {
+        playhead.classList.add('hidden');
+      } else {
+        playhead.classList.remove('hidden');
+        playhead.style.left = `${cells.offsetLeft + fraction * cells.offsetWidth}px`;
+      }
+    }
+    const key = counting ? -1 : bar * 4 + beat;
+    if (key === this.lastIndicatorBar && !counting) return;
+    this.lastIndicatorBar = key;
     blocks.forEach((b, i) => {
-      b.classList.toggle('active', i === current);
+      b.classList.toggle('active', i === bar);
       b.classList.toggle('counting', counting);
+      b.querySelectorAll('i').forEach((dot, j) => dot.classList.toggle('on', i === bar && j === beat));
     });
+  }
+
+  /** Grid of recorded hits: one row per pad with data, colored by pad color. */
+  private buildEventGrid(): HTMLElement {
+    const bars = store.data.padLoopBars;
+    const steps = bars * STEPS_PER_BAR;
+    const byPad = new Map<number, Set<number>>();
+    for (const e of store.data.padEvents) {
+      const step = Math.round(e.time * 4) % steps;
+      if (!byPad.has(e.pad)) byPad.set(e.pad, new Set());
+      byPad.get(e.pad)!.add(step);
+    }
+    const grid = document.createElement('div');
+    grid.className = 'event-grid';
+    if (byPad.size === 0) {
+      grid.classList.add('hidden');
+      return grid;
+    }
+    for (const padIndex of [...byPad.keys()].sort((a, b) => a - b)) {
+      const pad = store.data.pads[padIndex];
+      const color = pad?.color ?? '#4fd1c5';
+      const row = document.createElement('div');
+      row.className = 'event-row';
+      const label = document.createElement('span');
+      label.className = 'event-label';
+      label.textContent = pad?.name ?? `Pad ${padIndex + 1}`;
+      label.style.borderRightColor = color;
+      row.appendChild(label);
+      const cells = document.createElement('div');
+      cells.className = 'event-cells';
+      cells.style.gridTemplateColumns = `repeat(${steps}, 1fr)`;
+      const hits = byPad.get(padIndex)!;
+      for (let s = 0; s < steps; s++) {
+        const cell = document.createElement('div');
+        cell.className =
+          'event-cell' + (s % STEPS_PER_BAR === 0 ? ' bar-start' : s % 4 === 0 ? ' beat-start' : '');
+        if (hits.has(s)) {
+          cell.classList.add('on');
+          cell.style.background = color;
+        }
+        cells.appendChild(cell);
+      }
+      row.appendChild(cells);
+      grid.appendChild(row);
+    }
+    const playhead = document.createElement('div');
+    playhead.className = 'event-playhead hidden';
+    grid.appendChild(playhead);
+    return grid;
   }
 
   private async exportLoop(): Promise<void> {
@@ -304,16 +371,21 @@ export class SampleTab extends HTMLElement {
     const pads = store.data.pads;
     this.lastIndicatorBar = -2;
 
-    // --- bar indicator ---
+    // --- bar indicator (bar number + one dot per beat) + recorded-event grid ---
     const indicator = document.createElement('div');
     indicator.className = 'bar-indicator';
     for (let b = 0; b < store.data.padLoopBars; b++) {
       const block = document.createElement('div');
       block.className = 'bar-block';
-      block.textContent = String(b + 1);
+      const num = document.createElement('span');
+      num.className = 'bar-num';
+      num.textContent = String(b + 1);
+      block.appendChild(num);
+      for (let beat = 0; beat < 4; beat++) block.appendChild(document.createElement('i'));
       indicator.appendChild(block);
     }
     this.appendChild(indicator);
+    this.appendChild(this.buildEventGrid());
 
     // --- controls ---
     const bar = document.createElement('div');

@@ -342,8 +342,8 @@ daw-knob {
 }
 
 .bar-block {
-  width: 46px;
   height: 26px;
+  padding: 0 10px;
   border-radius: 4px;
   background: var(--bg-panel);
   border: 1px solid var(--border);
@@ -351,13 +351,28 @@ daw-knob {
   font-size: 12px;
   display: flex;
   align-items: center;
-  justify-content: center;
+  gap: 5px;
+}
+
+.bar-block .bar-num {
+  margin-right: 3px;
+}
+
+.bar-block i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--border);
+}
+
+.bar-block i.on {
+  background: var(--accent-2);
+  box-shadow: 0 0 6px var(--accent-2);
 }
 
 .bar-block.active {
-  background: var(--accent);
   border-color: var(--accent);
-  color: #10231f;
+  color: var(--text);
 }
 
 .bar-block.counting {
@@ -381,6 +396,69 @@ daw-knob {
   gap: 5px;
   cursor: pointer;
   user-select: none;
+}
+
+/* recorded pad hits across the loop, one row per pad, colored by pad */
+.event-grid {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 12px;
+}
+
+.event-row {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.event-label {
+  width: 92px;
+  flex-shrink: 0;
+  text-align: right;
+  font-size: 11px;
+  color: var(--text-dim);
+  padding-right: 6px;
+  border-right: 3px solid var(--accent);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  line-height: 16px;
+}
+
+.event-cells {
+  flex: 1;
+  display: grid;
+  gap: 1px;
+}
+
+.event-cell {
+  height: 16px;
+  background: var(--bg-panel);
+  border-radius: 2px;
+}
+
+.event-cell.beat-start {
+  border-left: 1px solid var(--border);
+}
+
+.event-cell.bar-start {
+  border-left: 2px solid var(--text-dim);
+}
+
+.event-cell.on {
+  box-shadow: 0 0 5px rgb(0 0 0 / 40%);
+}
+
+.event-playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--accent-2);
+  border-radius: 1px;
+  pointer-events: none;
 }
 
 button.recording {
