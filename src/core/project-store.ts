@@ -24,10 +24,22 @@ class ProjectStore {
   private saveTimer: number | undefined;
   private decodeCtx: OfflineAudioContext | null = null;
   private mirrorKey: () => string = () => 'project:default:data';
+  private dirtyFlag = false;
+  private onSavedCb: (() => void) | null = null;
+
+  /** True when in-memory edits haven't been saved yet. */
+  get dirty(): boolean {
+    return this.dirtyFlag;
+  }
 
   /** The manager tells the store where its IndexedDB mirror lives. */
   setMirrorKey(provider: () => string): void {
     this.mirrorKey = provider;
+  }
+
+  /** The manager hooks this to broadcast saves to other tabs. */
+  setOnSaved(cb: () => void): void {
+    this.onSavedCb = cb;
   }
 
   /** Attach/detach the active project's directory handle. */
@@ -41,6 +53,7 @@ class ProjectStore {
     this.data = data;
     this.buffers.clear();
     this.pendingWavs.clear();
+    this.dirtyFlag = false;
   }
 
   /**
@@ -58,18 +71,23 @@ class ProjectStore {
   /** Apply a mutation, notify listeners, schedule an autosave. */
   update(mutate: (data: ProjectData) => void): void {
     mutate(this.data);
+    this.dirtyFlag = true;
     bus.emit('project:changed');
     this.scheduleSave();
   }
 
   scheduleSave(): void {
+    this.dirtyFlag = true;
     clearTimeout(this.saveTimer);
     this.saveTimer = window.setTimeout(() => void this.save(), 800);
   }
 
   async save(): Promise<void> {
     clearTimeout(this.saveTimer);
+    this.data.savedAt = Date.now();
     await idbSet(this.mirrorKey(), this.data);
+    this.dirtyFlag = false;
+    this.onSavedCb?.();
     if (!this.dir) return;
     await this.writeFile(PROJECT_FILE, JSON.stringify(this.data, null, 2));
   }
