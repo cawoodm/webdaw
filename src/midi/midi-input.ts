@@ -18,16 +18,26 @@ function midiToNote(key: number): string {
 class MidiInput {
   deviceNames: string[] = [];
   private downKeys = new Set<string>();
+  private access: MIDIAccess | null = null;
 
   async init(): Promise<void> {
     window.addEventListener('keydown', this.onKeyDown);
     window.addEventListener('keyup', this.onKeyUp);
+  }
+
+  get enabled(): boolean {
+    return this.access !== null;
+  }
+
+  async enable(): Promise<void> {
+    if (this.access) return;
     if (!navigator.requestMIDIAccess) {
       console.warn('[midi] Web MIDI is not supported in this browser');
       return;
     }
     try {
       const access = await navigator.requestMIDIAccess();
+      this.access = access;
       console.info('[midi] access granted');
       const attach = (): void => {
         this.deviceNames = [];
@@ -48,6 +58,18 @@ class MidiInput {
     } catch (err) {
       console.warn('[midi] access denied or unavailable', err);
     }
+  }
+
+  disable(): void {
+    if (this.access) {
+      this.access.inputs.forEach((input) => {
+        input.onmidimessage = null;
+      });
+      this.access.onstatechange = null;
+    }
+    this.access = null;
+    this.deviceNames = [];
+    console.info('[midi] disabled');
   }
 
   private onMessage = (e: MIDIMessageEvent): void => {

@@ -5,6 +5,7 @@ const browser = await puppeteer.launch({
   headless: 'new',
   args: ['--autoplay-policy=user-gesture-required'],
 });
+await browser.defaultBrowserContext().overridePermissions('http://localhost:5199', []);
 const page = await browser.newPage();
 
 const consoleMsgs = [];

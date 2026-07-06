@@ -9,10 +9,9 @@
 
 # TODOs
 
-- bug: When I save the project Marc with the loop Happy and reload the project Marc on another tab/site I don't see the loop Happy
-
 # In-Progress
 
+- bug: When I save the project Marc with the loop Happy and reload the project Marc on another tab/site I don't see the loop Happy 🕜 (todos)
 - Add a guage next to master volume to indicate level (green) and clipping (red) 🕜 (todos2)
 
 # DONE

@@ -2,10 +2,12 @@ import * as Tone from '../core/tone';
 import { engine } from '../core/audio-engine';
 import { bus } from '../core/event-bus';
 import type { TabId } from '../core/model';
+import { idbGet, idbSet } from '../core/persistence';
 import { projects } from '../core/project-manager';
 import { NEW_PROJECT_SENTINEL } from '../core/project-names';
 import { store } from '../core/project-store';
 import { uiState, updateUi } from '../core/ui-state';
+import { midiInput } from '../midi/midi-input';
 import type { PluginChainEl } from '../plugins/chain';
 import { openKeymapDialog } from '../ui/keymap-dialog';
 import { knob } from '../ui/knob';
@@ -36,6 +38,16 @@ export class AppShell extends HTMLElement {
                 <line x1="12" y1="17" x2="12" y2="6.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
                 <circle cx="12" cy="6.5" r="1.5" fill="currentColor"/>
               </g>
+            </svg>
+          </button>
+          <button class="midi-btn icon-btn" title="Enable/disable MIDI input" aria-label="Enable/disable MIDI input">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+              <circle cx="12" cy="12" r="9"/>
+              <circle cx="7.5" cy="13.5" r="1" fill="currentColor"/>
+              <circle cx="16.5" cy="13.5" r="1" fill="currentColor"/>
+              <circle cx="8.5" cy="9" r="1" fill="currentColor"/>
+              <circle cx="15.5" cy="9" r="1" fill="currentColor"/>
+              <circle cx="12" cy="15.5" r="1" fill="currentColor"/>
             </svg>
           </button>
           <button class="play-all icon-btn" title="Play/stop everything (Space)" aria-label="Play or stop everything"></button>
@@ -117,6 +129,23 @@ export class AppShell extends HTMLElement {
       metro.classList.toggle('active', engine.metronomeOn);
       updateUi((s) => (s.metronomeOn = engine.metronomeOn));
     };
+    const midiBtn = this.querySelector<HTMLButtonElement>('.midi-btn')!;
+    midiBtn.onclick = async (): Promise<void> => {
+      if (midiInput.enabled) {
+        midiInput.disable();
+      } else {
+        await midiInput.enable();
+      }
+      midiBtn.classList.toggle('active', midiInput.enabled);
+      await idbSet('midiEnabled', midiInput.enabled);
+    };
+    void (async (): Promise<void> => {
+      if (await idbGet<boolean>('midiEnabled')) {
+        await midiInput.enable();
+        midiBtn.classList.add('active');
+      }
+    })();
+
     // --- global play/stop: play starts the ACTIVE tab, stop halts everything ---
     const playAll = this.querySelector<HTMLButtonElement>('.play-all')!;
     const togglePlayback = async (): Promise<void> => {

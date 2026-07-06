@@ -14,7 +14,7 @@ import { midiInput } from './midi/midi-input';
 async function boot(): Promise<void> {
   await loadKeyMap(); // local mapping; the project's keymap.json may override
   await projects.restore(); // emits ui:loaded + project:loaded
-  await midiInput.init();
+  await midiInput.init(); // keyboard fallback only; MIDI access is user-toggled in the shell
 }
 
 void boot();
