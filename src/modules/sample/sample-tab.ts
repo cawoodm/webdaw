@@ -84,7 +84,8 @@ export class SampleTab extends HTMLElement {
     const free = store.data.pads.findIndex((p) => p === null);
     const index = existing !== -1 ? existing : free !== -1 ? free : 0;
     store.update((d) => {
-      d.pads[index] = { name, toneId: patchId, gain: 1, trimStart: 0, trimEnd: 0 };
+      const prev = d.pads[index];
+      d.pads[index] = { name, toneId: patchId, color: prev?.color, gain: prev?.gain ?? 1, trimStart: 0, trimEnd: 0 };
     });
     this.selected = index;
     updateUi((s) => (s.sample.selectedPad = index));
@@ -179,20 +180,11 @@ export class SampleTab extends HTMLElement {
       this.loopPart.start(`${countBars}m`);
     }
     const transport = Tone.getTransport();
-    if (countIn) {
-      // the count-in IS metronome clicks — force it on for that bar
-      if (!engine.metronomeOn) {
-        this.metroForced = true;
-        void engine.setMetronome(true);
-      }
-      this.transportEvents.push(
-        transport.scheduleOnce(() => {
-          if (this.metroForced) {
-            this.metroForced = false;
-            void engine.setMetronome(false);
-          }
-        }, `${countBars}m`),
-      );
+    if (countIn && !engine.metronomeOn) {
+      // the count-in IS metronome clicks — force it on and keep it ticking
+      // through the recording; stopLoop restores the user's toggle state
+      this.metroForced = true;
+      void engine.setMetronome(true);
     }
     if (this.recording && !uiState().sample.overdub) {
       // no overdub: disarm recording after exactly one pass (playback continues)
@@ -354,7 +346,7 @@ export class SampleTab extends HTMLElement {
       check('Overdub', 'Keep recording every pass; unchecked stops recording after one pass', uiState().sample.overdub, (v) =>
         updateUi((s) => (s.sample.overdub = v)),
       ),
-      btn(this.recording ? '⏺ Stop rec' : '⏺ Record', () => void this.toggleRecord(), this.recording ? 'active' : ''),
+      btn(this.recording ? '⏺ Stop rec' : '⏺ Record', () => void this.toggleRecord(), this.recording ? 'recording' : ''),
       btn('▶ Play loop', async () => {
         await engine.ensureStarted();
         this.startLoop(true);
@@ -437,7 +429,8 @@ export class SampleTab extends HTMLElement {
         store.setBuffer(toneBufferKey(patch.id), await renderPatch(patch));
       }
       store.update((d) => {
-        d.pads[index] = { name: patch.name, toneId: patch.id, gain: 1, trimStart: 0, trimEnd: 0 };
+        const prev = d.pads[index];
+        d.pads[index] = { name: patch.name, toneId: patch.id, color: prev?.color, gain: prev?.gain ?? 1, trimStart: 0, trimEnd: 0 };
       });
       this.render();
     };
@@ -457,7 +450,8 @@ export class SampleTab extends HTMLElement {
         const path = `samples/${name.replace(/[^\w-]+/g, '_')}-${uid()}.wav`;
         await store.importAudioFile(file, path);
         store.update((d) => {
-          d.pads[index] = { name, file: path, gain: 1, trimStart: 0, trimEnd: 0 };
+          const prev = d.pads[index];
+          d.pads[index] = { name, file: path, color: prev?.color, gain: prev?.gain ?? 1, trimStart: 0, trimEnd: 0 };
         });
         this.render();
       };

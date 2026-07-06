@@ -1,0 +1,113 @@
+{
+  "version": 1,
+  "name": "demo 1",
+  "bpm": 120,
+  "patches": [
+    {
+      "id": "d1a01e01",
+      "name": "Kick",
+      "layers": [
+        { "type": "sine", "gain": 1, "detune": 0, "phase": 90 },
+        { "type": "triangle", "gain": 0.15, "detune": 1200, "phase": 0 }
+      ],
+      "env": { "attack": 0.001, "decay": 0.45, "sustain": 0, "release": 0.08 },
+      "lfo": { "rate": 4, "depth": 0, "target": "off" },
+      "filter": { "hpf": 20, "lpf": 1500 },
+      "sampleFreq": 50,
+      "sampleSeconds": 0.8
+    },
+    {
+      "id": "d1a01e02",
+      "name": "Snare",
+      "layers": [
+        { "type": "triangle", "gain": 0.55, "detune": 0, "phase": 0 },
+        { "type": "triangle", "gain": 0.3, "detune": 1002, "phase": 0 },
+        { "type": "noise", "gain": 0.75, "detune": 0, "phase": 0, "noiseSeed": 42 }
+      ],
+      "env": { "attack": 0.001, "decay": 0.18, "sustain": 0, "release": 0.06 },
+      "lfo": { "rate": 4, "depth": 0, "target": "off" },
+      "filter": { "hpf": 150, "lpf": 9000 },
+      "sampleFreq": 185,
+      "sampleSeconds": 0.5
+    },
+    {
+      "id": "d1a01e03",
+      "name": "Clap",
+      "layers": [
+        { "type": "noise", "gain": 0.9, "detune": 0, "phase": 0, "noiseSeed": 7 }
+      ],
+      "env": { "attack": 0.004, "decay": 0.28, "sustain": 0, "release": 0.08 },
+      "lfo": { "rate": 45, "depth": 0.6, "target": "volume" },
+      "filter": { "hpf": 900, "lpf": 4500 },
+      "sampleFreq": 261.63,
+      "sampleSeconds": 0.6
+    },
+    {
+      "id": "d1a01e04",
+      "name": "Closed Hat",
+      "layers": [
+        { "type": "noise", "gain": 0.8, "detune": 0, "phase": 0, "noiseSeed": 3 }
+      ],
+      "env": { "attack": 0.001, "decay": 0.06, "sustain": 0, "release": 0.015 },
+      "lfo": { "rate": 4, "depth": 0, "target": "off" },
+      "filter": { "hpf": 6500, "lpf": 20000 },
+      "sampleFreq": 261.63,
+      "sampleSeconds": 0.25
+    },
+    {
+      "id": "d1a01e05",
+      "name": "Open Hat",
+      "layers": [
+        { "type": "noise", "gain": 0.8, "detune": 0, "phase": 0, "noiseSeed": 3 }
+      ],
+      "env": { "attack": 0.001, "decay": 0.6, "sustain": 0, "release": 0.25 },
+      "lfo": { "rate": 4, "depth": 0, "target": "off" },
+      "filter": { "hpf": 6000, "lpf": 20000 },
+      "sampleFreq": 261.63,
+      "sampleSeconds": 1.2
+    },
+    {
+      "id": "d1a01e06",
+      "name": "Crash",
+      "layers": [
+        { "type": "noise", "gain": 0.85, "detune": 0, "phase": 0, "noiseSeed": 11 },
+        { "type": "square", "gain": 0.05, "detune": 0, "phase": 0 },
+        { "type": "square", "gain": 0.04, "detune": 702, "phase": 0 },
+        { "type": "square", "gain": 0.04, "detune": -498, "phase": 0 }
+      ],
+      "env": { "attack": 0.001, "decay": 2.2, "sustain": 0, "release": 0.8 },
+      "lfo": { "rate": 4, "depth": 0, "target": "off" },
+      "filter": { "hpf": 3800, "lpf": 16000 },
+      "sampleFreq": 987,
+      "sampleSeconds": 3.5
+    },
+    {
+      "id": "d1a01e07",
+      "name": "Low Tom",
+      "layers": [
+        { "type": "sine", "gain": 0.9, "detune": 0, "phase": 90 },
+        { "type": "triangle", "gain": 0.35, "detune": 0, "phase": 0 },
+        { "type": "noise", "gain": 0.07, "detune": 0, "phase": 0, "noiseSeed": 5 }
+      ],
+      "env": { "attack": 0.001, "decay": 0.35, "sustain": 0, "release": 0.1 },
+      "lfo": { "rate": 4, "depth": 0, "target": "off" },
+      "filter": { "hpf": 20, "lpf": 2500 },
+      "sampleFreq": 98,
+      "sampleSeconds": 0.7
+    }
+  ],
+  "pads": [
+    { "name": "Kick", "toneId": "d1a01e01", "color": "#e05555", "gain": 1, "trimStart": 0, "trimEnd": 0 },
+    { "name": "Snare", "toneId": "d1a01e02", "color": "#e0a755", "gain": 1, "trimStart": 0, "trimEnd": 0 },
+    { "name": "Clap", "toneId": "d1a01e03", "color": "#d4c94f", "gain": 1, "trimStart": 0, "trimEnd": 0 },
+    { "name": "Closed Hat", "toneId": "d1a01e04", "color": "#6fbf63", "gain": 1, "trimStart": 0, "trimEnd": 0 },
+    { "name": "Open Hat", "toneId": "d1a01e05", "color": "#55b8c9", "gain": 1, "trimStart": 0, "trimEnd": 0 },
+    { "name": "Crash", "toneId": "d1a01e06", "color": "#7a7ae0", "gain": 1, "trimStart": 0, "trimEnd": 0 },
+    { "name": "Low Tom", "toneId": "d1a01e07", "color": "#c06fd4", "gain": 1, "trimStart": 0, "trimEnd": 0 },
+    null, null, null, null, null, null, null, null, null
+  ],
+  "padLoopBars": 2,
+  "padEvents": [],
+  "sequences": [],
+  "arrangement": { "tracks": [], "masterPlugins": [] }
+}

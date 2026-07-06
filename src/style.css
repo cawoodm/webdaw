@@ -378,6 +378,22 @@ daw-knob {
   user-select: none;
 }
 
+button.recording {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #2a1215;
+  animation: rec-blink 0.7s ease-in-out infinite alternate;
+}
+
+@keyframes rec-blink {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0.45;
+  }
+}
+
 .sample-main {
   display: flex;
   gap: 16px;
