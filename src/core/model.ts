@@ -29,6 +29,8 @@ export interface TonePatch {
   /** @deprecated superseded by per-layer freq; kept as a fallback for old projects */
   sampleFreq?: number;
   sampleSeconds?: number; // total length of the rendered sample
+  /** Note the sample renders/previews at (88-key range; C4 = layer base freqs). */
+  sampleNote?: string;
   wavFile?: string;
 }
 
@@ -39,6 +41,18 @@ export function defaultFilter(): PatchFilter {
 /** Fallbacks for patches predating sampleFreq/sampleSeconds. */
 export const SAMPLE_FREQ_DEFAULT = 261.63; // C4
 export const SAMPLE_SECONDS_DEFAULT = 1;
+
+export const SAMPLE_NOTE_DEFAULT = 'C4';
+
+/** The 88 piano keys, A0 (bottom) to C8 (top). */
+export function pianoNotes(): string[] {
+  const NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+  const notes: string[] = [];
+  for (let midi = 21; midi <= 108; midi++) {
+    notes.push(`${NAMES[midi % 12]}${Math.floor(midi / 12) - 1}`);
+  }
+  return notes;
+}
 
 /**
  * Held-note seconds for a patch render: sampleSeconds is the TOTAL length

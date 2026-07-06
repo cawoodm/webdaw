@@ -2,7 +2,17 @@ import * as Tone from '../../core/tone';
 import { engine } from '../../core/audio-engine';
 import { bus } from '../../core/event-bus';
 import type { PatchFilter, TonePatch } from '../../core/model';
-import { defaultFilter, defaultPatch, SAMPLE_FREQ_DEFAULT, SAMPLE_SECONDS_DEFAULT, sampleHold, toneBufferKey, uid } from '../../core/model';
+import {
+  defaultFilter,
+  defaultPatch,
+  pianoNotes,
+  SAMPLE_FREQ_DEFAULT,
+  SAMPLE_NOTE_DEFAULT,
+  SAMPLE_SECONDS_DEFAULT,
+  sampleHold,
+  toneBufferKey,
+  uid,
+} from '../../core/model';
 import { store } from '../../core/project-store';
 import { beatsToTransportTime } from '../../core/time';
 import { uiState, updateUi } from '../../core/ui-state';
@@ -140,7 +150,7 @@ export class ToneTab extends HTMLElement {
         const p = this.patch();
         const holdNow = sampleHold(p);
         const voice = new PatchVoice(p, this.getTap());
-        voice.triggerAttackRelease(SAMPLE_FREQ_DEFAULT, holdNow, time);
+        voice.triggerAttackRelease(p.sampleNote ?? SAMPLE_NOTE_DEFAULT, holdNow, time);
         this.previewTimers.push(
           window.setTimeout(() => voice.dispose(), (holdNow + p.env.release + 0.5) * 1000),
         );
@@ -148,7 +158,7 @@ export class ToneTab extends HTMLElement {
       this.previewStartedTransport = !engine.playing;
       engine.play();
     } else {
-      void this.noteOn(SAMPLE_FREQ_DEFAULT, 0.9, 'preview');
+      void this.noteOn(patch.sampleNote ?? SAMPLE_NOTE_DEFAULT, 0.9, 'preview');
       this.previewTimers.push(window.setTimeout(() => this.noteOff('preview'), hold * 1000));
     }
   }
@@ -555,6 +565,20 @@ export class ToneTab extends HTMLElement {
     const sampleCard = document.createElement('div');
     sampleCard.className = 'card';
     sampleCard.innerHTML = '<div class="card-head"><span class="card-title">Sample</span></div>';
+    const noteSel = document.createElement('select');
+    noteSel.title = 'Note the sample is rendered and previewed at (C4 = layer frequencies as set)';
+    for (const n of pianoNotes()) {
+      const opt = document.createElement('option');
+      opt.value = n;
+      opt.textContent = n;
+      opt.selected = n === (patch.sampleNote ?? SAMPLE_NOTE_DEFAULT);
+      noteSel.appendChild(opt);
+    }
+    noteSel.onchange = (): void => {
+      patch.sampleNote = noteSel.value;
+      this.save();
+    };
+    sampleCard.querySelector('.card-head')!.appendChild(noteSel);
     const sampleKnobs = document.createElement('div');
     sampleKnobs.className = 'knob-row';
     sampleKnobs.append(

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { defaultProject, PAD_COUNT, uid } from './model';
+import { defaultProject, PAD_COUNT, pianoNotes, uid } from './model';
 import { DEFAULT_KEYMAP } from '../midi/keymap';
 
 describe('project model', () => {
@@ -17,6 +17,16 @@ describe('project model', () => {
   it('generates unique ids', () => {
     const ids = new Set(Array.from({ length: 100 }, () => uid()));
     expect(ids.size).toBe(100);
+  });
+});
+
+describe('pianoNotes', () => {
+  it('spans the 88 keys from A0 to C8', () => {
+    const notes = pianoNotes();
+    expect(notes.length).toBe(88);
+    expect(notes[0]).toBe('A0');
+    expect(notes[notes.length - 1]).toBe('C8');
+    expect(notes).toContain('C4');
   });
 });
 
