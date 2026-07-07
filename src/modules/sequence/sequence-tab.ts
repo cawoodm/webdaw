@@ -2,6 +2,7 @@ import { engine } from '../../core/audio-engine';
 import { bus } from '../../core/event-bus';
 import type { NoteEvent, SeqInstrument, Sequence, SynthKind } from '../../core/model';
 import { pianoNotes, sortedByName, STEPS_PER_BAR, uid } from '../../core/model';
+import { buildMidiFile, parseMidiFile, type MidiImportResult } from '../../midi/midi-file';
 import { uniqueName } from '../../core/project-names';
 import { store } from '../../core/project-store';
 import { uiState, updateUi } from '../../core/ui-state';
@@ -79,6 +80,8 @@ const ROW_HEIGHT = 18;
 
 export class SequenceTab extends HTMLElement {
   private seqId = '';
+  /** Sequence id painted by the last render() — distinguishes a load from an edit re-render. */
+  private renderedSeqId = '';
   private playback: LivePlayback | null = null;
   private recording = false;
   private monitor: Monitor | null = null;
@@ -118,7 +121,7 @@ export class SequenceTab extends HTMLElement {
     bus.on('midi:noteoff', ({ note }) => {
       if (this.isActive()) this.noteOffInternal(note);
     });
-    // drag a .seq.json here to import it
+    // drag a .seq.json or .mid/.midi file here to import it
     this.addEventListener('dragover', (e) => {
       if (!e.dataTransfer?.types.includes('Files')) return;
       e.preventDefault();
@@ -129,7 +132,9 @@ export class SequenceTab extends HTMLElement {
       this.classList.remove('drag-over');
       if (!e.dataTransfer?.files.length) return;
       e.preventDefault();
-      void this.importSequenceFiles([...e.dataTransfer.files]);
+      const files = [...e.dataTransfer.files];
+      void this.importSequenceFiles(files);
+      void this.importMidiFiles(files);
     });
     const tick = (): void => {
       this.updatePlayhead();
@@ -257,6 +262,59 @@ export class SequenceTab extends HTMLElement {
       this.recording = true;
       await this.play();
     }
+  }
+
+  // ---- MIDI file import/export ----
+
+  /** Import .mid/.midi files: each MIDI track with notes becomes a new Sequence. */
+  private async importMidiFiles(files: File[]): Promise<void> {
+    let firstId: string | null = null;
+    for (const file of files) {
+      if (!/\.(mid|midi)$/i.test(file.name)) continue;
+      let result: MidiImportResult;
+      try {
+        result = parseMidiFile(await file.arrayBuffer());
+      } catch (err) {
+        console.warn(`[sequence] failed to parse ${file.name}`, err);
+        continue;
+      }
+      if (result.sequences.length === 0) continue;
+      const created: Sequence[] = [];
+      store.update((d) => {
+        for (const imp of result.sequences) {
+          const seq: Sequence = {
+            id: uid(),
+            name: uniqueName(imp.name, d.sequences.map((s) => s.name)),
+            bars: imp.bars,
+            instrument: { type: 'synth', kind: 'synth' },
+            notes: imp.notes,
+          };
+          d.sequences.push(seq);
+          created.push(seq);
+        }
+      });
+      if (created.length > 0) firstId ??= created[0].id;
+      if (result.bpm !== null && Math.abs(result.bpm - engine.bpm) > 0.5) {
+        const bpm = result.bpm;
+        if (confirm(`Set project tempo to ${bpm} BPM (from ${file.name})? Currently ${engine.bpm} BPM.`)) {
+          engine.bpm = bpm;
+          store.update((d) => (d.bpm = bpm));
+        }
+      }
+    }
+    if (firstId) {
+      this.selectSeq(firstId);
+      this.render();
+    }
+  }
+
+  /** Export the current sequence as a Standard MIDI File. */
+  private exportMidi(): void {
+    const seq = this.seq();
+    if (!seq) return;
+    const bytes = buildMidiFile([seq], engine.bpm);
+    const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+    download(`${seq.name}.mid`, new Blob([buffer], { type: 'audio/midi' }));
   }
 
   /** Re-schedule after note edits so changes are audible mid-playback. */
@@ -807,9 +865,29 @@ export class SequenceTab extends HTMLElement {
         },
       ),
       this.iconBtn(
-        'Export sequence',
+        'Export sequence (.seq.json)',
         `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Export`,
         () => this.exportSequence(),
+      ),
+      this.iconBtn(
+        'Import MIDI file',
+        `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>`,
+        () => {
+          const input = document.createElement('input');
+          input.type = 'file';
+          input.accept = '.mid,.midi,audio/midi';
+          input.onchange = (): void => {
+            if (input.files?.length) void this.importMidiFiles([...input.files]);
+          };
+          input.click();
+        },
+      ),
+      this.iconBtn(
+        'Export sequence as MIDI file',
+        `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
+        () => this.exportMidi(),
       ),
     );
 
@@ -898,14 +976,39 @@ export class SequenceTab extends HTMLElement {
     this.appendChild(roll);
     const scroll = roll.querySelector<HTMLElement>('.roll-scroll')!;
 
-    if (savedTop !== undefined) {
+    const sameSeq = seq.id === this.renderedSeqId;
+    if (sameSeq && savedTop !== undefined) {
+      // Re-render of the same sequence (e.g. an edit): keep the user's scroll.
       scroll.scrollTop = savedTop;
       scroll.scrollLeft = savedLeft ?? 0;
     } else {
-      const notes = [...pianoNotes()].reverse();
-      const idx = notes.indexOf('C4');
-      scroll.scrollTop = Math.max(0, idx * ROW_HEIGHT - scroll.clientHeight / 2);
+      // A sequence just loaded: frame it at bar 1. Empty -> center C3;
+      // otherwise center the pitches in bar 1 so most notes are in view.
+      scroll.scrollLeft = 0;
+      scroll.scrollTop = this.initialScrollTop(seq, scroll.clientHeight);
     }
+    this.renderedSeqId = seq.id;
+  }
+
+  /**
+   * Vertical scroll for a freshly-loaded sequence: center C3 when it has no
+   * notes, otherwise center the average pitch of bar-1 notes (falling back to
+   * all notes) so the bulk of them sit in view.
+   */
+  private initialScrollTop(seq: Sequence, viewHeight: number): number {
+    const notes = [...pianoNotes()].reverse(); // C8 top -> A0 bottom
+    const rowIndex = (note: string): number => notes.indexOf(note);
+    const center = (idx: number): number =>
+      Math.max(0, idx * ROW_HEIGHT + ROW_HEIGHT / 2 - viewHeight / 2);
+
+    if (seq.notes.length === 0) return center(rowIndex('C3'));
+
+    const bar1 = seq.notes.filter((n) => n.step < STEPS_PER_BAR);
+    const source = bar1.length > 0 ? bar1 : seq.notes;
+    const indices = source.map((n) => rowIndex(n.note)).filter((i) => i >= 0);
+    if (indices.length === 0) return center(rowIndex('C3'));
+    const avg = indices.reduce((a, b) => a + b, 0) / indices.length;
+    return center(avg);
   }
 }
 

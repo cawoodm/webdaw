@@ -1,12 +1,6 @@
 import { bus } from '../core/event-bus';
 import { noteForKey } from './keymap';
-
-const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-
-/** MIDI note number -> note name, e.g. 60 -> "C4". */
-function midiToNote(key: number): string {
-  return `${NOTE_NAMES[key % 12]}${Math.floor(key / 12) - 1}`;
-}
+import { midiToNoteName as midiToNote } from './note-names';
 
 /**
  * Note input: Web MIDI devices plus computer-keyboard fallback.

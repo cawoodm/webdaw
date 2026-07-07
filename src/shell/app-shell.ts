@@ -285,6 +285,11 @@ export class AppShell extends HTMLElement {
       void this.refreshProjects();
       if (this.masterChain) this.ensureMasterChain(true);
     });
+    // Keep the header BPM in sync with programmatic tempo changes (e.g. MIDI
+    // import applying a file's tempo). Skip while the field is being edited.
+    bus.on('project:changed', () => {
+      if (document.activeElement !== bpm) bpm.value = String(store.data.bpm);
+    });
 
     this.activate('tone');
     this.updateProjectUi();
