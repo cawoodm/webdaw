@@ -727,7 +727,11 @@ export class SequenceTab extends HTMLElement {
       );
       recBtn.classList.toggle('recording', this.recording);
       recBtn.disabled = !seq.instrument;
-      bar.append(playBtn, recBtn);
+      // transport row first — play/rec sit top-left, above the toolbar
+      const transport = document.createElement('div');
+      transport.className = 'toolbar sequence-transport';
+      transport.append(playBtn, recBtn);
+      this.appendChild(transport);
     }
     this.appendChild(bar);
 
