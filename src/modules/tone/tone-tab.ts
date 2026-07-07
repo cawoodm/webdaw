@@ -115,6 +115,12 @@ export class ToneTab extends HTMLElement {
       this.previewStartedTransport = false;
       this.stopPreview();
     });
+    // a shareable owner (sample/sequence) is joining playback — preview is
+    // exclusive, so it must yield just like it does on transport:claim
+    bus.on('transport:join', () => {
+      this.previewStartedTransport = false;
+      this.stopPreview();
+    });
     // global play/stop (Space / shell button)
     bus.on('transport:play', () => {
       if (this.classList.contains('active-tab')) void this.playPreview();

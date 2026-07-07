@@ -37,6 +37,9 @@ export class ArrangeTab extends HTMLElement {
     bus.on('transport:claim', ({ owner }) => {
       if (owner !== 'arrange') this.stop();
     });
+    // a shareable owner (sample/sequence) is joining playback — song
+    // playback is exclusive, so it must yield just like on transport:claim
+    bus.on('transport:join', () => this.stop());
     // global play/stop (Space / shell button)
     bus.on('transport:play', () => {
       if (this.classList.contains('active-tab')) void this.play();

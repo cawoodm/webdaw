@@ -4,6 +4,15 @@ import { extractClick } from './click-trim';
 import { bus } from './event-bus';
 import type { TabId } from './model';
 
+function gcd(a: number, b: number): number {
+  return b === 0 ? a : gcd(b, a % b);
+}
+
+/** Least common multiple of two positive bar counts (integer, ≥1). */
+function lcm(a: number, b: number): number {
+  return (a * b) / gcd(a, b);
+}
+
 /**
  * Wraps Tone.js: transport, metronome, master bus.
  *
@@ -25,6 +34,8 @@ class AudioEngine {
   private metroGain: Tone.Gain | null = null;
   private metroLoop: Tone.Loop | null = null;
   private clickBuffer: Tone.ToneAudioBuffer | null = null;
+  /** Per-owner loop request (bars, count-in offset) — combined by applyLoop() so shareable owners can loop concurrently. */
+  private loopRequests = new Map<TabId, { bars: number; offsetBars: number }>();
   metronomeOn = false;
 
   constructor() {
@@ -149,7 +160,8 @@ class AudioEngine {
    * the beat-0 click.
    */
   play(): void {
-    if (this.metronomeOn && !this.playing) this.startTicker();
+    if (this.playing) return;
+    if (this.metronomeOn) this.startTicker();
     Tone.getTransport().start();
   }
 
@@ -159,17 +171,45 @@ class AudioEngine {
     t.position = 0;
     // stopping playback silences the metronome — it never runs free-standing
     this.stopTicker();
+    this.loopRequests.clear();
+    t.loop = false;
   }
 
   /**
    * Take over playback for one module: every other module releases its
    * scheduled parts (via the bus event) without touching the transport,
    * then the transport is stopped and rewound so the claimer starts clean.
-   * Call at the top of any play path.
+   * Call at the top of any EXCLUSIVE play path (tone preview, arrange song).
    */
   claimTransport(owner: TabId): void {
     bus.emit('transport:claim', { owner });
+    this.loopRequests.clear();
     if (this._started) this.stop();
+  }
+
+  /**
+   * Cooperative takeover for a SHAREABLE play path (sample loop, sequence):
+   * exclusive players yield (via the bus event) but other shareable owners
+   * keep their scheduled parts. If the transport is already running, it's
+   * rewound to 0 so both owners' self-looping parts (which start relative
+   * to `0m`/the count-in bar) realign on the downbeat.
+   *
+   * Deliberately NOT this.stop(): stop() clears loopRequests, which would
+   * wipe the already-playing owner's loop entry a moment before the joiner
+   * adds its own via requestLoop() — breaking the LCM combination the two
+   * owners are about to share. Rewind the transport directly instead and
+   * leave loopRequests (and the loop flag) untouched; the ticker is stopped
+   * here but the caller's follow-up engine.play() re-arms it, so metronome
+   * behavior is unaffected.
+   */
+  joinTransport(owner: TabId): void {
+    bus.emit('transport:join', { owner });
+    if (this._started && this.playing) {
+      const t = Tone.getTransport();
+      t.stop();
+      t.position = 0;
+      this.stopTicker();
+    }
   }
 
   /**
@@ -186,6 +226,44 @@ class AudioEngine {
     } else {
       t.loop = false;
     }
+  }
+
+  /**
+   * Combine every owner's loop request into the transport's actual loop:
+   * start = the furthest count-in offset, length = the LCM of all requested
+   * bar counts (so each owner's self-looping part — whose OWN loop divides
+   * its bar count — still lands on a wrap boundary).
+   */
+  private applyLoop(): void {
+    if (this.loopRequests.size === 0) {
+      this.setLoop(0);
+      return;
+    }
+    let offsetBars = 0;
+    let bars = 1;
+    for (const req of this.loopRequests.values()) {
+      offsetBars = Math.max(offsetBars, req.offsetBars);
+      bars = lcm(bars, req.bars);
+    }
+    this.setLoop(bars, offsetBars);
+  }
+
+  /**
+   * Register (or, for bars<=0, clear) one owner's desired loop region and
+   * re-apply the combined transport loop. Sample and sequence call this
+   * instead of setLoop so they can loop side by side.
+   */
+  requestLoop(owner: TabId, bars: number, offsetBars = 0): void {
+    if (bars > 0) this.loopRequests.set(owner, { bars, offsetBars });
+    else this.loopRequests.delete(owner);
+    this.applyLoop();
+  }
+
+  /** Drop one owner's loop request; stop the transport once nobody else needs it. */
+  releaseTransport(owner: TabId): void {
+    this.loopRequests.delete(owner);
+    if (this.loopRequests.size === 0) this.stop();
+    else this.applyLoop();
   }
 
   /** Single metronome click, trimmed from the bundled recording on first use. */

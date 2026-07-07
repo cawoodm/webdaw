@@ -412,7 +412,8 @@ daw-knob {
 }
 
 /* ---- sample tab ---- */
-.sample-transport {
+.sample-transport,
+.sequence-transport {
   margin-bottom: 10px;
 }
 
