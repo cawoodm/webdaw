@@ -76,6 +76,8 @@ export class SequenceTab extends HTMLElement {
   private seqId = '';
   /** Sequence id painted by the last render() — distinguishes a load from an edit re-render. */
   private renderedSeqId = '';
+  /** A fresh load rendered while the panel was hidden (0 viewport); apply the initial scroll once visible. */
+  private scrollPending = false;
   private playback: LivePlayback | null = null;
   private recording = false;
   private monitor: Monitor | null = null;
@@ -124,6 +126,7 @@ export class SequenceTab extends HTMLElement {
       if (this.isActive()) this.noteOffInternal(note);
     });
     const tick = (): void => {
+      this.applyPendingScroll();
       this.updatePlayhead();
       this.updateBarIndicator();
       this.syncPlayToggle();
@@ -1032,15 +1035,25 @@ export class SequenceTab extends HTMLElement {
     const scroll = roll.querySelector<HTMLElement>('.roll-scroll')!;
 
     const sameSeq = seq.id === this.renderedSeqId;
-    if (sameSeq && savedTop !== undefined) {
+    if (sameSeq && savedTop !== undefined && !this.scrollPending) {
       // Re-render of the same sequence (e.g. an edit): keep the user's scroll.
+      // (Skip while a scroll is still pending — the saved value is from a
+      // hidden 0-height render at boot and would strand the wrong octave.)
       scroll.scrollTop = savedTop;
       scroll.scrollLeft = savedLeft ?? 0;
+      this.scrollPending = false;
     } else {
       // A sequence just loaded: frame it at bar 1. Empty -> center C3;
       // otherwise center the pitches in bar 1 so most notes are in view.
       scroll.scrollLeft = 0;
-      scroll.scrollTop = this.initialScrollTop(seq, scroll.clientHeight);
+      // At boot the tab can render while still hidden (0 height) — the centering
+      // math needs a real viewport, so defer to the tick loop once it's visible.
+      if (scroll.clientHeight > 0) {
+        scroll.scrollTop = this.initialScrollTop(seq, scroll.clientHeight);
+        this.scrollPending = false;
+      } else {
+        this.scrollPending = true;
+      }
     }
     if (!sameSeq) void this.reportMissingRefs(seq);
     this.renderedSeqId = seq.id;
@@ -1095,6 +1108,16 @@ export class SequenceTab extends HTMLElement {
     if (indices.length === 0) return center(rowIndex('C3'));
     const avg = indices.reduce((a, b) => a + b, 0) / indices.length;
     return center(avg);
+  }
+
+  /** Apply the deferred initial scroll once the panel has a real viewport (post-boot visibility). */
+  private applyPendingScroll(): void {
+    if (!this.scrollPending) return;
+    const scroll = this.querySelector<HTMLElement>('.roll-scroll');
+    if (!scroll || scroll.clientHeight === 0) return;
+    const seq = this.seq();
+    if (seq) scroll.scrollTop = this.initialScrollTop(seq, scroll.clientHeight);
+    this.scrollPending = false;
   }
 }
 
