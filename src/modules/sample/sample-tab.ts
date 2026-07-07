@@ -821,9 +821,15 @@ export class SampleTab extends HTMLElement {
       loopSel.appendChild(opt);
     }
     loopSel.onchange = (): void => {
-      this.stopLoop();
-      this.recording = false;
+      const wasPlaying = this.loopActive;
       this.selectLoop(loopSel.value);
+      this.recording = false;
+      // if already looping, rebuild the Part with the new sample's events and update the loop registration
+      if (wasPlaying) {
+        const newLoop = this.loop();
+        engine.requestLoop('sample', newLoop.bars, this.countInBeats / 4);
+        this.rebuildLoopPartIfPlaying();
+      }
       this.render();
     };
 
