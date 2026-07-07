@@ -9,10 +9,9 @@
 
 # TODOs
 
-- sequencer: assign colors to each note (A=blue, A#=light blue ... G=Red, G#=light red), higlight entire row on mouseover
-
 # In-Progress
 
+- sequencer: assign colors to each note (A=blue, A#=light blue ... G=Red, G#=light red), higlight entire row on mouseover 🕜 (todos)
 - sequencer: Don't use browser scroll but scroll buttons above and below keyboard which page half an octave; scroll to center vertically C4 by default 🕜 (todos)
 - sequencer: play/rec buttons at top left of screen 🕜 (todos2 — implemented, awaiting confirmation)
 - sequencer: sampler and sequencer can play at same time 🕜 (todos2 — implemented, awaiting confirmation)
