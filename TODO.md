@@ -9,7 +9,12 @@
 
 # TODOs
 
+- sequencer: play/rec buttons at top left of screen
+
 # In-Progress
+
+- sequencer: play note as it is placed but not when dragged, dbl click to delete 🕜 (todos)
+- When on the sequencer tab, the keyboard should play sequencer (not patch) notes 🕜 (todos2)
 
 # DONE
 
