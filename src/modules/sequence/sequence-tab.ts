@@ -48,6 +48,15 @@ export function gridBackgroundSteps(totalSteps: number, qSteps: number): { image
   return { image: images.join(', '), size: sizes.join(', ') };
 }
 
+/** Hue per natural note — blue at A sweeping to red at G; sharps are the light variant. */
+const NOTE_HUES: Record<string, number> = { A: 220, B: 183, C: 147, D: 110, E: 73, F: 37, G: 0 };
+
+export function noteColor(note: string): string {
+  const hue = NOTE_HUES[note[0]] ?? 0;
+  const sharp = note[1] === '#';
+  return `hsl(${hue} 70% ${sharp ? 68 : 48}%)`;
+}
+
 const ROW_HEIGHT = 18;
 
 export class SequenceTab extends HTMLElement {
@@ -441,6 +450,7 @@ export class SequenceTab extends HTMLElement {
   private buildClip(seq: Sequence, n: NoteEvent, lane: HTMLElement, lanes: Map<string, HTMLElement>, totalSteps: number): void {
     const clip = document.createElement('div');
     clip.className = 'roll-clip';
+    clip.style.background = noteColor(n.note);
     const place = (): void => {
       clip.style.left = `${(n.step / totalSteps) * 100}%`;
       clip.style.width = `${(n.duration / totalSteps) * 100}%`;
@@ -484,6 +494,7 @@ export class SequenceTab extends HTMLElement {
             const r = otherLane.getBoundingClientRect();
             if (m.clientY >= r.top && m.clientY <= r.bottom) {
               n.note = note;
+              clip.style.background = noteColor(note);
               clip.style.transform = `translateY(${r.top - laneRect.top}px)`;
               break;
             }
@@ -548,6 +559,7 @@ export class SequenceTab extends HTMLElement {
       const key = document.createElement('div');
       key.className = 'roll-key' + (isSharp ? ' black' : '');
       key.dataset.note = note;
+      key.style.borderLeft = `3px solid ${noteColor(note)}`;
       if (!isSharp && note.startsWith('C')) key.textContent = note;
       key.title = `Play ${note}`;
       key.onpointerdown = (e): void => {

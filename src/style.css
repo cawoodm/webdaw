@@ -765,6 +765,14 @@ button.recording {
   cursor: copy;
 }
 
+.roll-row:hover .roll-lane {
+  background-color: rgb(255 255 255 / 7%);
+}
+
+.roll-row:hover .roll-key {
+  filter: brightness(1.4);
+}
+
 .roll-clip {
   position: absolute;
   top: 1px;
