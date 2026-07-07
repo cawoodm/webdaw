@@ -10,14 +10,13 @@
 
 # TODOs
 
-- Sampler: When keyboard keys are pressed show which key on the piano is playing
-
 # In-Progress
 
 - pressing sequencer stop should not stop sampler (and vice versa). Only the global stop button stops everything. 🕜 (todos — stop buttons already independent; making Space toggle the active tab only)
 
 # DONE
 
+- Sampler: When keyboard keys are pressed show which key on the piano is playing ✅ (worktree-midi-file-support — already working on the sequencer piano roll: computer-keyboard + MIDI notes light the matching key via lightKey/midi:noteon; verified, no code change needed)
 - Sampler: Should not show orange vertical play bar (or lights) when sampler is not playing ✅ (worktree-midi-file-support — playhead/bar-highlight now gated on the sampler's own loopActive, not the shared transport)
 - Sequencer: Scroll vertically with mouse wheel, make keyboard twice as wide and show all note names ✅ (worktree-midi-file-support — wheel scrolls vertically, key column 34→68px, every key labelled)
 - Sequencer: Add a clear button to delete all notes ✅ (worktree-midi-file-support — eraser button in the toolbar, confirms then clears the current sequence's notes)
