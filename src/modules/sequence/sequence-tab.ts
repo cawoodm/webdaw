@@ -165,6 +165,19 @@ export class SequenceTab extends HTMLElement {
     this.rebuildLivePartIfPlaying();
   }
 
+  /** Audible feedback when a note is placed — plays the monitor directly so it never records. */
+  private previewNote(note: string, durationSteps: number): void {
+    this.lightKey(note, true);
+    const ms = Math.max(120, durationSteps * engine.secondsPerStep() * 1000);
+    void this.ensureMonitor().then((m) => {
+      m?.attack(note, 0.8);
+      window.setTimeout(() => {
+        m?.release(note);
+        this.lightKey(note, false);
+      }, ms);
+    });
+  }
+
   // ---- playback ----
 
   private async play(): Promise<void> {
@@ -550,14 +563,22 @@ export class SequenceTab extends HTMLElement {
       lane.dataset.note = note;
       lane.style.backgroundImage = grid.image;
       lane.style.backgroundSize = grid.size;
-      lane.title = 'Click: add a note · drag: move/retarget pitch · right edge: resize · double-click: delete · right-click: velocity';
+      lane.title = 'Click: add a note (plays it) · drag: move/retarget pitch · right edge: resize · double-click: delete · right-click: velocity';
+      let downAt: { x: number; y: number } | null = null;
+      lane.onpointerdown = (e): void => {
+        downAt = { x: e.clientX, y: e.clientY };
+      };
       lane.onclick = (e): void => {
         if (e.target !== lane) return; // clicks on clips are handled there
+        const dragged = downAt && Math.abs(e.clientX - downAt.x) + Math.abs(e.clientY - downAt.y) >= 3;
+        downAt = null;
+        if (dragged) return; // a drag across the lane places nothing
         const q = this.qSteps();
         const fraction = (e.clientX - lane.getBoundingClientRect().left) / lane.offsetWidth;
         const step = Math.min(totalSteps - q, Math.max(0, floorSnapSteps(fraction * totalSteps, q)));
         seq.notes.push({ step, note, duration: q, velocity: 0.8 });
         this.commitNotes();
+        this.previewNote(note, q);
       };
       row.appendChild(lane);
       lanes.set(note, lane);
