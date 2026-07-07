@@ -267,7 +267,9 @@ export class AppShell extends HTMLElement {
       updateUi((s) => (s.activeTab = tab));
     });
     bus.on('ui:loaded', () => {
-      this.activate(uiState().activeTab);
+      // emit (not just activate) so modules tracking the active tab via the
+      // bus — e.g. the tone tab's note routing — are correct from boot
+      bus.emit('tab:activate', uiState().activeTab);
       if (uiState().metronomeOn) {
         metro.classList.add('active');
         // clicking starts once the first gesture unlocks the audio context
