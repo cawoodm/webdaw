@@ -14,6 +14,24 @@ import {
   type Monitor,
 } from './sequence-playback';
 
+/** Trigger a browser download of a generated file. */
+function download(filename: string, blob: Blob): void {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+/** Portable .seq.json form of a sequence: notes + instrument + metadata. */
+interface SequenceFile {
+  format: 'webdaw-sequence';
+  name: string;
+  bars: number;
+  instrument?: SeqInstrument;
+  notes: NoteEvent[];
+}
+
 /** Round DOWN to the quantize grid (16th-note steps) — placing/dragging notes. */
 export function floorSnapSteps(steps: number, qSteps: number): number {
   return Math.floor(steps / qSteps + 1e-6) * qSteps;
@@ -99,6 +117,19 @@ export class SequenceTab extends HTMLElement {
     });
     bus.on('midi:noteoff', ({ note }) => {
       if (this.isActive()) this.noteOffInternal(note);
+    });
+    // drag a .seq.json here to import it
+    this.addEventListener('dragover', (e) => {
+      if (!e.dataTransfer?.types.includes('Files')) return;
+      e.preventDefault();
+      this.classList.add('drag-over');
+    });
+    this.addEventListener('dragleave', () => this.classList.remove('drag-over'));
+    this.addEventListener('drop', (e) => {
+      this.classList.remove('drag-over');
+      if (!e.dataTransfer?.files.length) return;
+      e.preventDefault();
+      void this.importSequenceFiles([...e.dataTransfer.files]);
     });
     const tick = (): void => {
       this.updatePlayhead();
@@ -631,6 +662,68 @@ export class SequenceTab extends HTMLElement {
     return wrap;
   }
 
+  /** Export the active sequence as .seq.json. */
+  private exportSequence(): void {
+    const seq = this.seq();
+    if (!seq) return;
+    const base = seq.name.replace(/[^\w-]+/g, '_');
+    download(`${base}.seq.json`, new Blob([JSON.stringify(this.serializeSequence(seq), null, 2)], { type: 'application/json' }));
+  }
+
+  /** Portable sequence definition: notes + instrument + metadata. */
+  private serializeSequence(seq: Sequence): SequenceFile {
+    return {
+      format: 'webdaw-sequence',
+      name: seq.name,
+      bars: seq.bars,
+      instrument: seq.instrument,
+      notes: seq.notes,
+    };
+  }
+
+  /** Import dropped .seq.json sequences; name clashes prompt overwrite-or-rename. */
+  private async importSequenceFiles(files: File[]): Promise<void> {
+    for (const file of files) {
+      if (!file.name.toLowerCase().endsWith('.seq.json')) continue;
+      let parsed: Partial<SequenceFile>;
+      try {
+        parsed = JSON.parse(await file.text()) as Partial<SequenceFile>;
+      } catch {
+        // silently skip malformed JSON
+        continue;
+      }
+      if (parsed.format !== 'webdaw-sequence') continue;
+      let name = (parsed.name ?? file.name.replace(/\.seq\.json$/i, '')).trim() || 'Sequence';
+      const existing = store.data.sequences.find((s) => s.name.toLowerCase() === name.toLowerCase());
+      let target: Sequence | null = null;
+      if (existing) {
+        if (confirm(`A sequence named "${name}" already exists.\nOK: overwrite it — Cancel: import under a new name`)) {
+          target = existing;
+        } else {
+          name = uniqueName(name, store.data.sequences.map((s) => s.name));
+        }
+      }
+      store.update((d) => {
+        if (target) {
+          target.name = name;
+          target.bars = parsed.bars ?? 2;
+          target.instrument = parsed.instrument;
+          target.notes = parsed.notes ?? [];
+        } else {
+          const seq: Sequence = {
+            id: uid(),
+            name,
+            bars: parsed.bars ?? 2,
+            instrument: parsed.instrument,
+            notes: parsed.notes ?? [],
+          };
+          d.sequences.push(seq);
+          this.selectSeq(seq.id);
+        }
+      });
+    }
+  }
+
   private render(): void {
     const prevScroll = this.querySelector<HTMLElement>('.roll-scroll');
     const savedTop = prevScroll?.scrollTop;
@@ -712,6 +805,11 @@ export class SequenceTab extends HTMLElement {
           this.selectSeq('');
           store.update((d) => (d.sequences = d.sequences.filter((s) => s.id !== seq.id)));
         },
+      ),
+      this.iconBtn(
+        'Export sequence',
+        `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Export`,
+        () => this.exportSequence(),
       ),
     );
 
