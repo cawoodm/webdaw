@@ -123,11 +123,14 @@ export class SequenceTab extends HTMLElement {
 
   private async ensureMonitor(): Promise<Monitor | null> {
     const seq = this.seq();
-    if (!seq?.instrument) return null;
-    const key = `${seq.id}:${JSON.stringify(seq.instrument)}`;
+    if (!seq) return null;
+    // no instrument picked yet: fall back to a plain synth so the keyboard
+    // always sounds the sequencer on this tab (never the tone tab's patch)
+    const instrument: SeqInstrument = seq.instrument ?? { type: 'synth', kind: 'synth' };
+    const key = `${seq.id}:${JSON.stringify(instrument)}`;
     if (this.monitor && this.monitorKey === key) return this.monitor;
     await engine.ensureStarted();
-    const resolved = await resolveInstrument(seq);
+    const resolved = seq.instrument ? await resolveInstrument(seq) : { instrument };
     if (!resolved) return null;
     if (this.monitorKey !== key) {
       this.monitor?.dispose();
