@@ -1,0 +1,19 @@
+{
+  "format": "webdaw-instrument",
+  "version": 1,
+  "name": "Banjo",
+  "type": "audio",
+  "attribution": "GeneralUser GS 2.0.3 BETA — 1997-2025 by S. Christian Collins",
+  "envelope": {
+    "attack": 0,
+    "release": 0.3
+  },
+  "gain": 1,
+  "notes": {
+    "F#3": "Fs3.ogg",
+    "F#4": "Fs4.ogg",
+    "F#5": "Fs5.ogg",
+    "C4": "C4.ogg",
+    "C6": "C6.ogg"
+  }
+}

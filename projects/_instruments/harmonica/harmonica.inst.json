@@ -1,0 +1,20 @@
+{
+  "format": "webdaw-instrument",
+  "version": 1,
+  "name": "Harmonica",
+  "type": "audio",
+  "attribution": "GeneralUser GS 2.0.3 BETA — 1997-2025 by S. Christian Collins",
+  "envelope": {
+    "attack": 0,
+    "release": 0.3
+  },
+  "gain": 1,
+  "notes": {
+    "E4": "E4.ogg",
+    "A4": "A4.ogg",
+    "E5": "E5.ogg",
+    "A5": "A5.ogg",
+    "E6": "E6.ogg",
+    "B6": "B6.ogg"
+  }
+}

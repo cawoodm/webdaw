@@ -1,0 +1,25 @@
+{
+  "activeTab": "sequence",
+  "metronomeOn": false,
+  "tone": {
+    "patchId": "52e7b49a",
+    "live": false,
+    "loop": false
+  },
+  "sample": {
+    "selectedPad": 0,
+    "countIn": false,
+    "overdub": false,
+    "quantize": 0.125,
+    "loopId": "41b5b7a7"
+  },
+  "sequence": {
+    "seqId": "7fdac885",
+    "quantize": 0.25,
+    "trackId": ""
+  },
+  "arrange": {
+    "palette": "",
+    "openFx": []
+  }
+}
