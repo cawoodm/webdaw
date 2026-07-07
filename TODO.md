@@ -11,15 +11,15 @@
 
 # In-Progress
 
-- sequencer: assign colors to each note (A=blue, A#=light blue ... G=Red, G#=light red), higlight entire row on mouseover 🕜 (todos)
-- sequencer: Don't use browser scroll but scroll buttons above and below keyboard which page half an octave; scroll to center vertically C4 by default 🕜 (todos)
 - sequencer: play/rec buttons at top left of screen 🕜 (todos2 — implemented, awaiting confirmation)
 - sequencer: sampler and sequencer can play at same time 🕜 (todos2 — implemented, awaiting confirmation)
-- sequencer: play note as it is placed but not when dragged, dbl click to delete 🕜 (todos)
 - When on the sequencer tab, the keyboard should play sequencer (not patch) notes 🕜 (todos2 — implemented, awaiting confirmation)
 
 # DONE
 
+- sequencer: play note as it is placed but not when dragged, dbl click to delete ✅ (placement plays through the instrument; drags stay silent)
+- sequencer: Don't use browser scroll but scroll buttons above and below keyboard which page half an octave; scroll to center vertically C4 by default ✅
+- sequencer: assign colors to each note (A=blue, A#=light blue ... G=Red, G#=light red), higlight entire row on mouseover ✅ (clips + key swatches; color follows a dragged note)
 - Add a guage next to master volume to indicate level (green) and clipping (red) ✅ (green -60..0 dB bar beside the volume knob; red 400ms hold on clipping)
 - bug: When I save the project Marc with the loop Happy and reload the project Marc on another tab/site I don't see the loop Happy ✅ (stale tabs were clobbering newer saves; saves now broadcast to other tabs and the newer of folder/mirror copy wins on load)
 - feat: Sort names of patches and loops in their dropdowns by name ✅ (case-insensitive; stored order unchanged)
