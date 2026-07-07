@@ -9,6 +9,8 @@ export interface BusEvents {
   'tab:activate': TabId;
   /** A module is taking over playback — everyone else releases their scheduled parts. */
   'transport:claim': { owner: TabId };
+  /** A shareable module (sample/sequence) is joining playback — exclusive players (tone preview, arrange song) yield; other shareable owners keep playing. */
+  'transport:join': { owner: TabId };
   /** Global play (Space / shell button) — the ACTIVE tab starts its playback. */
   'transport:play': void;
   /** Global stop (Space / shell button) — every module stops playback. */

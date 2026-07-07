@@ -176,11 +176,11 @@ export class SequenceTab extends HTMLElement {
     await engine.ensureStarted();
     this.playback?.dispose();
     this.playback = null;
-    engine.claimTransport('sequence');
+    engine.joinTransport('sequence');
     const resolved = await resolveInstrument(seq);
     if (resolved) {
       this.playback = playSequenceLive(seq, engine.master, resolved);
-      engine.setLoop(seq.bars);
+      engine.requestLoop('sequence', seq.bars);
       engine.play();
     }
     this.render();
@@ -189,8 +189,7 @@ export class SequenceTab extends HTMLElement {
   private stop(): void {
     this.playback?.dispose();
     this.playback = null;
-    engine.stop();
-    engine.setLoop(0);
+    engine.releaseTransport('sequence');
     this.recording = false;
     this.render();
   }

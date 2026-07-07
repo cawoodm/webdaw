@@ -266,12 +266,12 @@ export class SampleTab extends HTMLElement {
 
   private async startLoop(withExisting: boolean, countIn = false): Promise<void> {
     this.loopPart?.dispose();
-    engine.claimTransport('sample');
+    engine.joinTransport('sample');
     this.loopActive = true;
     const bars = this.loop().bars;
     const countBars = countIn ? 1 : 0;
     this.countInBeats = countBars * 4;
-    engine.setLoop(bars, countBars);
+    engine.requestLoop('sample', bars, countBars);
     if (withExisting && this.loop().events.length > 0) {
       this.loopPart = this.makeLoopPart(countBars);
     }
@@ -316,8 +316,7 @@ export class SampleTab extends HTMLElement {
 
   private stopLoop(): void {
     this.releaseLoop();
-    engine.stop();
-    engine.setLoop(0);
+    engine.releaseTransport('sample');
   }
 
   /** Drop everything we scheduled on the transport, without touching it. */
