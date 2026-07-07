@@ -1,3 +1,5 @@
+import { midiToNoteName } from '../midi/note-names';
+
 export type TabId = 'tone' | 'sample' | 'sequence' | 'arrange' | 'produce';
 
 export type OscType = 'sine' | 'sawtooth' | 'triangle' | 'square' | 'noise';
@@ -114,10 +116,9 @@ export const SAMPLE_NOTE_DEFAULT = 'C4';
 
 /** The 88 piano keys, A0 (bottom) to C8 (top). */
 export function pianoNotes(): string[] {
-  const NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
   const notes: string[] = [];
   for (let midi = 21; midi <= 108; midi++) {
-    notes.push(`${NAMES[midi % 12]}${Math.floor(midi / 12) - 1}`);
+    notes.push(midiToNoteName(midi));
   }
   return notes;
 }
