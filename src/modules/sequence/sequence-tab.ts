@@ -746,6 +746,17 @@ export class SequenceTab extends HTMLElement {
     const grid = gridBackgroundSteps(totalSteps, this.qSteps());
     const scroll = document.createElement('div');
     scroll.className = 'roll-scroll';
+    // Vertical wheel scrolls the keyboard (overflow-y is hidden by design);
+    // leave horizontal wheel/trackpad gestures to the native overflow-x.
+    scroll.addEventListener(
+      'wheel',
+      (e) => {
+        if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+        scroll.scrollTop += e.deltaY;
+        e.preventDefault();
+      },
+      { passive: false },
+    );
     const body = document.createElement('div');
     body.className = 'roll-body';
     body.style.width = `${Math.max(1, seq.bars / 4) * 100}%`;
@@ -761,7 +772,7 @@ export class SequenceTab extends HTMLElement {
       key.className = 'roll-key' + (isSharp ? ' black' : '');
       key.dataset.note = note;
       key.style.borderLeft = `3px solid ${noteColor(note)}`;
-      if (!isSharp && note.startsWith('C')) key.textContent = note;
+      key.textContent = note;
       key.title = `Play ${note}`;
       key.onpointerdown = (e): void => {
         e.preventDefault();

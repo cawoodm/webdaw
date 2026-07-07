@@ -10,8 +10,8 @@
 
 # TODOs
 
-- Sequencer: Scroll vertically with mouse wheel, make keyboard twice as wide and show all note names
 - Sampler: Should not show orange vertical play bar (or lights) when sampler is not playing
+- Sampler: When keyboard keys are pressed show which key on the piano is playing
 
 # In-Progress
 
@@ -19,6 +19,7 @@
 
 # DONE
 
+- Sequencer: Scroll vertically with mouse wheel, make keyboard twice as wide and show all note names ✅ (worktree-midi-file-support — wheel scrolls vertically, key column 34→68px, every key labelled)
 - Sequencer: Add a clear button to delete all notes ✅ (worktree-midi-file-support — eraser button in the toolbar, confirms then clears the current sequence's notes)
 - When starting the app with the sequencer tab open we are still in the wrong octave - always scroll to make the notes visible or to the middle c3 octave ✅ (worktree-midi-file-support — defer the initial scroll when the panel renders hidden at boot, apply once visible)
 - When on the sequencer tab, the keyboard should play sequencer (not patch) notes ✅ (todos2)
