@@ -1,22 +1,26 @@
 # Instructions
 
 - The master file is C:\projects\Marc\webdaw\TODO.md - only write to this
-- Synch with main
-- Read an unmarked TODO from the list below, don't take a task marked 🕜
-- Mark and move it to in-progress 🕜 and begin implementing (add name of branch you are on e.g. todos)
-- Once a task is done, show the user the full dev URL link (with http://), confirm with the user they are happy explaining what was done and how to test it
-- Mark done ✅, commit and synch back to main
+- Run a loop to process one task at a time:
+  - First synch with main (by pulling in)
+  - Read an unmarked TODO from the list below, don't take a task marked 🕜
+  - Move it to in-progress and mark it with 🕜 (add name of branch you are on e.g. todos)
+  - Begin implementing and ask questions if anything is unclear
+  - Once a task is implemented, show the user the full dev URL link (with http://), ask the user if they are happy explaining what was done and how to test it
+  - Once the user accepts it, mark as done ✅ and move to DONE
+  - Commit and synch back to main (Don't put TODO or claim in the commit message, just the original task text)
 
 # TODOs
 
 # In-Progress
 
-- sequencer: play/rec buttons at top left of screen 🕜 (todos2 — implemented, awaiting confirmation)
-- sequencer: sampler and sequencer can play at same time 🕜 (todos2 — implemented, awaiting confirmation)
-- When on the sequencer tab, the keyboard should play sequencer (not patch) notes 🕜 (todos2 — implemented, awaiting confirmation)
+- pressing sequencer stop should not stop sampler (and vice versa). Only the global stop button stops everything. 🕜 (todos — stop buttons already independent; making Space toggle the active tab only)
 
 # DONE
 
+- When on the sequencer tab, the keyboard should play sequencer (not patch) notes ✅ (todos2)
+- sequencer: sampler and sequencer can play at same time ✅ (todos2)
+- sequencer: play/rec buttons at top left of screen ✅ (todos2)
 - sequencer: play note as it is placed but not when dragged, dbl click to delete ✅ (placement plays through the instrument; drags stay silent)
 - sequencer: Don't use browser scroll but scroll buttons above and below keyboard which page half an octave; scroll to center vertically C4 by default ✅
 - sequencer: assign colors to each note (A=blue, A#=light blue ... G=Red, G#=light red), higlight entire row on mouseover ✅ (clips + key swatches; color follows a dragged note)
