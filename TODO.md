@@ -5,16 +5,19 @@
 - Read an unmarked TODO from the list below, don't take a task marked 🕜
 - Mark and move it to in-progress 🕜 and begin implementing (add name of branch you are on e.g. todos)
 - Once a task is done, show the user the full dev URL link (with http://), confirm with the user they are happy explaining what was done and how to test it
-- Mark done ✅ and synch back to main
+- Mark done ✅, commit and synch back to main
 
 # TODOs
 
-- sequencer: play/rec buttons at top left of screen
+- sequencer: assign colors to each note (A=blue, A#=light blue ... G=Red, G#=light red), higlight entire row on mouseover
 
 # In-Progress
 
+- sequencer: Don't use browser scroll but scroll buttons above and below keyboard which page half an octave; scroll to center vertically C4 by default 🕜 (todos)
+- sequencer: play/rec buttons at top left of screen 🕜 (todos2 — implemented, awaiting confirmation)
+- sequencer: sampler and sequencer can play at same time 🕜 (todos2 — implemented, awaiting confirmation)
 - sequencer: play note as it is placed but not when dragged, dbl click to delete 🕜 (todos)
-- When on the sequencer tab, the keyboard should play sequencer (not patch) notes 🕜 (todos2)
+- When on the sequencer tab, the keyboard should play sequencer (not patch) notes 🕜 (todos2 — implemented, awaiting confirmation)
 
 # DONE
 
