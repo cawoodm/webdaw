@@ -419,6 +419,15 @@ export class SequenceTab extends HTMLElement {
     });
   }
 
+  /** Delete every note in the current sequence (after confirming). */
+  private clearNotes(): void {
+    const seq = this.seq();
+    if (!seq || seq.notes.length === 0) return;
+    if (!confirm(`Delete all ${seq.notes.length} notes in "${seq.name}"?`)) return;
+    seq.notes = [];
+    this.commitNotes();
+  }
+
   /** After direct mutations of seq.notes: persist (triggers a re-render) + re-schedule. */
   private commitNotes(): void {
     store.update(() => {});
@@ -904,6 +913,12 @@ export class SequenceTab extends HTMLElement {
           this.selectSeq('');
           store.update((d) => (d.sequences = d.sequences.filter((s) => s.id !== seq.id)));
         },
+      ),
+      this.iconBtn(
+        'Clear all notes',
+        `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M7 21h10"/><path d="M5 15l6-6 5 5-6 6H8z"/><path d="M11 9l4-4a2 2 0 0 1 3 0l2 2a2 2 0 0 1 0 3l-4 4"/></svg>`,
+        () => this.clearNotes(),
       ),
       this.iconBtn(
         'Import MIDI file',

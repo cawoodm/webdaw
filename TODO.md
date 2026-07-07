@@ -10,7 +10,6 @@
 
 # TODOs
 
-- Sequencer: Add a clear button to delete all notes
 - Sequencer: Scroll vertically with mouse wheel, make keyboard twice as wide and show all note names
 - Sampler: Should not show orange vertical play bar (or lights) when sampler is not playing
 
@@ -20,6 +19,7 @@
 
 # DONE
 
+- Sequencer: Add a clear button to delete all notes ✅ (worktree-midi-file-support — eraser button in the toolbar, confirms then clears the current sequence's notes)
 - When starting the app with the sequencer tab open we are still in the wrong octave - always scroll to make the notes visible or to the middle c3 octave ✅ (worktree-midi-file-support — defer the initial scroll when the panel renders hidden at boot, apply once visible)
 - When on the sequencer tab, the keyboard should play sequencer (not patch) notes ✅ (todos2)
 - sequencer: sampler and sequencer can play at same time ✅ (todos2)
