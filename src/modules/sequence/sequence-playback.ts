@@ -1,8 +1,11 @@
 import * as Tone from '../../core/tone';
 import { engine } from '../../core/audio-engine';
+import type { LoadedInstrument } from '../../core/instruments';
 import type { NoteEvent, Sequence, SeqInstrument, SynthKind, TonePatch } from '../../core/model';
 import { STEPS_PER_BAR } from '../../core/model';
+import { noteNameToMidi } from '../../midi/note-names';
 import { PatchVoice } from '../../core/patch-voice';
+import { projects } from '../../core/project-manager';
 import { stepToTransportTime } from '../../core/time';
 import { store } from '../../core/project-store';
 
@@ -17,6 +20,7 @@ export interface ResolvedInstrument {
   instrument: SeqInstrument;
   patch?: TonePatch;
   buffer?: AudioBuffer;
+  loaded?: LoadedInstrument;
 }
 
 /**
@@ -33,9 +37,47 @@ export async function resolveInstrument(seq: Sequence): Promise<ResolvedInstrume
     if (!patch) return null;
     return { instrument, patch };
   }
+  if (instrument.type === 'instrument') {
+    const loaded = await projects.loadInstrument(instrument.name);
+    return loaded ? { instrument, loaded } : null;
+  }
   const buffer = store.getBuffer(instrument.file) ?? (await store.loadBuffer(instrument.file));
   if (!buffer) return null;
   return { instrument, buffer };
+}
+
+/** The listed tone anchor nearest a played note, by MIDI distance. */
+function nearestAnchor(tones: Map<string, TonePatch>, note: string): TonePatch {
+  const target = noteNameToMidi(note);
+  let best: { patch: TonePatch; distance: number } | null = null;
+  for (const [anchor, patch] of tones) {
+    const distance = Math.abs(noteNameToMidi(anchor) - target);
+    if (!best || distance < best.distance) best = { patch, distance };
+  }
+  return best!.patch;
+}
+
+/**
+ * Build the Tone.Sampler for an `instrument`-typed audio instrument, or null
+ * for a tone one (played per-note via PatchVoice instead). The sampler's
+ * dispose() is wrapped so disposing it also tears down the Gain stage —
+ * callers only need to track the returned Sampler, same as a synth.
+ */
+export function makeInstrumentPlayer(loaded: LoadedInstrument, dest: Tone.ToneAudioNode): Tone.Sampler | null {
+  if (loaded.type !== 'audio') return null;
+  const gain = new Tone.Gain(loaded.gain).connect(dest);
+  const sampler = new Tone.Sampler({
+    urls: Object.fromEntries(loaded.audio!),
+    attack: loaded.envelope.attack,
+    release: loaded.envelope.release,
+  }).connect(gain);
+  const disposeSampler = sampler.dispose.bind(sampler);
+  sampler.dispose = (): Tone.Sampler => {
+    disposeSampler();
+    gain.dispose();
+    return sampler;
+  };
+  return sampler;
 }
 
 /**
@@ -50,6 +92,7 @@ function triggerNote(
   resolved: ResolvedInstrument,
   dest: Tone.ToneAudioNode,
   synth: Tone.PolySynth | null,
+  sampler: Tone.Sampler | null,
   n: NoteEvent,
   time: number,
   stepSeconds: number,
@@ -67,6 +110,20 @@ function triggerNote(
       if (disposeLive) {
         const release = resolved.patch!.env.release;
         window.setTimeout(() => voice.dispose(), (duration + release + 0.3) * 1000);
+      }
+      break;
+    }
+    case 'instrument': {
+      const loaded = resolved.loaded!;
+      if (loaded.type === 'audio') {
+        sampler!.triggerAttackRelease(n.note, duration, time, n.velocity);
+      } else {
+        const patch = nearestAnchor(loaded.tones!, n.note);
+        const voice = new PatchVoice(patch, dest);
+        voice.triggerAttackRelease(n.note, duration, time, n.velocity);
+        if (disposeLive) {
+          window.setTimeout(() => voice.dispose(), (duration + patch.env.release + 0.3) * 1000);
+        }
       }
       break;
     }
@@ -100,9 +157,10 @@ export function scheduleSequenceAt(
   startSeconds = 0,
 ): void {
   const synth = resolved.instrument.type === 'synth' ? makeSynth(resolved.instrument.kind).connect(dest) : null;
+  const sampler = resolved.instrument.type === 'instrument' ? makeInstrumentPlayer(resolved.loaded!, dest) : null;
   for (const n of seq.notes) {
     const time = startSeconds + n.step * secondsPerStep + 0.01;
-    triggerNote(resolved, dest, synth, n, time, secondsPerStep, false);
+    triggerNote(resolved, dest, synth, sampler, n, time, secondsPerStep, false);
   }
 }
 
@@ -130,12 +188,14 @@ export function playSequenceLive(seq: Sequence, dest: Tone.ToneAudioNode, resolv
   const nodes: Tone.ToneAudioNode[] = [];
   const synth = resolved.instrument.type === 'synth' ? makeSynth(resolved.instrument.kind).connect(dest) : null;
   if (synth) nodes.push(synth);
+  const sampler = resolved.instrument.type === 'instrument' ? makeInstrumentPlayer(resolved.loaded!, dest) : null;
+  if (sampler) nodes.push(sampler);
 
   const part = new Tone.Part(
     (time, n: NoteEvent) => {
       // step-seconds from the CURRENT bpm so held notes track tempo changes
       const sps = 60 / Tone.getTransport().bpm.value / 4;
-      triggerNote(resolved, dest, synth, n, time, sps, true);
+      triggerNote(resolved, dest, synth, sampler, n, time, sps, true);
     },
     seq.notes.map((n) => [stepToTransportTime(n.step), n] as [string, NoteEvent]),
   );
@@ -192,6 +252,47 @@ export function makeMonitor(resolved: ResolvedInstrument, dest: Tone.ToneAudioNo
       },
       dispose(): void {
         for (const v of voices.values()) v.dispose();
+        voices.clear();
+      },
+    };
+  }
+  if (resolved.instrument.type === 'instrument') {
+    const loaded = resolved.loaded!;
+    if (loaded.type === 'audio') {
+      const sampler = makeInstrumentPlayer(loaded, dest)!;
+      return {
+        attack(note, velocity): void {
+          sampler.triggerAttack(note, Tone.immediate(), velocity);
+        },
+        release(note): void {
+          sampler.triggerRelease(note, Tone.immediate());
+        },
+        dispose(): void {
+          sampler.dispose();
+        },
+      };
+    }
+    // tone: same PatchVoice-per-held-note approach as the 'patch' case, using
+    // each attack's nearest listed anchor (a different note may pick a different one)
+    const tones = loaded.tones!;
+    const voices = new Map<string, { voice: PatchVoice; release: number }>();
+    return {
+      attack(note, velocity): void {
+        voices.get(note)?.voice.dispose();
+        const patch = nearestAnchor(tones, note);
+        const voice = new PatchVoice(patch, dest);
+        voices.set(note, { voice, release: patch.env.release });
+        voice.triggerAttack(note, undefined, velocity);
+      },
+      release(note): void {
+        const entry = voices.get(note);
+        if (!entry) return;
+        voices.delete(note);
+        entry.voice.triggerRelease();
+        window.setTimeout(() => entry.voice.dispose(), (entry.release + 0.3) * 1000);
+      },
+      dispose(): void {
+        for (const { voice } of voices.values()) voice.dispose();
         voices.clear();
       },
     };

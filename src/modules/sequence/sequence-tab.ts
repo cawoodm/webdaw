@@ -1,19 +1,16 @@
-import { engine } from '../../core/audio-engine';
-import { bus } from '../../core/event-bus';
-import type { NoteEvent, SeqInstrument, Sequence, SynthKind } from '../../core/model';
-import { pianoNotes, sortedByName, STEPS_PER_BAR, uid } from '../../core/model';
-import { buildMidiFile, parseMidiFile, type MidiImportResult } from '../../midi/midi-file';
-import { uniqueName } from '../../core/project-names';
-import { store } from '../../core/project-store';
-import { uiState, updateUi } from '../../core/ui-state';
-import { PLAY_ICON, STOP_ICON, transportButton } from '../../ui/transport-buttons';
-import {
-  makeMonitor,
-  playSequenceLive,
-  resolveInstrument,
-  type LivePlayback,
-  type Monitor,
-} from './sequence-playback';
+import {engine} from '../../core/audio-engine';
+import {bus} from '../../core/event-bus';
+import {clearInstrumentCache} from '../../core/instruments';
+import type {NoteEvent, SeqInstrument, Sequence, SynthKind} from '../../core/model';
+import {pianoNotes, sortedByName, STEPS_PER_BAR, uid} from '../../core/model';
+import {projects} from '../../core/project-manager';
+import {uniqueName} from '../../core/project-names';
+import {store} from '../../core/project-store';
+import {buildSeqFile, parseSeqFile} from '../../core/sequence-file';
+import {uiState, updateUi} from '../../core/ui-state';
+import {buildMidiFile, parseMidiFile, type MidiImportResult} from '../../midi/midi-file';
+import {PLAY_ICON, STOP_ICON, transportButton} from '../../ui/transport-buttons';
+import {makeMonitor, playSequenceLive, resolveInstrument, type LivePlayback, type Monitor} from './sequence-playback';
 
 /** Trigger a browser download of a generated file. */
 function download(filename: string, blob: Blob): void {
@@ -22,15 +19,6 @@ function download(filename: string, blob: Blob): void {
   a.download = filename;
   a.click();
   URL.revokeObjectURL(a.href);
-}
-
-/** Portable .seq.json form of a sequence: notes + instrument + metadata. */
-interface SequenceFile {
-  format: 'webdaw-sequence';
-  name: string;
-  bars: number;
-  instrument?: SeqInstrument;
-  notes: NoteEvent[];
 }
 
 /** Round DOWN to the quantize grid (16th-note steps) — placing/dragging notes. */
@@ -48,27 +36,27 @@ export function nearestSnapSteps(steps: number, qSteps: number): number {
  * halving levels, progressively thinner/fainter — the step-unit twin of
  * sample-tab's beat-based gridBackground.
  */
-export function gridBackgroundSteps(totalSteps: number, qSteps: number): { image: string; size: string } {
-  const style = (level: number): { w: number; a: number } =>
+export function gridBackgroundSteps(totalSteps: number, qSteps: number): {image: string; size: string} {
+  const style = (level: number): {w: number; a: number} =>
     [
-      { w: 2, a: 0.6 },  // bar
-      { w: 2, a: 0.32 }, // 1/2 bar
-      { w: 1, a: 0.32 }, // beat
-      { w: 1, a: 0.2 },  // 1/8
-      { w: 1, a: 0.12 }, // 1/16 and finer
+      {w: 2, a: 0.6}, // bar
+      {w: 2, a: 0.32}, // 1/2 bar
+      {w: 1, a: 0.32}, // beat
+      {w: 1, a: 0.2}, // 1/8
+      {w: 1, a: 0.12}, // 1/16 and finer
     ][Math.min(level, 4)];
   const images: string[] = [];
   const sizes: string[] = [];
   for (let s = STEPS_PER_BAR, level = 0; s >= qSteps - 1e-6; s /= 2, level++) {
-    const { w, a } = style(level);
+    const {w, a} = style(level);
     images.push(`linear-gradient(90deg, rgb(148 163 184 / ${a * 100}%) ${w}px, transparent ${w}px)`);
     sizes.push(`${100 / (totalSteps / s)}% 100%`);
   }
-  return { image: images.join(', '), size: sizes.join(', ') };
+  return {image: images.join(', '), size: sizes.join(', ')};
 }
 
 /** Hue per natural note — blue at A sweeping to red at G; sharps are the light variant. */
-const NOTE_HUES: Record<string, number> = { A: 220, B: 183, C: 147, D: 110, E: 73, F: 37, G: 0 };
+const NOTE_HUES: Record<string, number> = {A: 220, B: 183, C: 147, D: 110, E: 73, F: 37, G: 0};
 
 export function noteColor(note: string): string {
   const hue = NOTE_HUES[note[0]] ?? 0;
@@ -82,23 +70,33 @@ export class SequenceTab extends HTMLElement {
   private seqId = '';
   /** Sequence id painted by the last render() — distinguishes a load from an edit re-render. */
   private renderedSeqId = '';
+  /** A fresh load rendered while the panel was hidden (0 viewport); apply the initial scroll once visible. */
+  private scrollPending = false;
   private playback: LivePlayback | null = null;
   private recording = false;
   private monitor: Monitor | null = null;
   private monitorKey = '';
-  private recordStarts = new Map<string, { beat: number; velocity: number }>();
+  private recordStarts = new Map<string, {beat: number; velocity: number}>();
   private lastPlayState = false;
+  /** Instrument-library catalog (global `_instruments` + the active project's `instruments/`). */
+  private instruments: {name: string; source: 'global' | 'project'}[] = [];
 
   connectedCallback(): void {
     this.className = 'tab-panel sequence-tab';
-    bus.on('project:loaded', () => this.render());
+    void this.refreshInstruments();
+    bus.on('project:loaded', () => {
+      clearInstrumentCache();
+      void this.refreshInstruments();
+      this.render();
+    });
     bus.on('project:changed', () => this.render());
     bus.on('ui:loaded', () => {
       this.seqId = uiState().sequence.seqId;
+      void this.refreshInstruments();
       this.render();
     });
     // playback survives tab switches; release only when another module claims it
-    bus.on('transport:claim', ({ owner }) => {
+    bus.on('transport:claim', ({owner}) => {
       if (owner === 'sequence') return;
       this.playback?.dispose();
       this.playback = null;
@@ -115,34 +113,37 @@ export class SequenceTab extends HTMLElement {
       if (!this.playback && !this.recording) return;
       this.stop();
     });
-    bus.on('midi:noteon', ({ note, velocity }) => {
+    bus.on('midi:noteon', ({note, velocity}) => {
       if (this.isActive()) this.noteOnInternal(note, velocity);
     });
-    bus.on('midi:noteoff', ({ note }) => {
+    bus.on('midi:noteoff', ({note}) => {
       if (this.isActive()) this.noteOffInternal(note);
     });
-    // drag a .seq.json or .mid/.midi file here to import it
-    this.addEventListener('dragover', (e) => {
-      if (!e.dataTransfer?.types.includes('Files')) return;
-      e.preventDefault();
-      this.classList.add('drag-over');
-    });
-    this.addEventListener('dragleave', () => this.classList.remove('drag-over'));
-    this.addEventListener('drop', (e) => {
-      this.classList.remove('drag-over');
-      if (!e.dataTransfer?.files.length) return;
-      e.preventDefault();
-      const files = [...e.dataTransfer.files];
-      void this.importSequenceFiles(files);
-      void this.importMidiFiles(files);
-    });
     const tick = (): void => {
+      this.applyPendingScroll();
       this.updatePlayhead();
       this.updateBarIndicator();
       this.syncPlayToggle();
       requestAnimationFrame(tick);
     };
     requestAnimationFrame(tick);
+    // drag a .mid/.midi file here to import it
+    this.addEventListener('dragover', e => {
+      if (!e.dataTransfer?.types.includes('Files')) return;
+      e.preventDefault();
+      this.classList.add('drag-over');
+    });
+    this.addEventListener('dragleave', () => this.classList.remove('drag-over'));
+    this.addEventListener('drop', e => {
+      this.classList.remove('drag-over');
+      if (!e.dataTransfer?.files.length) return;
+      e.preventDefault();
+      const files = [...e.dataTransfer.files];
+      const seqFiles = files.filter(f => /\.seq\.json$/i.test(f.name));
+      const midiFiles = files.filter(f => /\.(mid|midi)$/i.test(f.name));
+      if (seqFiles.length > 0) void this.importSeqFiles(seqFiles);
+      if (midiFiles.length > 0) void this.importMidiFiles(midiFiles);
+    });
     this.render();
   }
 
@@ -150,13 +151,18 @@ export class SequenceTab extends HTMLElement {
     return this.classList.contains('active-tab');
   }
 
+  private async refreshInstruments(): Promise<void> {
+    this.instruments = await projects.listInstruments();
+    this.render();
+  }
+
   private selectSeq(id: string): void {
     this.seqId = id;
-    updateUi((s) => (s.sequence.seqId = id));
+    updateUi(s => (s.sequence.seqId = id));
   }
 
   private seq(): Sequence | null {
-    return store.data.sequences.find((s) => s.id === this.seqId) ?? store.data.sequences[0] ?? null;
+    return store.data.sequences.find(s => s.id === this.seqId) ?? store.data.sequences[0] ?? null;
   }
 
   /** Current quantization in 16th-note steps (from the Quantize dropdown, stored in beats). */
@@ -171,11 +177,11 @@ export class SequenceTab extends HTMLElement {
     if (!seq) return null;
     // no instrument picked yet: fall back to a plain synth so the keyboard
     // always sounds the sequencer on this tab (never the tone tab's patch)
-    const instrument: SeqInstrument = seq.instrument ?? { type: 'synth', kind: 'synth' };
+    const instrument: SeqInstrument = seq.instrument ?? {type: 'synth', kind: 'synth'};
     const key = `${seq.id}:${JSON.stringify(instrument)}`;
     if (this.monitor && this.monitorKey === key) return this.monitor;
     await engine.ensureStarted();
-    const resolved = seq.instrument ? await resolveInstrument(seq) : { instrument };
+    const resolved = seq.instrument ? await resolveInstrument(seq) : {instrument};
     if (!resolved) return null;
     if (this.monitorKey !== key) {
       this.monitor?.dispose();
@@ -191,9 +197,9 @@ export class SequenceTab extends HTMLElement {
 
   private noteOnInternal(note: string, velocity: number): void {
     this.lightKey(note, true);
-    void this.ensureMonitor().then((m) => m?.attack(note, velocity));
+    void this.ensureMonitor().then(m => m?.attack(note, velocity));
     if (this.recording && engine.playing) {
-      this.recordStarts.set(note, { beat: engine.positionBeats, velocity });
+      this.recordStarts.set(note, {beat: engine.positionBeats, velocity});
     }
   }
 
@@ -209,7 +215,7 @@ export class SequenceTab extends HTMLElement {
     const q = this.qSteps();
     const startStep = nearestSnapSteps(start.beat * 4, q) % totalSteps;
     const duration = Math.max(q, nearestSnapSteps((engine.positionBeats - start.beat) * 4, q));
-    store.update(() => seq.notes.push({ step: startStep, note, duration, velocity: start.velocity }));
+    store.update(() => seq.notes.push({step: startStep, note, duration, velocity: start.velocity}));
     this.rebuildLivePartIfPlaying();
   }
 
@@ -217,7 +223,7 @@ export class SequenceTab extends HTMLElement {
   private previewNote(note: string, durationSteps: number): void {
     this.lightKey(note, true);
     const ms = Math.max(120, durationSteps * engine.secondsPerStep() * 1000);
-    void this.ensureMonitor().then((m) => {
+    void this.ensureMonitor().then(m => {
       m?.attack(note, 0.8);
       window.setTimeout(() => {
         m?.release(note);
@@ -280,13 +286,16 @@ export class SequenceTab extends HTMLElement {
       }
       if (result.sequences.length === 0) continue;
       const created: Sequence[] = [];
-      store.update((d) => {
+      store.update(d => {
         for (const imp of result.sequences) {
           const seq: Sequence = {
             id: uid(),
-            name: uniqueName(imp.name, d.sequences.map((s) => s.name)),
+            name: uniqueName(
+              imp.name,
+              d.sequences.map(s => s.name),
+            ),
             bars: imp.bars,
-            instrument: { type: 'synth', kind: 'synth' },
+            instrument: {type: 'synth', kind: 'synth'},
             notes: imp.notes,
           };
           d.sequences.push(seq);
@@ -298,7 +307,7 @@ export class SequenceTab extends HTMLElement {
         const bpm = result.bpm;
         if (confirm(`Set project tempo to ${bpm} BPM (from ${file.name})? Currently ${engine.bpm} BPM.`)) {
           engine.bpm = bpm;
-          store.update((d) => (d.bpm = bpm));
+          store.update(d => (d.bpm = bpm));
         }
       }
     }
@@ -314,7 +323,85 @@ export class SequenceTab extends HTMLElement {
     if (!seq) return;
     const bytes = buildMidiFile([seq], engine.bpm);
     const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
-    download(`${seq.name}.mid`, new Blob([buffer], { type: 'audio/midi' }));
+    download(`${seq.name}.mid`, new Blob([buffer], {type: 'audio/midi'}));
+  }
+
+  /** Export the current sequence as a portable `.seq.json` file. */
+  private exportSeqFile(): void {
+    const seq = this.seq();
+    if (!seq) return;
+    download(`${seq.name}.seq.json`, new Blob([buildSeqFile(seq)], {type: 'application/json'}));
+  }
+
+  /** Import `.seq.json` files: name collisions prompt to overwrite or import as a renamed copy. */
+  private async importSeqFiles(files: File[]): Promise<void> {
+    let lastId: string | null = null;
+    for (const file of files) {
+      const data = parseSeqFile(JSON.parse(await file.text()));
+      if (!data) {
+        console.warn(`[sequence] failed to parse ${file.name}`);
+        continue;
+      }
+      const existing = store.data.sequences.find(s => s.name === data.name);
+      if (existing) {
+        const overwrite = confirm(`A sequence named "${data.name}" already exists.\n\nOK = overwrite it\nCancel = import as a renamed copy`);
+        if (overwrite) {
+          store.update(() => {
+            existing.bars = data.bars;
+            existing.instrument = data.instrument;
+            existing.notes = data.notes;
+          });
+          lastId = existing.id;
+        } else {
+          const name = uniqueName(
+            data.name,
+            store.data.sequences.map(s => s.name),
+          );
+          const seq: Sequence = {id: uid(), name, bars: data.bars, instrument: data.instrument, notes: data.notes};
+          store.update(d => d.sequences.push(seq));
+          lastId = seq.id;
+        }
+      } else {
+        const seq: Sequence = {id: uid(), name: data.name, bars: data.bars, instrument: data.instrument, notes: data.notes};
+        store.update(d => d.sequences.push(seq));
+        lastId = seq.id;
+      }
+    }
+    if (lastId) {
+      this.selectSeq(lastId);
+      this.render();
+    }
+  }
+
+  // ---- instrument file import/export ----
+
+  /** Export the current sequence's library instrument as a `.inst.json` file. */
+  private async exportInstrument(): Promise<void> {
+    const seq = this.seq();
+    if (seq?.instrument?.type !== 'instrument') return;
+    const text = await projects.readInstrumentJson(seq.instrument.name);
+    if (text) download(`${seq.instrument.name}.inst.json`, new Blob([text], {type: 'application/json'}));
+  }
+
+  /** Import a `.inst.json` file into the project's instrument library and select it. */
+  private importInstrumentFile(): void {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json,.inst.json,application/json';
+    input.onchange = async (): Promise<void> => {
+      const file = input.files?.[0];
+      if (!file) return;
+      const text = await file.text();
+      const res = await projects.importInstrument(text);
+      if (res.ok) {
+        await this.refreshInstruments();
+        const seq = this.seq();
+        if (seq) store.update(() => (seq.instrument = {type: 'instrument', name: res.name}));
+      } else {
+        alert(res.error);
+      }
+    };
+    input.click();
   }
 
   /** Re-schedule after note edits so changes are audible mid-playback. */
@@ -324,10 +411,19 @@ export class SequenceTab extends HTMLElement {
     if (!seq) return;
     this.playback.dispose();
     this.playback = null;
-    void resolveInstrument(seq).then((resolved) => {
+    void resolveInstrument(seq).then(resolved => {
       if (!resolved) return;
       this.playback = playSequenceLive(seq, engine.master, resolved);
     });
+  }
+
+  /** Delete every note in the current sequence (after confirming). */
+  private clearNotes(): void {
+    const seq = this.seq();
+    if (!seq || seq.notes.length === 0) return;
+    if (!confirm(`Delete all ${seq.notes.length} notes in "${seq.name}"?`)) return;
+    seq.notes = [];
+    this.commitNotes();
   }
 
   /** After direct mutations of seq.notes: persist (triggers a re-render) + re-schedule. */
@@ -417,6 +513,7 @@ export class SequenceTab extends HTMLElement {
     if (!instr) return '';
     if (instr.type === 'patch') return `patch:${instr.patchId}`;
     if (instr.type === 'wav') return `wav:${instr.file}`;
+    if (instr.type === 'instrument') return `instrument:${instr.name}`;
     return `synth:${instr.kind}`;
   }
 
@@ -430,6 +527,17 @@ export class SequenceTab extends HTMLElement {
     noneOpt.textContent = '— instrument —';
     noneOpt.selected = current === '';
     sel.appendChild(noneOpt);
+
+    const instrumentsGroup = document.createElement('optgroup');
+    instrumentsGroup.label = 'Instruments';
+    for (const instr of sortedByName(this.instruments)) {
+      const opt = document.createElement('option');
+      opt.value = `instrument:${instr.name}`;
+      opt.textContent = instr.name;
+      opt.selected = current === opt.value;
+      instrumentsGroup.appendChild(opt);
+    }
+    if (instrumentsGroup.children.length > 0) sel.appendChild(instrumentsGroup);
 
     const tonesGroup = document.createElement('optgroup');
     tonesGroup.label = 'Tones';
@@ -484,12 +592,14 @@ export class SequenceTab extends HTMLElement {
       }
       if (v === '') {
         store.update(() => (seq.instrument = undefined));
+      } else if (v.startsWith('instrument:')) {
+        store.update(() => (seq.instrument = {type: 'instrument', name: v.slice(11)}));
       } else if (v.startsWith('patch:')) {
-        store.update(() => (seq.instrument = { type: 'patch', patchId: v.slice(6) }));
+        store.update(() => (seq.instrument = {type: 'patch', patchId: v.slice(6)}));
       } else if (v.startsWith('wav:')) {
-        store.update(() => (seq.instrument = { type: 'wav', file: v.slice(4) }));
+        store.update(() => (seq.instrument = {type: 'wav', file: v.slice(4)}));
       } else if (v.startsWith('synth:')) {
-        store.update(() => (seq.instrument = { type: 'synth', kind: v.slice(6) as SynthKind }));
+        store.update(() => (seq.instrument = {type: 'synth', kind: v.slice(6) as SynthKind}));
       }
       this.monitorKey = '';
     };
@@ -508,7 +618,7 @@ export class SequenceTab extends HTMLElement {
       const path = `samples/${name.replace(/[^\w-]+/g, '_')}-${uid()}.wav`;
       await store.importAudioFile(file, path);
       this.monitorKey = '';
-      store.update(() => (seq.instrument = { type: 'wav', file: path }));
+      store.update(() => (seq.instrument = {type: 'wav', file: path}));
     };
     input.click();
   }
@@ -567,7 +677,7 @@ export class SequenceTab extends HTMLElement {
       const resizing = e.target === handle;
       const laneRect = lane.getBoundingClientRect();
       const stepsPerPx = totalSteps / lane.offsetWidth;
-      const start = { x: e.clientX, y: e.clientY, step: n.step, duration: n.duration };
+      const start = {x: e.clientX, y: e.clientY, step: n.step, duration: n.duration};
       let moved = false;
       clip.setPointerCapture(e.pointerId);
       clip.onpointermove = (m): void => {
@@ -634,6 +744,17 @@ export class SequenceTab extends HTMLElement {
     const grid = gridBackgroundSteps(totalSteps, this.qSteps());
     const scroll = document.createElement('div');
     scroll.className = 'roll-scroll';
+    // Vertical wheel scrolls the keyboard (overflow-y is hidden by design);
+    // leave horizontal wheel/trackpad gestures to the native overflow-x.
+    scroll.addEventListener(
+      'wheel',
+      e => {
+        if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+        scroll.scrollTop += e.deltaY;
+        e.preventDefault();
+      },
+      {passive: false},
+    );
     const body = document.createElement('div');
     body.className = 'roll-body';
     body.style.width = `${Math.max(1, seq.bars / 4) * 100}%`;
@@ -649,7 +770,7 @@ export class SequenceTab extends HTMLElement {
       key.className = 'roll-key' + (isSharp ? ' black' : '');
       key.dataset.note = note;
       key.style.borderLeft = `3px solid ${noteColor(note)}`;
-      if (!isSharp && note.startsWith('C')) key.textContent = note;
+      key.textContent = note;
       key.title = `Play ${note}`;
       key.onpointerdown = (e): void => {
         e.preventDefault();
@@ -667,9 +788,9 @@ export class SequenceTab extends HTMLElement {
       lane.style.backgroundImage = grid.image;
       lane.style.backgroundSize = grid.size;
       lane.title = 'Click: add a note (plays it) · drag: move/retarget pitch · right edge: resize · double-click: delete · right-click: velocity';
-      let downAt: { x: number; y: number } | null = null;
+      let downAt: {x: number; y: number} | null = null;
       lane.onpointerdown = (e): void => {
-        downAt = { x: e.clientX, y: e.clientY };
+        downAt = {x: e.clientX, y: e.clientY};
       };
       lane.onclick = (e): void => {
         if (e.target !== lane) return; // clicks on clips are handled there
@@ -679,7 +800,7 @@ export class SequenceTab extends HTMLElement {
         const q = this.qSteps();
         const fraction = (e.clientX - lane.getBoundingClientRect().left) / lane.offsetWidth;
         const step = Math.min(totalSteps - q, Math.max(0, floorSnapSteps(fraction * totalSteps, q)));
-        seq.notes.push({ step, note, duration: q, velocity: 0.8 });
+        seq.notes.push({step, note, duration: q, velocity: 0.8});
         this.commitNotes();
         this.previewNote(note, q);
       };
@@ -713,73 +834,11 @@ export class SequenceTab extends HTMLElement {
         dir < 0
           ? '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 15 12 9 18 15"/></svg>'
           : '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>';
-      b.onclick = (): void => scroll.scrollBy({ top: dir * HALF_OCTAVE, behavior: 'smooth' });
+      b.onclick = (): void => scroll.scrollBy({top: dir * HALF_OCTAVE, behavior: 'smooth'});
       return b;
     };
     wrap.append(scrollBtn(-1), scrollBtn(1));
     return wrap;
-  }
-
-  /** Export the active sequence as .seq.json. */
-  private exportSequence(): void {
-    const seq = this.seq();
-    if (!seq) return;
-    const base = seq.name.replace(/[^\w-]+/g, '_');
-    download(`${base}.seq.json`, new Blob([JSON.stringify(this.serializeSequence(seq), null, 2)], { type: 'application/json' }));
-  }
-
-  /** Portable sequence definition: notes + instrument + metadata. */
-  private serializeSequence(seq: Sequence): SequenceFile {
-    return {
-      format: 'webdaw-sequence',
-      name: seq.name,
-      bars: seq.bars,
-      instrument: seq.instrument,
-      notes: seq.notes,
-    };
-  }
-
-  /** Import dropped .seq.json sequences; name clashes prompt overwrite-or-rename. */
-  private async importSequenceFiles(files: File[]): Promise<void> {
-    for (const file of files) {
-      if (!file.name.toLowerCase().endsWith('.seq.json')) continue;
-      let parsed: Partial<SequenceFile>;
-      try {
-        parsed = JSON.parse(await file.text()) as Partial<SequenceFile>;
-      } catch {
-        // silently skip malformed JSON
-        continue;
-      }
-      if (parsed.format !== 'webdaw-sequence') continue;
-      let name = (parsed.name ?? file.name.replace(/\.seq\.json$/i, '')).trim() || 'Sequence';
-      const existing = store.data.sequences.find((s) => s.name.toLowerCase() === name.toLowerCase());
-      let target: Sequence | null = null;
-      if (existing) {
-        if (confirm(`A sequence named "${name}" already exists.\nOK: overwrite it — Cancel: import under a new name`)) {
-          target = existing;
-        } else {
-          name = uniqueName(name, store.data.sequences.map((s) => s.name));
-        }
-      }
-      store.update((d) => {
-        if (target) {
-          target.name = name;
-          target.bars = parsed.bars ?? 2;
-          target.instrument = parsed.instrument;
-          target.notes = parsed.notes ?? [];
-        } else {
-          const seq: Sequence = {
-            id: uid(),
-            name,
-            bars: parsed.bars ?? 2,
-            instrument: parsed.instrument,
-            notes: parsed.notes ?? [],
-          };
-          d.sequences.push(seq);
-          this.selectSeq(seq.id);
-        }
-      });
-    }
   }
 
   private render(): void {
@@ -818,12 +877,15 @@ export class SequenceTab extends HTMLElement {
         () => {
           const s: Sequence = {
             id: uid(),
-            name: uniqueName(`Sequence ${store.data.sequences.length + 1}`, store.data.sequences.map((x) => x.name)),
+            name: uniqueName(
+              `Sequence ${store.data.sequences.length + 1}`,
+              store.data.sequences.map(x => x.name),
+            ),
             bars: 2,
             notes: [],
           };
           this.selectSeq(s.id);
-          store.update((d) => d.sequences.push(s));
+          store.update(d => d.sequences.push(s));
         },
       ),
       this.iconBtn(
@@ -834,10 +896,13 @@ export class SequenceTab extends HTMLElement {
           if (!seq) return;
           const copy = structuredClone(seq);
           copy.id = uid();
-          copy.name = uniqueName(`${seq.name} copy`, store.data.sequences.map((x) => x.name));
+          copy.name = uniqueName(
+            `${seq.name} copy`,
+            store.data.sequences.map(x => x.name),
+          );
           delete copy.wavFile;
           this.selectSeq(copy.id);
-          store.update((d) => d.sequences.push(copy));
+          store.update(d => d.sequences.push(copy));
         },
       ),
       this.iconBtn(
@@ -849,7 +914,10 @@ export class SequenceTab extends HTMLElement {
           const name = prompt('Sequence name', seq.name);
           if (!name?.trim()) return;
           store.update(() => {
-            seq.name = uniqueName(name.trim(), store.data.sequences.filter((s) => s.id !== seq.id).map((s) => s.name));
+            seq.name = uniqueName(
+              name.trim(),
+              store.data.sequences.filter(s => s.id !== seq.id).map(s => s.name),
+            );
           });
         },
       ),
@@ -861,13 +929,14 @@ export class SequenceTab extends HTMLElement {
           if (!seq) return;
           this.stop();
           this.selectSeq('');
-          store.update((d) => (d.sequences = d.sequences.filter((s) => s.id !== seq.id)));
+          store.update(d => (d.sequences = d.sequences.filter(s => s.id !== seq.id)));
         },
       ),
       this.iconBtn(
-        'Export sequence (.seq.json)',
-        `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Export`,
-        () => this.exportSequence(),
+        'Clear all notes',
+        `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M7 21h10"/><path d="M5 15l6-6 5 5-6 6H8z"/><path d="M11 9l4-4a2 2 0 0 1 3 0l2 2a2 2 0 0 1 0 3l-4 4"/></svg>`,
+        () => this.clearNotes(),
       ),
       this.iconBtn(
         'Import MIDI file',
@@ -888,6 +957,12 @@ export class SequenceTab extends HTMLElement {
         `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
         () => this.exportMidi(),
+      ),
+      this.iconBtn(
+        'Export sequence (.seq.json)',
+        `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
+        () => this.exportSeqFile(),
       ),
     );
 
@@ -925,7 +1000,7 @@ export class SequenceTab extends HTMLElement {
         quantSel.appendChild(opt);
       }
       quantSel.onchange = (): void => {
-        updateUi((s) => (s.sequence.quantize = Number(quantSel.value)));
+        updateUi(s => (s.sequence.quantize = Number(quantSel.value)));
         this.render();
       };
       const quantWrap = document.createElement('label');
@@ -934,6 +1009,22 @@ export class SequenceTab extends HTMLElement {
       bar.appendChild(quantWrap);
 
       bar.appendChild(this.buildInstrumentSelect(seq));
+      bar.appendChild(
+        this.iconBtn(
+          'Import instrument (.inst.json)',
+          `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>`,
+          () => this.importInstrumentFile(),
+        ),
+      );
+      bar.appendChild(
+        this.iconBtn(
+          'Export instrument (.inst.json)',
+          `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
+          () => void this.exportInstrument(),
+        ),
+      );
 
       const playBtn = transportButton('play', 'Play the sequence (Space)', () => {
         if (this.playback && engine.started && engine.playing) {
@@ -946,11 +1037,7 @@ export class SequenceTab extends HTMLElement {
       this.paintPlayToggle(playBtn, this.lastPlayState);
       const recBtn = transportButton(
         'record',
-        seq.instrument
-          ? this.recording
-            ? 'Stop recording'
-            : 'Record MIDI — plays the sequence and captures note input'
-          : 'Set an instrument first',
+        seq.instrument ? (this.recording ? 'Stop recording' : 'Record MIDI — plays the sequence and captures note input') : 'Set an instrument first',
         () => void this.toggleRecord(),
       );
       recBtn.classList.toggle('recording', this.recording);
@@ -977,17 +1064,58 @@ export class SequenceTab extends HTMLElement {
     const scroll = roll.querySelector<HTMLElement>('.roll-scroll')!;
 
     const sameSeq = seq.id === this.renderedSeqId;
-    if (sameSeq && savedTop !== undefined) {
+    if (sameSeq && savedTop !== undefined && !this.scrollPending) {
       // Re-render of the same sequence (e.g. an edit): keep the user's scroll.
+      // (Skip while a scroll is still pending — the saved value is from a
+      // hidden 0-height render at boot and would strand the wrong octave.)
       scroll.scrollTop = savedTop;
       scroll.scrollLeft = savedLeft ?? 0;
+      this.scrollPending = false;
     } else {
       // A sequence just loaded: frame it at bar 1. Empty -> center C3;
       // otherwise center the pitches in bar 1 so most notes are in view.
       scroll.scrollLeft = 0;
-      scroll.scrollTop = this.initialScrollTop(seq, scroll.clientHeight);
+      // At boot the tab can render while still hidden (0 height) — the centering
+      // math needs a real viewport, so defer to the tick loop once it's visible.
+      if (scroll.clientHeight > 0) {
+        scroll.scrollTop = this.initialScrollTop(seq, scroll.clientHeight);
+        this.scrollPending = false;
+      } else {
+        this.scrollPending = true;
+      }
     }
+    if (!sameSeq) void this.reportMissingRefs(seq);
     this.renderedSeqId = seq.id;
+  }
+
+  /**
+   * When a sequence is loaded, warn (via a flash) if its instrument references
+   * a tone/patch/instrument that isn't present — naming the missing id/name so
+   * the user knows what to restore.
+   */
+  private async reportMissingRefs(seq: Sequence): Promise<void> {
+    const instr = seq.instrument;
+    if (!instr) return;
+    if (instr.type === 'patch') {
+      if (!store.data.patches.some(p => p.id === instr.patchId)) {
+        this.flash(`"${seq.name}": tone not found — id ${instr.patchId}`);
+      }
+    } else if (instr.type === 'instrument') {
+      const loaded = await projects.loadInstrument(instr.name);
+      if (!loaded) {
+        this.flash(`"${seq.name}": instrument not found — "${instr.name}"`);
+      } else if (loaded.missingTones?.length) {
+        this.flash(`Instrument "${instr.name}": unknown tone id ${loaded.missingTones.join(', ')}`);
+      }
+    }
+  }
+
+  private flash(msg: string): void {
+    const el = document.createElement('div');
+    el.className = 'flash';
+    el.textContent = msg;
+    this.appendChild(el);
+    setTimeout(() => el.remove(), 3500);
   }
 
   /**
@@ -998,17 +1126,26 @@ export class SequenceTab extends HTMLElement {
   private initialScrollTop(seq: Sequence, viewHeight: number): number {
     const notes = [...pianoNotes()].reverse(); // C8 top -> A0 bottom
     const rowIndex = (note: string): number => notes.indexOf(note);
-    const center = (idx: number): number =>
-      Math.max(0, idx * ROW_HEIGHT + ROW_HEIGHT / 2 - viewHeight / 2);
+    const center = (idx: number): number => Math.max(0, idx * ROW_HEIGHT + ROW_HEIGHT / 2 - viewHeight / 2);
 
     if (seq.notes.length === 0) return center(rowIndex('C3'));
 
-    const bar1 = seq.notes.filter((n) => n.step < STEPS_PER_BAR);
+    const bar1 = seq.notes.filter(n => n.step < STEPS_PER_BAR);
     const source = bar1.length > 0 ? bar1 : seq.notes;
-    const indices = source.map((n) => rowIndex(n.note)).filter((i) => i >= 0);
+    const indices = source.map(n => rowIndex(n.note)).filter(i => i >= 0);
     if (indices.length === 0) return center(rowIndex('C3'));
     const avg = indices.reduce((a, b) => a + b, 0) / indices.length;
     return center(avg);
+  }
+
+  /** Apply the deferred initial scroll once the panel has a real viewport (post-boot visibility). */
+  private applyPendingScroll(): void {
+    if (!this.scrollPending) return;
+    const scroll = this.querySelector<HTMLElement>('.roll-scroll');
+    if (!scroll || scroll.clientHeight === 0) return;
+    const seq = this.seq();
+    if (seq) scroll.scrollTop = this.initialScrollTop(seq, scroll.clientHeight);
+    this.scrollPending = false;
   }
 }
 

@@ -340,7 +340,10 @@ export class SampleTab extends HTMLElement {
     let beat = -1;
     let counting = false;
     let fraction = -1; // playhead position 0..1 across the loop
-    if (engine.started && engine.playing) {
+    // Only when THIS sampler's loop is playing — the transport is shared with
+    // the sequencer, so engine.playing alone would light the bar during a
+    // sequencer-only playback.
+    if (this.loopActive && engine.started && engine.playing) {
       const posBeats = engine.positionBeats - this.countInBeats;
       if (posBeats < 0) {
         counting = true;

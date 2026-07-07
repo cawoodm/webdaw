@@ -1,14 +1,12 @@
 # Instructions
 
-- The master file is C:\projects\Marc\webdaw\TODO.md - only write to this
 - Run a loop to process one task at a time:
-  - First synch with main (by pulling in)
   - Read an unmarked TODO from the list below, don't take a task marked 🕜
   - Move it to in-progress and mark it with 🕜 (add name of branch you are on e.g. todos)
   - Begin implementing and ask questions if anything is unclear
   - Once a task is implemented, show the user the full dev URL link (with http://), ask the user if they are happy explaining what was done and how to test it
   - Once the user accepts it, mark as done ✅ and move to DONE
-  - Commit and synch back to main (Don't put TODO or claim in the commit message, just the original task text)
+  - Commit (Don't put TODO or claim in the commit message, just the original task text)
 
 # TODOs
 
@@ -18,6 +16,11 @@
 
 # DONE
 
+- Sampler: When keyboard keys are pressed show which key on the piano is playing ✅ (worktree-midi-file-support — already working on the sequencer piano roll: computer-keyboard + MIDI notes light the matching key via lightKey/midi:noteon; verified, no code change needed)
+- Sampler: Should not show orange vertical play bar (or lights) when sampler is not playing ✅ (worktree-midi-file-support — playhead/bar-highlight now gated on the sampler's own loopActive, not the shared transport)
+- Sequencer: Scroll vertically with mouse wheel, make keyboard twice as wide and show all note names ✅ (worktree-midi-file-support — wheel scrolls vertically, key column 34→68px, every key labelled)
+- Sequencer: Add a clear button to delete all notes ✅ (worktree-midi-file-support — eraser button in the toolbar, confirms then clears the current sequence's notes)
+- When starting the app with the sequencer tab open we are still in the wrong octave - always scroll to make the notes visible or to the middle c3 octave ✅ (worktree-midi-file-support — defer the initial scroll when the panel renders hidden at boot, apply once visible)
 - When on the sequencer tab, the keyboard should play sequencer (not patch) notes ✅ (todos2)
 - sequencer: sampler and sequencer can play at same time ✅ (todos2)
 - sequencer: play/rec buttons at top left of screen ✅ (todos2)

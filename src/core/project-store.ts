@@ -164,6 +164,11 @@ class ProjectStore {
     }
   }
 
+  /** Decode arbitrary audio bytes without caching or copying them anywhere (e.g. instrument library samples). */
+  async decodeExternal(raw: ArrayBuffer): Promise<AudioBuffer> {
+    return this.decode(raw);
+  }
+
   /** Decode a user-picked file and copy it into the project folder. */
   async importAudioFile(file: File, destPath: string): Promise<AudioBuffer> {
     const raw = await file.arrayBuffer();
