@@ -169,7 +169,8 @@ export type SynthKind = 'synth' | 'fm' | 'am';
 export type SeqInstrument =
   | { type: 'synth'; kind: SynthKind }
   | { type: 'patch'; patchId: string }
-  | { type: 'wav'; file: string; root?: string }; // root note, default 'C4'
+  | { type: 'wav'; file: string; root?: string } // root note, default 'C4'
+  | { type: 'instrument'; name: string }; // loaded from the _instruments library
 
 export interface Sequence {
   id: string;

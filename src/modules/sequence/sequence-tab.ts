@@ -1,9 +1,12 @@
 import { engine } from '../../core/audio-engine';
 import { bus } from '../../core/event-bus';
+import { clearInstrumentCache } from '../../core/instruments';
 import type { NoteEvent, SeqInstrument, Sequence, SynthKind } from '../../core/model';
 import { pianoNotes, sortedByName, STEPS_PER_BAR, uid } from '../../core/model';
 import { buildMidiFile, parseMidiFile, type MidiImportResult } from '../../midi/midi-file';
+import { buildSeqFile, parseSeqFile } from '../../core/sequence-file';
 import { uniqueName } from '../../core/project-names';
+import { projects } from '../../core/project-manager';
 import { store } from '../../core/project-store';
 import { uiState, updateUi } from '../../core/ui-state';
 import { PLAY_ICON, STOP_ICON, transportButton } from '../../ui/transport-buttons';
@@ -79,13 +82,21 @@ export class SequenceTab extends HTMLElement {
   private monitorKey = '';
   private recordStarts = new Map<string, { beat: number; velocity: number }>();
   private lastPlayState = false;
+  /** Instrument-library catalog (global `_instruments` + the active project's `instruments/`). */
+  private instruments: { name: string; source: 'global' | 'project' }[] = [];
 
   connectedCallback(): void {
     this.className = 'tab-panel sequence-tab';
-    bus.on('project:loaded', () => this.render());
+    void this.refreshInstruments();
+    bus.on('project:loaded', () => {
+      clearInstrumentCache();
+      void this.refreshInstruments();
+      this.render();
+    });
     bus.on('project:changed', () => this.render());
     bus.on('ui:loaded', () => {
       this.seqId = uiState().sequence.seqId;
+      void this.refreshInstruments();
       this.render();
     });
     // playback survives tab switches; release only when another module claims it
@@ -130,13 +141,22 @@ export class SequenceTab extends HTMLElement {
       this.classList.remove('drag-over');
       if (!e.dataTransfer?.files.length) return;
       e.preventDefault();
-      void this.importMidiFiles([...e.dataTransfer.files]);
+      const files = [...e.dataTransfer.files];
+      const seqFiles = files.filter((f) => /\.seq\.json$/i.test(f.name));
+      const midiFiles = files.filter((f) => /\.(mid|midi)$/i.test(f.name));
+      if (seqFiles.length > 0) void this.importSeqFiles(seqFiles);
+      if (midiFiles.length > 0) void this.importMidiFiles(midiFiles);
     });
     this.render();
   }
 
   private isActive(): boolean {
     return this.classList.contains('active-tab');
+  }
+
+  private async refreshInstruments(): Promise<void> {
+    this.instruments = await projects.listInstruments();
+    this.render();
   }
 
   private selectSeq(id: string): void {
@@ -306,6 +326,83 @@ export class SequenceTab extends HTMLElement {
     download(`${seq.name}.mid`, new Blob([buffer], { type: 'audio/midi' }));
   }
 
+  /** Export the current sequence as a portable `.seq.json` file. */
+  private exportSeqFile(): void {
+    const seq = this.seq();
+    if (!seq) return;
+    download(`${seq.name}.seq.json`, new Blob([buildSeqFile(seq)], { type: 'application/json' }));
+  }
+
+  /** Import `.seq.json` files: name collisions prompt to overwrite or import as a renamed copy. */
+  private async importSeqFiles(files: File[]): Promise<void> {
+    let lastId: string | null = null;
+    for (const file of files) {
+      const data = parseSeqFile(JSON.parse(await file.text()));
+      if (!data) {
+        console.warn(`[sequence] failed to parse ${file.name}`);
+        continue;
+      }
+      const existing = store.data.sequences.find((s) => s.name === data.name);
+      if (existing) {
+        const overwrite = confirm(
+          `A sequence named "${data.name}" already exists.\n\nOK = overwrite it\nCancel = import as a renamed copy`,
+        );
+        if (overwrite) {
+          store.update(() => {
+            existing.bars = data.bars;
+            existing.instrument = data.instrument;
+            existing.notes = data.notes;
+          });
+          lastId = existing.id;
+        } else {
+          const name = uniqueName(data.name, store.data.sequences.map((s) => s.name));
+          const seq: Sequence = { id: uid(), name, bars: data.bars, instrument: data.instrument, notes: data.notes };
+          store.update((d) => d.sequences.push(seq));
+          lastId = seq.id;
+        }
+      } else {
+        const seq: Sequence = { id: uid(), name: data.name, bars: data.bars, instrument: data.instrument, notes: data.notes };
+        store.update((d) => d.sequences.push(seq));
+        lastId = seq.id;
+      }
+    }
+    if (lastId) {
+      this.selectSeq(lastId);
+      this.render();
+    }
+  }
+
+  // ---- instrument file import/export ----
+
+  /** Export the current sequence's library instrument as a `.inst.json` file. */
+  private async exportInstrument(): Promise<void> {
+    const seq = this.seq();
+    if (seq?.instrument?.type !== 'instrument') return;
+    const text = await projects.readInstrumentJson(seq.instrument.name);
+    if (text) download(`${seq.instrument.name}.inst.json`, new Blob([text], { type: 'application/json' }));
+  }
+
+  /** Import a `.inst.json` file into the project's instrument library and select it. */
+  private importInstrumentFile(): void {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json,.inst.json,application/json';
+    input.onchange = async (): Promise<void> => {
+      const file = input.files?.[0];
+      if (!file) return;
+      const text = await file.text();
+      const res = await projects.importInstrument(text);
+      if (res.ok) {
+        await this.refreshInstruments();
+        const seq = this.seq();
+        if (seq) store.update(() => (seq.instrument = { type: 'instrument', name: res.name }));
+      } else {
+        alert(res.error);
+      }
+    };
+    input.click();
+  }
+
   /** Re-schedule after note edits so changes are audible mid-playback. */
   private rebuildLivePartIfPlaying(): void {
     if (!engine.started || !engine.playing || !this.playback) return;
@@ -406,6 +503,7 @@ export class SequenceTab extends HTMLElement {
     if (!instr) return '';
     if (instr.type === 'patch') return `patch:${instr.patchId}`;
     if (instr.type === 'wav') return `wav:${instr.file}`;
+    if (instr.type === 'instrument') return `instrument:${instr.name}`;
     return `synth:${instr.kind}`;
   }
 
@@ -419,6 +517,17 @@ export class SequenceTab extends HTMLElement {
     noneOpt.textContent = '— instrument —';
     noneOpt.selected = current === '';
     sel.appendChild(noneOpt);
+
+    const instrumentsGroup = document.createElement('optgroup');
+    instrumentsGroup.label = 'Instruments';
+    for (const instr of sortedByName(this.instruments)) {
+      const opt = document.createElement('option');
+      opt.value = `instrument:${instr.name}`;
+      opt.textContent = instr.name;
+      opt.selected = current === opt.value;
+      instrumentsGroup.appendChild(opt);
+    }
+    if (instrumentsGroup.children.length > 0) sel.appendChild(instrumentsGroup);
 
     const tonesGroup = document.createElement('optgroup');
     tonesGroup.label = 'Tones';
@@ -473,6 +582,8 @@ export class SequenceTab extends HTMLElement {
       }
       if (v === '') {
         store.update(() => (seq.instrument = undefined));
+      } else if (v.startsWith('instrument:')) {
+        store.update(() => (seq.instrument = { type: 'instrument', name: v.slice(11) }));
       } else if (v.startsWith('patch:')) {
         store.update(() => (seq.instrument = { type: 'patch', patchId: v.slice(6) }));
       } else if (v.startsWith('wav:')) {
@@ -811,6 +922,12 @@ export class SequenceTab extends HTMLElement {
           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
         () => this.exportMidi(),
       ),
+      this.iconBtn(
+        'Export sequence (.seq.json)',
+        `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
+        () => this.exportSeqFile(),
+      ),
     );
 
     if (seq) {
@@ -856,6 +973,22 @@ export class SequenceTab extends HTMLElement {
       bar.appendChild(quantWrap);
 
       bar.appendChild(this.buildInstrumentSelect(seq));
+      bar.appendChild(
+        this.iconBtn(
+          'Import instrument (.inst.json)',
+          `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>`,
+          () => this.importInstrumentFile(),
+        ),
+      );
+      bar.appendChild(
+        this.iconBtn(
+          'Export instrument (.inst.json)',
+          `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
+          () => void this.exportInstrument(),
+        ),
+      );
 
       const playBtn = transportButton('play', 'Play the sequence (Space)', () => {
         if (this.playback && engine.started && engine.playing) {
@@ -909,7 +1042,38 @@ export class SequenceTab extends HTMLElement {
       scroll.scrollLeft = 0;
       scroll.scrollTop = this.initialScrollTop(seq, scroll.clientHeight);
     }
+    if (!sameSeq) void this.reportMissingRefs(seq);
     this.renderedSeqId = seq.id;
+  }
+
+  /**
+   * When a sequence is loaded, warn (via a flash) if its instrument references
+   * a tone/patch/instrument that isn't present — naming the missing id/name so
+   * the user knows what to restore.
+   */
+  private async reportMissingRefs(seq: Sequence): Promise<void> {
+    const instr = seq.instrument;
+    if (!instr) return;
+    if (instr.type === 'patch') {
+      if (!store.data.patches.some((p) => p.id === instr.patchId)) {
+        this.flash(`"${seq.name}": tone not found — id ${instr.patchId}`);
+      }
+    } else if (instr.type === 'instrument') {
+      const loaded = await projects.loadInstrument(instr.name);
+      if (!loaded) {
+        this.flash(`"${seq.name}": instrument not found — "${instr.name}"`);
+      } else if (loaded.missingTones?.length) {
+        this.flash(`Instrument "${instr.name}": unknown tone id ${loaded.missingTones.join(', ')}`);
+      }
+    }
+  }
+
+  private flash(msg: string): void {
+    const el = document.createElement('div');
+    el.className = 'flash';
+    el.textContent = msg;
+    this.appendChild(el);
+    setTimeout(() => el.remove(), 3500);
   }
 
   /**

@@ -39,6 +39,19 @@ describe('project model', () => {
     expect(JSON.parse(JSON.stringify(p))).toEqual(p);
   });
 
+  it('a sequence with a library instrument survives a JSON round-trip', () => {
+    const p = defaultProject();
+    const seq: Sequence = {
+      id: uid(),
+      name: 'Piano',
+      bars: 4,
+      instrument: { type: 'instrument', name: 'salamander' },
+      notes: [{ step: 0, note: 'C4', duration: 4, velocity: 0.8 }],
+    };
+    p.sequences.push(seq);
+    expect(JSON.parse(JSON.stringify(p))).toEqual(p);
+  });
+
   it('migrates a legacy multi-track sequence to notes + instrument', () => {
     const legacy = {
       ...defaultProject(),
