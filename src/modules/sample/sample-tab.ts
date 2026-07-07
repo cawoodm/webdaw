@@ -266,21 +266,22 @@ export class SampleTab extends HTMLElement {
 
   private async startLoop(withExisting: boolean, countIn = false): Promise<void> {
     this.loopPart?.dispose();
-    engine.joinTransport('sample');
+    const joining = engine.joinTransport('sample');
     this.loopActive = true;
     const bars = this.loop().bars;
-    const countBars = countIn ? 1 : 0;
+    const countBars = joining ? 0 : (countIn ? 1 : 0);
     this.countInBeats = countBars * 4;
     engine.requestLoop('sample', bars, countBars);
     if (withExisting && this.loop().events.length > 0) {
       this.loopPart = this.makeLoopPart(countBars);
     }
     const transport = Tone.getTransport();
+    const startBeats = engine.positionBeats;
     if (this.recording && !uiState().sample.overdub) {
       // no overdub: disarm recording after exactly one pass (playback continues).
       // Integer ticks — decimal measures like "2.98m" are not valid notation
       // and silently degrade to seconds, firing far too early.
-      const disarmTicks = Math.round(((countBars + bars) * 4 - 0.05) * transport.PPQ);
+      const disarmTicks = Math.round((startBeats + (countBars + bars) * 4 - 0.05) * transport.PPQ);
       this.transportEvents.push(
         transport.scheduleOnce(() => {
           this.recording = false;

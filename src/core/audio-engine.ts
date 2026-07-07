@@ -190,9 +190,9 @@ class AudioEngine {
   /**
    * Cooperative takeover for a SHAREABLE play path (sample loop, sequence):
    * exclusive players yield (via the bus event) but other shareable owners
-   * keep their scheduled parts. If the transport is already running, it's
-   * rewound to 0 so both owners' self-looping parts (which start relative
-   * to `0m`/the count-in bar) realign on the downbeat.
+   * keep their scheduled parts. If no other shareable owner is currently
+   * running, rewind to 0 so the caller starts fresh; otherwise return true
+   * so the caller can skip the count-in bar and align to the shared clock.
    *
    * Deliberately NOT this.stop(): stop() clears loopRequests, which would
    * wipe the already-playing owner's loop entry a moment before the joiner
@@ -202,14 +202,17 @@ class AudioEngine {
    * here but the caller's follow-up engine.play() re-arms it, so metronome
    * behavior is unaffected.
    */
-  joinTransport(owner: TabId): void {
+  joinTransport(owner: TabId): boolean {
     bus.emit('transport:join', { owner });
+    const anotherOwnerActive = this.playing && [...this.loopRequests.keys()].some((o) => o !== owner);
+    if (anotherOwnerActive) return true;
     if (this._started && this.playing) {
       const t = Tone.getTransport();
       t.stop();
       t.position = 0;
       this.stopTicker();
     }
+    return false;
   }
 
   /**
