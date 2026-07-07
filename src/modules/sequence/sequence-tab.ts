@@ -597,7 +597,26 @@ export class SequenceTab extends HTMLElement {
     body.appendChild(playhead);
 
     scroll.appendChild(body);
-    return scroll;
+
+    const wrap = document.createElement('div');
+    wrap.className = 'roll-wrap';
+    wrap.appendChild(scroll);
+    const HALF_OCTAVE = 6 * ROW_HEIGHT;
+    const scrollBtn = (dir: -1 | 1): HTMLButtonElement => {
+      const b = document.createElement('button');
+      b.className = `icon-btn roll-scroll-btn ${dir < 0 ? 'up' : 'down'}`;
+      const title = dir < 0 ? 'Scroll up half an octave' : 'Scroll down half an octave';
+      b.title = title;
+      b.setAttribute('aria-label', title);
+      b.innerHTML =
+        dir < 0
+          ? '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 15 12 9 18 15"/></svg>'
+          : '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>';
+      b.onclick = (): void => scroll.scrollBy({ top: dir * HALF_OCTAVE, behavior: 'smooth' });
+      return b;
+    };
+    wrap.append(scrollBtn(-1), scrollBtn(1));
+    return wrap;
   }
 
   private render(): void {
@@ -767,14 +786,15 @@ export class SequenceTab extends HTMLElement {
     this.appendChild(this.buildBarIndicator(seq));
     const roll = this.buildPianoRoll(seq);
     this.appendChild(roll);
+    const scroll = roll.querySelector<HTMLElement>('.roll-scroll')!;
 
     if (savedTop !== undefined) {
-      roll.scrollTop = savedTop;
-      roll.scrollLeft = savedLeft ?? 0;
+      scroll.scrollTop = savedTop;
+      scroll.scrollLeft = savedLeft ?? 0;
     } else {
       const notes = [...pianoNotes()].reverse();
       const idx = notes.indexOf('C4');
-      roll.scrollTop = Math.max(0, idx * ROW_HEIGHT - roll.clientHeight / 2);
+      scroll.scrollTop = Math.max(0, idx * ROW_HEIGHT - scroll.clientHeight / 2);
     }
   }
 }

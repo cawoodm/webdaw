@@ -685,10 +685,33 @@ button.recording {
 }
 
 /* ---- sequencer: piano roll ---- */
+.roll-wrap {
+  position: relative;
+}
+
+.roll-scroll-btn {
+  position: absolute;
+  left: 1px;
+  width: 33px;
+  z-index: 3;
+  padding: 2px 0;
+  border-radius: 0;
+  opacity: 0.9;
+}
+
+.roll-scroll-btn.up {
+  top: 1px;
+}
+
+.roll-scroll-btn.down {
+  bottom: 1px;
+}
+
 .roll-scroll {
   position: relative;
   height: min(60vh, 640px);
-  overflow: auto;
+  overflow-x: auto;
+  overflow-y: hidden;
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--bg-panel);
