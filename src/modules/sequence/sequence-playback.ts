@@ -144,10 +144,17 @@ function triggerNote(
   }
 }
 
+export interface ScheduledSequence {
+  dispose(): void;
+}
+
 /**
  * Schedule a whole sequence at absolute times in the ACTIVE Tone context.
  * Call inside Tone.Offline (resolve the instrument beforehand, in the live
- * context, and pass it in — the store is context-agnostic data).
+ * context, and pass it in — the store is context-agnostic data). Returns a
+ * handle to dispose the synth/sampler this call created — callers scheduling
+ * this live (as opposed to a one-shot Tone.Offline render that's discarded
+ * wholesale right after) must dispose it once the sequence's playback ends.
  */
 export function scheduleSequenceAt(
   seq: Sequence,
@@ -155,13 +162,19 @@ export function scheduleSequenceAt(
   secondsPerStep: number,
   resolved: ResolvedInstrument,
   startSeconds = 0,
-): void {
+): ScheduledSequence {
   const synth = resolved.instrument.type === 'synth' ? makeSynth(resolved.instrument.kind).connect(dest) : null;
   const sampler = resolved.instrument.type === 'instrument' ? makeInstrumentPlayer(resolved.loaded!, dest) : null;
   for (const n of seq.notes) {
     const time = startSeconds + n.step * secondsPerStep + 0.01;
     triggerNote(resolved, dest, synth, sampler, n, time, secondsPerStep, false);
   }
+  return {
+    dispose(): void {
+      synth?.dispose();
+      sampler?.dispose();
+    },
+  };
 }
 
 /** Render a sequence to an AudioBuffer at the current BPM. */
