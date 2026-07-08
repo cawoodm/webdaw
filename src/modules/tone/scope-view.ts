@@ -1,5 +1,6 @@
 import * as Tone from '../../core/tone';
 import { magnitudeSpectrum, waveformPeaks } from '../../core/dsp';
+import { envelopeBreakpoints, envelopeLevel, pickTimeTick } from '../../core/envelope-curve';
 
 /**
  * Oscilloscope-style canvas renderers for the Tone tab: black background,
@@ -76,15 +77,16 @@ export function drawWaveformStatic(canvas: HTMLCanvasElement, data: Float32Array
   const w = canvas.width;
   const h = canvas.height;
   const seconds = data.length / sampleRate;
-  const tickEvery = 0.25;
+  const step = pickTimeTick(seconds);
   const xs: number[] = [];
-  for (let t = tickEvery; t < seconds; t += tickEvery) xs.push((t / seconds) * w);
+  for (let t = step; t < seconds; t += step) xs.push((t / seconds) * w);
   const ys = [0.25, 0.5, 0.75].map((f) => f * h);
   grid(ctx, w, h, xs, ys);
   ctx.fillStyle = LABEL;
   ctx.font = '10px sans-serif';
-  for (let t = 0.5; t < seconds; t += 0.5) {
-    ctx.fillText(`${t.toFixed(1)}s`, (t / seconds) * w + 3, h - 4);
+  for (let t = step; t < seconds; t += step) {
+    const label = t < 1 ? `${Math.round(t * 1000)}ms` : `${t.toFixed(1)}s`;
+    ctx.fillText(label, (t / seconds) * w + 3, h - 4);
   }
   const { min, max } = waveformPeaks(data, w);
   ctx.fillStyle = TRACE;
@@ -233,17 +235,18 @@ export const LFO_PITCH_TRACE = '#4fd8ff';
  */
 export function drawLfoOverlay(
   canvas: HTMLCanvasElement,
-  lfo: { rate: number; depth: number; on?: boolean },
+  lfo: { rate: number; depth: number; on?: boolean; phase?: number },
   kind: 'pitch' | 'volume',
   seconds: number,
-  startAt = 0.01,
+  startAt = 0,
 ): void {
   if (lfo.depth <= 0 || lfo.on === false) return;
   const ctx = canvas.getContext('2d')!;
   const w = canvas.width;
   const h = canvas.height;
+  const phaseRad = ((lfo.phase ?? 0) * Math.PI) / 180;
   const level = (t: number): number => {
-    const phase = Math.sin(2 * Math.PI * lfo.rate * Math.max(0, t - startAt));
+    const phase = Math.sin(2 * Math.PI * lfo.rate * Math.max(0, t - startAt) + phaseRad);
     return kind === 'volume'
       ? 1 - lfo.depth + lfo.depth * (0.5 + 0.5 * phase)
       : 0.5 + 0.5 * lfo.depth * phase;
@@ -259,39 +262,48 @@ export function drawLfoOverlay(
   ctx.stroke();
 }
 
+export interface EnvelopeHandle {
+  param: 'attack' | 'decaySustain' | 'release' | 'decay';
+  x: number;
+  y: number;
+}
+
 /**
- * Orange ADSR contour over an already-drawn static waveform view, on the
- * same time axis. `holdSeconds`/`startAt` mirror renderPatch's schedule
- * (attack at 0.01s, release triggered after a 1s hold).
+ * Orange envelope contour (ADSR or Falling Sine) over an already-drawn
+ * static waveform view, on the same time axis, plus small draggable-looking
+ * handles at each breakpoint. Returns the handles in canvas pixel space so
+ * the caller can hit-test pointer events against them.
  */
 export function drawEnvelopeOverlay(
   canvas: HTMLCanvasElement,
-  env: { attack: number; decay: number; sustain: number; release: number },
+  env: { attack: number; decay: number; sustain: number; release: number; shape?: 'adsr' | 'fallingSine' },
   seconds: number,
   holdSeconds = 1,
-  startAt = 0.01,
-): void {
+  startAt = 0,
+): EnvelopeHandle[] {
   const ctx = canvas.getContext('2d')!;
   const w = canvas.width;
   const h = canvas.height;
-  // envelope level before release, then exponential release from that level
-  const preRelease = (t: number): number =>
-    t < env.attack
-      ? t / env.attack
-      : env.sustain + (1 - env.sustain) * Math.exp(-5 * ((t - env.attack) / env.decay));
-  const level = (t: number): number => {
-    const ta = t - startAt;
-    if (ta <= 0) return 0;
-    if (ta < holdSeconds) return preRelease(ta);
-    return preRelease(holdSeconds) * Math.exp(-5 * ((ta - holdSeconds) / env.release));
-  };
+  const toPixel = (t: number, level: number): { x: number; y: number } => ({
+    x: (t / seconds) * w,
+    y: ((1 - level) / 2) * h,
+  });
   ctx.strokeStyle = ENV_TRACE;
   ctx.lineWidth = 1.5;
   ctx.beginPath();
   for (let px = 0; px < w; px++) {
-    const y = ((1 - level((px / w) * seconds)) / 2) * h;
+    const t = (px / w) * seconds;
+    const { y } = toPixel(t, envelopeLevel(env, t, holdSeconds, startAt));
     if (px === 0) ctx.moveTo(px, y);
     else ctx.lineTo(px, y);
   }
   ctx.stroke();
+  const handles = envelopeBreakpoints(env, holdSeconds, startAt).map((bp) => ({ param: bp.param, ...toPixel(bp.t, bp.level) }));
+  ctx.fillStyle = ENV_TRACE;
+  for (const handle of handles) {
+    ctx.beginPath();
+    ctx.arc(handle.x, handle.y, 4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  return handles;
 }
