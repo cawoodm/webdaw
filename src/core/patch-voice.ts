@@ -2,7 +2,7 @@ import * as Tone from './tone';
 import { engine } from './audio-engine';
 import { seededNoise } from './dsp';
 import type { FilterEnv, PitchEnv, TonePatch } from './model';
-import { defaultFilter, resolveLfos, SAMPLE_FREQ_DEFAULT, SAMPLE_NOTE_DEFAULT, SAMPLE_SECONDS_DEFAULT, sampleHold } from './model';
+import { defaultFilter, envelopeTailSeconds, resolveLfos, SAMPLE_FREQ_DEFAULT, SAMPLE_NOTE_DEFAULT, SAMPLE_SECONDS_DEFAULT, sampleHold } from './model';
 
 const NOISE_LOOP_SECONDS = 2;
 
@@ -27,13 +27,35 @@ export class PatchVoice {
   private lfoVolume: Tone.LFO | null = null;
   private distortion: Tone.Distortion | null = null;
   private releaseSeconds: number;
+  private oneShot: boolean;
+  private attackSeconds: number;
   private pitchEnv?: PitchEnv;
   private filterEnv?: FilterEnv;
   private lpfBase: number;
 
   constructor(patch: TonePatch, destination: Tone.ToneAudioNode) {
     const filter = patch.filter ?? defaultFilter();
-    this.env = new Tone.AmplitudeEnvelope(patch.env).connect(destination);
+    const shape = patch.env.shape ?? 'adsr';
+    const envOn = patch.env.on !== false;
+    this.oneShot = envOn && shape === 'fallingSine';
+    this.attackSeconds = patch.env.attack;
+    if (!envOn) {
+      // flat gate: instantly full volume on note-on, instantly silent on note-off
+      this.env = new Tone.AmplitudeEnvelope({ attack: 0.001, decay: 0.001, sustain: 1, release: 0.001 }).connect(destination);
+    } else if (shape === 'fallingSine') {
+      // fast attack, then Tone's built-in 'sine' release curve (a smooth cosine
+      // fall from 1 to 0) used as the decay — self-scheduled in triggerAttack
+      // so the hit always plays in full regardless of note length
+      this.env = new Tone.AmplitudeEnvelope({
+        attack: patch.env.attack,
+        decay: 0.001,
+        sustain: 1,
+        release: patch.env.decay,
+        releaseCurve: 'sine',
+      }).connect(destination);
+    } else {
+      this.env = new Tone.AmplitudeEnvelope(patch.env).connect(destination);
+    }
     // disabled filters are left out of the chain entirely
     const slope = filter.slope ?? -12;
     this.lpfBase = filter.lpf;
@@ -57,7 +79,7 @@ export class PatchVoice {
       next = this.distortion;
     }
     this.mix = new Tone.Gain(1).connect(next);
-    this.releaseSeconds = patch.env.release;
+    this.releaseSeconds = envelopeTailSeconds(patch.env);
     this.pitchEnv = patch.pitchEnv;
     this.filterEnv = patch.filterEnv;
     // solo: when any unmuted layer is soloed, only soloed layers sound
@@ -106,7 +128,7 @@ export class PatchVoice {
       // now()+lookAhead point where a plain .value write would land, so the
       // oscillator would open at its default 440 Hz until the write applied
       const target = this.baseFreqs[i] * ratio;
-      if (this.pitchEnv && this.pitchEnv.amount > 0) {
+      if (this.pitchEnv && this.pitchEnv.amount > 0 && this.pitchEnv.on !== false) {
         // start above the transposed base freq and glide down to it
         osc.frequency.setValueAtTime(target * Math.pow(2, this.pitchEnv.amount / 12), t);
         osc.frequency.exponentialRampToValueAtTime(target, t + this.pitchEnv.time);
@@ -124,9 +146,20 @@ export class PatchVoice {
     this.lfoPitch?.start(t);
     this.lfoVolume?.start(t);
     this.env.triggerAttack(t, velocity);
+    if (this.oneShot) {
+      // a percussive hit always plays its full decay, regardless of note length
+      const releaseAt = t + this.attackSeconds;
+      this.env.triggerRelease(releaseAt);
+      const stopAt = releaseAt + this.releaseSeconds + 0.05;
+      for (const osc of this.oscs) osc.stop(stopAt);
+      for (const noise of this.noises) noise.stop(stopAt);
+      this.lfoPitch?.stop(stopAt);
+      this.lfoVolume?.stop(stopAt);
+    }
   }
 
   triggerRelease(time?: number): void {
+    if (this.oneShot) return; // already self-scheduled in triggerAttack
     const t = time ?? Tone.immediate();
     this.env.triggerRelease(t);
     const stopAt = t + this.releaseSeconds + 0.05;
@@ -164,7 +197,7 @@ export async function renderPatch(patch: TonePatch, note?: string | number): Pro
   return engine.runExclusive(async () => {
     const result = await Tone.Offline(() => {
       const voice = new PatchVoice(patch, Tone.getDestination());
-      voice.triggerAttackRelease(freq, hold, 0.01);
+      voice.triggerAttackRelease(freq, hold, 0);
     }, duration);
     return result.get() as AudioBuffer;
   });
