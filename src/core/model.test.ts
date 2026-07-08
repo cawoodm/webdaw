@@ -1,6 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import type { Sequence } from './model';
-import { defaultLfo, defaultPatch, defaultProject, envelopeTailSeconds, normalizeProject, PAD_COUNT, pianoNotes, resolveLfos, uid } from './model';
+import {
+  clampClipBar,
+  defaultLfo,
+  defaultPatch,
+  defaultProject,
+  envelopeTailSeconds,
+  isTrackAudible,
+  MAX_BARS,
+  normalizeProject,
+  PAD_COUNT,
+  pianoNotes,
+  resolveLfos,
+  uid,
+} from './model';
 import { DEFAULT_KEYMAP } from '../midi/keymap';
 
 describe('project model', () => {
@@ -23,6 +36,51 @@ describe('project model', () => {
   it('defaults savedAt to 0 for old project.json files missing the field', () => {
     const stale = JSON.parse(JSON.stringify({ ...defaultProject(), savedAt: undefined }));
     expect(normalizeProject(stale).savedAt).toBe(0);
+  });
+
+  it('backfills gain/plugins on arrangement clips predating those fields', () => {
+    const stale = JSON.parse(
+      JSON.stringify({
+        ...defaultProject(),
+        arrangement: {
+          tracks: [
+            {
+              id: 't1',
+              name: 'Track 1',
+              gain: 0.9,
+              plugins: [],
+              clips: [{ id: 'c1', bar: 0, ref: { type: 'file', file: 'samples/x.wav' } }],
+            },
+          ],
+          masterPlugins: [],
+        },
+      }),
+    );
+    const normalized = normalizeProject(stale);
+    expect(normalized.arrangement.tracks[0].clips[0].gain).toBe(1);
+    expect(normalized.arrangement.tracks[0].clips[0].plugins).toEqual([]);
+  });
+
+  it('a track/clip with mute, solo, pad ref, and clip effects survives a JSON round-trip', () => {
+    const p = defaultProject();
+    p.arrangement.tracks.push({
+      id: uid(),
+      name: 'Drums',
+      gain: 0.9,
+      muted: true,
+      solo: false,
+      plugins: [{ id: uid(), pluginId: 'reverb', state: { decay: 2, wet: 0.3 }, bypassed: false }],
+      clips: [
+        {
+          id: uid(),
+          bar: 4,
+          ref: { type: 'pad', index: 2 },
+          gain: 0.8,
+          plugins: [{ id: uid(), pluginId: 'delay', state: { delayTime: 0.25, feedback: 0.4, wet: 0.3 }, bypassed: false }],
+        },
+      ],
+    });
+    expect(JSON.parse(JSON.stringify(p))).toEqual(p);
   });
 
   it('a patch with envelope shape/on and LFO phase survives a JSON round-trip', () => {
@@ -151,6 +209,55 @@ describe('default keymap', () => {
     const notes = Object.values(DEFAULT_KEYMAP);
     expect(new Set(notes).size).toBe(notes.length);
     for (const note of notes) expect(note).toMatch(/^[A-G]#?\d$/);
+  });
+});
+
+describe('isTrackAudible', () => {
+  const track = (overrides: Partial<{ muted: boolean; solo: boolean }> = {}) => ({
+    id: uid(),
+    name: 'T',
+    gain: 1,
+    plugins: [],
+    clips: [],
+    ...overrides,
+  });
+
+  it('is audible with no mute/solo on any track', () => {
+    const a = track();
+    expect(isTrackAudible(a, [a])).toBe(true);
+  });
+
+  it('a muted track is never audible', () => {
+    const a = track({ muted: true });
+    expect(isTrackAudible(a, [a])).toBe(false);
+  });
+
+  it('when any track is soloed, only soloed tracks are audible', () => {
+    const a = track({ solo: true });
+    const b = track();
+    expect(isTrackAudible(a, [a, b])).toBe(true);
+    expect(isTrackAudible(b, [a, b])).toBe(false);
+  });
+
+  it('a muted-and-soloed track is still silent', () => {
+    const a = track({ solo: true, muted: true });
+    const b = track();
+    expect(isTrackAudible(a, [a, b])).toBe(false);
+    expect(isTrackAudible(b, [a, b])).toBe(true); // no OTHER unmuted solo, so b plays
+  });
+});
+
+describe('clampClipBar', () => {
+  it('leaves an in-range placement unchanged', () => {
+    expect(clampClipBar(10, 4)).toBe(10);
+  });
+
+  it('clamps so bar + span never exceeds MAX_BARS', () => {
+    expect(clampClipBar(799, 4)).toBe(MAX_BARS - 4);
+  });
+
+  it('never goes negative', () => {
+    expect(clampClipBar(-5, 4)).toBe(0);
   });
 });
 

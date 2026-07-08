@@ -214,16 +214,26 @@ export interface PluginInstanceState {
   bypassed: boolean;
 }
 
+export type ArrangeClipRef =
+  | { type: 'sequence'; id: string }
+  | { type: 'file'; file: string }
+  | { type: 'pad'; index: number }; // index into ProjectData.pads — pads have no id field
+
 export interface ArrangeClip {
   id: string;
   bar: number;
-  ref: { type: 'sequence'; id: string } | { type: 'file'; file: string };
+  ref: ArrangeClipRef;
+  gain: number; // clip volume trim, same convention as ArrangeTrack.gain
+  plugins: PluginInstanceState[]; // per-clip FX chain, same shape as ArrangeTrack.plugins
 }
 
 export interface ArrangeTrack {
   id: string;
   name: string;
   gain: number;
+  muted?: boolean; // undefined = not muted (older projects)
+  /** Solo: when any unmuted track is soloed, only soloed tracks play. */
+  solo?: boolean;
   plugins: PluginInstanceState[];
   clips: ArrangeClip[];
 }
@@ -259,6 +269,22 @@ export interface ProjectData {
 
 export const PAD_COUNT = 16;
 export const STEPS_PER_BAR = 16;
+export const MAX_BARS = 800;
+
+/**
+ * True when `track` should be audible: muted tracks never play; when any
+ * unmuted track is soloed, only soloed tracks play.
+ */
+export function isTrackAudible(track: ArrangeTrack, allTracks: ArrangeTrack[]): boolean {
+  if (track.muted) return false;
+  const anySolo = allTracks.some((t) => t.solo && !t.muted);
+  return !anySolo || !!track.solo;
+}
+
+/** Clamp a clip placement so it never starts before 0 or spans past MAX_BARS. */
+export function clampClipBar(bar: number, spanBars: number): number {
+  return Math.max(0, Math.min(bar, MAX_BARS - spanBars));
+}
 
 export function uid(): string {
   return crypto.randomUUID().slice(0, 8);
@@ -305,6 +331,12 @@ export function defaultProject(): ProjectData {
 /** Upgrade loaded data in place: legacy single-loop fields become padLoops[0]. */
 export function normalizeProject(data: ProjectData): ProjectData {
   data.savedAt ??= 0;
+  for (const track of data.arrangement.tracks) {
+    for (const clip of track.clips) {
+      clip.gain ??= 1;
+      clip.plugins ??= [];
+    }
+  }
   if (!Array.isArray(data.padLoops) || data.padLoops.length === 0) {
     data.padLoops = [
       {
