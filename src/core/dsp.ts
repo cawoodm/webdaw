@@ -46,14 +46,33 @@ export interface Spectrum {
 
 /**
  * Hann-windowed magnitude spectrum of a signal. Analyses a power-of-2
- * window (≤ maxSize) taken from 25% into the signal — past the attack,
- * inside the sustain — clamped to the available samples.
+ * window sized to the signal's ACTIVE span (samples above 2% of its peak),
+ * not the whole buffer — a fixed large window mostly full of silence would
+ * dilute a short percussive hit's magnitude to near-zero. Falls back to the
+ * whole signal when it's silent throughout.
  */
 export function magnitudeSpectrum(signal: Float32Array, maxSize = 32768): Spectrum {
+  let peak = 0;
+  for (let i = 0; i < signal.length; i++) {
+    const a = Math.abs(signal[i]);
+    if (a > peak) peak = a;
+  }
+  const threshold = peak * 0.02;
+  let firstActive = signal.length;
+  let lastActive = -1;
+  if (peak > 0) {
+    for (let i = 0; i < signal.length; i++) {
+      if (Math.abs(signal[i]) > threshold) {
+        if (firstActive === signal.length) firstActive = i;
+        lastActive = i;
+      }
+    }
+  }
+  const activeLength = lastActive >= firstActive ? lastActive - firstActive + 1 : signal.length;
   let size = 32;
-  while (size * 2 <= Math.min(signal.length, maxSize)) size *= 2;
+  while (size * 2 <= Math.min(activeLength, maxSize)) size *= 2;
   size = Math.min(size, signal.length) >= 32 ? size : 32;
-  const start = Math.min(Math.floor(signal.length * 0.25), Math.max(0, signal.length - size));
+  const start = Math.min(firstActive === signal.length ? 0 : firstActive, Math.max(0, signal.length - size));
   const re = new Float32Array(size);
   const im = new Float32Array(size);
   let windowSum = 0;

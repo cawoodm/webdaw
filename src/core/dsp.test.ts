@@ -34,6 +34,19 @@ describe('magnitudeSpectrum', () => {
     expect(size).toBeLessThanOrEqual(Math.round(0.05 * SR));
     expect(mags.length).toBe(size / 2);
   });
+
+  it('shows energy for a short percussive hit followed by a mostly silent buffer', () => {
+    // e.g. a Falling Sine snare: attack+decay done in ~40ms of a 1s render
+    const hit = sine(2000, 0.04);
+    const buffer = new Float32Array(SR); // 1 second, mostly zero
+    buffer.set(hit, 0);
+    const { mags, size } = magnitudeSpectrum(buffer);
+    let peakBin = 0;
+    for (let i = 1; i < mags.length; i++) if (mags[i] > mags[peakBin]) peakBin = i;
+    const peakFreq = (peakBin * SR) / size;
+    expect(Math.abs(peakFreq - 2000)).toBeLessThan((SR / size) * 4 + 1);
+    expect(mags[peakBin]).toBeGreaterThan(0.05);
+  });
 });
 
 describe('seededNoise', () => {
