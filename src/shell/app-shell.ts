@@ -261,6 +261,11 @@ export class AppShell extends HTMLElement {
       masterDialog.show();
     };
     this.querySelector<HTMLButtonElement>('.close-master')!.onclick = (): void => masterDialog.close();
+    // bind Master FX into the live graph as soon as audio exists — previously
+    // this only happened the first time the user opened the Master FX dialog,
+    // so masterPlugins silently did nothing live (it was still applied
+    // correctly during WAV export, which built its own separate graph)
+    engine.whenReady(() => this.ensureMasterChain());
 
     bus.on('tab:activate', (tab) => {
       this.activate(tab);
