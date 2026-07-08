@@ -397,6 +397,7 @@ export class SequenceTab extends HTMLElement {
         await this.refreshInstruments();
         const seq = this.seq();
         if (seq) store.update(() => (seq.instrument = {type: 'instrument', name: res.name}));
+        this.rebuildLivePartIfPlaying();
       } else {
         alert(res.error);
       }
@@ -602,6 +603,7 @@ export class SequenceTab extends HTMLElement {
         store.update(() => (seq.instrument = {type: 'synth', kind: v.slice(6) as SynthKind}));
       }
       this.monitorKey = '';
+      this.rebuildLivePartIfPlaying();
     };
     return sel;
   }
@@ -619,6 +621,7 @@ export class SequenceTab extends HTMLElement {
       await store.importAudioFile(file, path);
       this.monitorKey = '';
       store.update(() => (seq.instrument = {type: 'wav', file: path}));
+      this.rebuildLivePartIfPlaying();
     };
     input.click();
   }
