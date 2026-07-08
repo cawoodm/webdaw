@@ -38,6 +38,7 @@ export interface LfoConfig {
   rate: number;  // Hz
   depth: number; // 0..1; 0 = inactive
   on?: boolean;  // undefined = enabled (older projects)
+  phase?: number; // degrees, -180..180; undefined = 0 (older projects)
 }
 
 export interface PitchEnv {
@@ -45,6 +46,7 @@ export interface PitchEnv {
   amount: number;
   /** Seconds to glide down to base. */
   time: number;
+  on?: boolean; // undefined = enabled (older projects)
 }
 
 export interface FilterEnv {
@@ -54,11 +56,13 @@ export interface FilterEnv {
   time: number;
 }
 
+export type EnvShape = 'adsr' | 'fallingSine';
+
 export interface TonePatch {
   id: string;
   name: string;
   layers: ToneLayer[];
-  env: { attack: number; decay: number; sustain: number; release: number };
+  env: { attack: number; decay: number; sustain: number; release: number; shape?: EnvShape; on?: boolean };
   /** @deprecated single LFO with a target selector; split into lfoPitch/lfoVolume */
   lfo?: { rate: number; depth: number; target: 'off' | 'pitch' | 'volume'; on?: boolean };
   lfoPitch?: LfoConfig;  // vibrato: +/- depth semitones on every oscillator
@@ -124,13 +128,23 @@ export function pianoNotes(): string[] {
 }
 
 /**
+ * Seconds of "tail" after the note is triggered: the Falling Sine decay time,
+ * the ADSR release time, or a near-instant fade when the envelope is off.
+ */
+export function envelopeTailSeconds(env: TonePatch['env']): number {
+  if (env.on === false) return 0.001;
+  if (env.shape === 'fallingSine') return env.decay;
+  return env.release;
+}
+
+/**
  * Held-note seconds for a patch render: sampleSeconds is the TOTAL length
  * of the sample, so the hold ends early enough for the release tail to
  * complete within it.
  */
 export function sampleHold(patch: TonePatch): number {
   const total = patch.sampleSeconds ?? SAMPLE_SECONDS_DEFAULT;
-  return Math.max(0.05, total - patch.env.release - 0.1);
+  return Math.max(0.05, total - envelopeTailSeconds(patch.env) - 0.1);
 }
 
 export interface PadConfig {

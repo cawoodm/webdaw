@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Sequence } from './model';
-import { defaultLfo, defaultPatch, defaultProject, normalizeProject, PAD_COUNT, pianoNotes, resolveLfos, uid } from './model';
+import { defaultLfo, defaultPatch, defaultProject, envelopeTailSeconds, normalizeProject, PAD_COUNT, pianoNotes, resolveLfos, uid } from './model';
 import { DEFAULT_KEYMAP } from '../midi/keymap';
 
 describe('project model', () => {
@@ -23,6 +23,15 @@ describe('project model', () => {
   it('defaults savedAt to 0 for old project.json files missing the field', () => {
     const stale = JSON.parse(JSON.stringify({ ...defaultProject(), savedAt: undefined }));
     expect(normalizeProject(stale).savedAt).toBe(0);
+  });
+
+  it('a patch with envelope shape/on and LFO phase survives a JSON round-trip', () => {
+    const p = defaultProject();
+    p.patches[0].env.shape = 'fallingSine';
+    p.patches[0].env.on = false;
+    p.patches[0].pitchEnv = { amount: 12, time: 0.05, on: false };
+    p.patches[0].lfoPitch = { rate: 5, depth: 0.5, phase: -90 };
+    expect(JSON.parse(JSON.stringify(p))).toEqual(p);
   });
 
   it('a piano-roll sequence survives a JSON round-trip', () => {
@@ -142,5 +151,22 @@ describe('default keymap', () => {
     const notes = Object.values(DEFAULT_KEYMAP);
     expect(new Set(notes).size).toBe(notes.length);
     for (const note of notes) expect(note).toMatch(/^[A-G]#?\d$/);
+  });
+});
+
+describe('envelopeTailSeconds', () => {
+  it('uses release for the default ADSR shape', () => {
+    const env = { attack: 0.01, decay: 0.2, sustain: 0.6, release: 0.4 };
+    expect(envelopeTailSeconds(env)).toBe(0.4);
+  });
+
+  it('uses decay for the falling-sine shape', () => {
+    const env = { attack: 0.01, decay: 0.2, sustain: 0.6, release: 0.4, shape: 'fallingSine' as const };
+    expect(envelopeTailSeconds(env)).toBe(0.2);
+  });
+
+  it('is near-instant when the envelope is off, regardless of shape', () => {
+    const env = { attack: 0.01, decay: 0.2, sustain: 0.6, release: 0.4, shape: 'fallingSine' as const, on: false };
+    expect(envelopeTailSeconds(env)).toBe(0.001);
   });
 });
