@@ -7,6 +7,7 @@ import {
   defaultFilterEnv,
   defaultPatch,
   defaultPitchEnv,
+  envelopeTailSeconds,
   resolveLfos,
   pianoNotes,
   SAMPLE_FREQ_DEFAULT,
@@ -20,7 +21,7 @@ import {
 import { store } from '../../core/project-store';
 import { beatsToTransportTime } from '../../core/time';
 import { uiState, updateUi } from '../../core/ui-state';
-import { knob } from '../../ui/knob';
+import { knob, DawKnob } from '../../ui/knob';
 import { transportButton } from '../../ui/transport-buttons';
 import { PatchVoice, renderPatch } from '../../core/patch-voice';
 import { encodeWav } from '../../core/wav';
@@ -39,6 +40,7 @@ import {
   LFO_TRACE,
   LPF_TRACE,
 } from './scope-view';
+import type { EnvelopeHandle } from './scope-view';
 
 /** Trigger a browser download of a generated file. */
 function download(filename: string, blob: Blob): void {
@@ -91,6 +93,9 @@ export class ToneTab extends HTMLElement {
   private previewLoop: Tone.Loop | null = null;
   private previewStartedTransport = false;
   private lastRender: { data: Float32Array; sampleRate: number } | null = null;
+  private envHandles: EnvelopeHandle[] = [];
+  private envKnobEls = new Map<'attack' | 'decay' | 'sustain' | 'release', DawKnob>();
+  private envDragParam: EnvelopeHandle['param'] | null = null;
 
   connectedCallback(): void {
     this.className = 'tab-panel tone-tab';
@@ -282,7 +287,7 @@ export class ToneTab extends HTMLElement {
     if (!voice) return;
     this.voices.delete(key);
     voice.triggerRelease();
-    setTimeout(() => voice.dispose(), (this.patch().env.release + 0.3) * 1000);
+    setTimeout(() => voice.dispose(), (envelopeTailSeconds(this.patch().env) + 0.3) * 1000);
   }
 
   /**
@@ -304,7 +309,7 @@ export class ToneTab extends HTMLElement {
         const voice = new PatchVoice(p, this.getTap());
         voice.triggerAttackRelease(p.sampleNote ?? SAMPLE_NOTE_DEFAULT, holdNow, time);
         this.previewTimers.push(
-          window.setTimeout(() => voice.dispose(), (holdNow + p.env.release + 0.5) * 1000),
+          window.setTimeout(() => voice.dispose(), (holdNow + envelopeTailSeconds(p.env) + 0.5) * 1000),
         );
       }, beatsToTransportTime(intervalBeats)).start(0);
       this.previewStartedTransport = !engine.playing;
@@ -373,12 +378,75 @@ export class ToneTab extends HTMLElement {
       view.set(data);
     }
     drawWaveformStatic(timeCanvas, view, sampleRate);
-    drawEnvelopeOverlay(timeCanvas, patch.env, seconds, sampleHold(patch));
+    this.envHandles = drawEnvelopeOverlay(timeCanvas, patch.env, seconds, sampleHold(patch));
     const lfos = this.lfos(patch);
     drawLfoOverlay(timeCanvas, lfos.pitch, 'pitch', seconds);
     drawLfoOverlay(timeCanvas, lfos.volume, 'volume', seconds);
     drawSpectrumStatic(freqCanvas, data, sampleRate);
     drawFilterOverlay(freqCanvas, this.filter(patch));
+  }
+
+  /** Wire pointer-drag editing of the envelope breakpoints drawn on the static time canvas. */
+  private attachEnvelopeDrag(canvas: HTMLCanvasElement): void {
+    const hitRadius = 8;
+    const toCanvasPoint = (e: PointerEvent): { x: number; y: number } => {
+      const rect = canvas.getBoundingClientRect();
+      return {
+        x: ((e.clientX - rect.left) / rect.width) * canvas.width,
+        y: ((e.clientY - rect.top) / rect.height) * canvas.height,
+      };
+    };
+    const findHandle = (x: number, y: number): EnvelopeHandle | null => {
+      for (const h of this.envHandles) {
+        if (Math.hypot(h.x - x, h.y - y) <= hitRadius) return h;
+      }
+      return null;
+    };
+    canvas.addEventListener('pointerdown', (e) => {
+      const { x, y } = toCanvasPoint(e);
+      const handle = findHandle(x, y);
+      if (!handle) return;
+      this.envDragParam = handle.param;
+      canvas.setPointerCapture(e.pointerId);
+    });
+    canvas.addEventListener('pointermove', (e) => {
+      const { x, y } = toCanvasPoint(e);
+      if (!this.envDragParam) {
+        canvas.style.cursor = findHandle(x, y) ? 'grab' : 'default';
+        return;
+      }
+      this.dragEnvelopeHandle(this.envDragParam, x, y, canvas.width, canvas.height);
+    });
+    const endDrag = (): void => {
+      this.envDragParam = null;
+    };
+    canvas.addEventListener('pointerup', endDrag);
+    canvas.addEventListener('pointerleave', endDrag);
+  }
+
+  /** Apply a drag at canvas pixel (x, y) to the envelope param it controls. */
+  private dragEnvelopeHandle(param: EnvelopeHandle['param'], x: number, y: number, width: number, height: number): void {
+    const patch = this.patch();
+    const seconds = patch.sampleSeconds ?? SAMPLE_SECONDS_DEFAULT;
+    const t = Math.max(0, (x / width) * seconds);
+    const level = Math.min(1, Math.max(0, 1 - (2 * y) / height));
+    const clamp = (v: number, min: number, max: number): number => Math.min(max, Math.max(min, v));
+    const setKnob = (key: 'attack' | 'decay' | 'sustain' | 'release', value: number): void => {
+      patch.env[key] = value;
+      const el = this.envKnobEls.get(key);
+      if (el) el.value = value;
+    };
+    if (param === 'attack') {
+      setKnob('attack', clamp(t, 0.001, 2));
+    } else if (param === 'decay') {
+      setKnob('decay', clamp(t - patch.env.attack, 0.01, 2));
+    } else if (param === 'decaySustain') {
+      setKnob('decay', clamp(t - patch.env.attack, 0.01, 2));
+      setKnob('sustain', clamp(level, 0, 1));
+    } else if (param === 'release') {
+      setKnob('release', clamp(t - sampleHold(patch), 0.01, 4));
+    }
+    this.save();
   }
 
   /** Patch filter settings, materialized for patches predating the field. */
@@ -495,7 +563,7 @@ export class ToneTab extends HTMLElement {
       );
     } else {
       scopes.append(
-        scope('Amplitude / time', 'scope-static-time'),
+        scope('Amplitude / time', 'scope-static-time', (c) => this.attachEnvelopeDrag(c)),
         scope('Energy / frequency', 'scope-static-freq'),
       );
     }
@@ -694,48 +762,9 @@ export class ToneTab extends HTMLElement {
     // --- envelope + LFO (shown ABOVE the layers) ---
     const row = document.createElement('div');
     row.className = 'tone-mod-row';
-    const envCard = document.createElement('div');
-    envCard.className = 'card';
     const legendDot = (color: string): string => `<span class="legend-dot" style="background:${color}"></span>`;
-    envCard.innerHTML = `<div class="card-head">${legendDot(ENV_TRACE)}<span class="card-title">Envelope</span></div>`;
-    const envKnobs = document.createElement('div');
-    envKnobs.className = 'knob-row';
-    const envParams = [
-      ['attack', 'Attack', 0.001, 2],
-      ['decay', 'Decay', 0.01, 2],
-      ['sustain', 'Sustain', 0, 1],
-      ['release', 'Release', 0.01, 4],
-    ] as const;
-    for (const [key, label, min, max] of envParams) {
-      envKnobs.appendChild(
-        knob({ label, min, max, step: 0.01, value: patch.env[key], unit: key === 'sustain' ? '' : 's' }, (v) => {
-          patch.env[key] = v;
-          this.save();
-        }),
-      );
-    }
-    envCard.appendChild(envKnobs);
 
-    // --- pitch envelope: a percussive downward glide on top of the played note ---
-    const pitchEnvCard = document.createElement('div');
-    pitchEnvCard.className = 'card';
-    pitchEnvCard.innerHTML = '<div class="card-head"><span class="card-title">Pitch Env</span></div>';
-    const pitchEnvKnobs = document.createElement('div');
-    pitchEnvKnobs.className = 'knob-row';
-    const pitchEnv = this.pitchEnv(patch);
-    pitchEnvKnobs.append(
-      knob({ label: 'Amount', min: 0, max: 48, step: 1, value: pitchEnv.amount, unit: 'st' }, (v) => {
-        pitchEnv.amount = v;
-        this.save();
-      }),
-      knob({ label: 'Time', min: 0.005, max: 0.5, step: 0.005, value: pitchEnv.time, log: true, unit: 's' }, (v) => {
-        pitchEnv.time = v;
-        this.save();
-      }),
-    );
-    pitchEnvCard.appendChild(pitchEnvKnobs);
-
-    // small enable/disable checkbox for a card section (LFO, HPF, LPF)
+    // small enable/disable checkbox for a card section (Envelope, Pitch Env, LFO, HPF, LPF)
     const onToggle = (title: string, isOn: boolean, apply: (on: boolean) => void): HTMLLabelElement => {
       const l = document.createElement('label');
       l.className = 'check-toggle hint';
@@ -750,6 +779,76 @@ export class ToneTab extends HTMLElement {
       l.appendChild(c);
       return l;
     };
+
+    const envCard = document.createElement('div');
+    envCard.className = 'card';
+    envCard.innerHTML = `<div class="card-head">${legendDot(ENV_TRACE)}<span class="card-title">Envelope</span></div>`;
+    const shapeSel = document.createElement('select');
+    shapeSel.title = 'Envelope shape';
+    for (const [value, label] of [
+      ['adsr', 'ADSR'],
+      ['fallingSine', 'Falling Sine'],
+    ] as const) {
+      const opt = document.createElement('option');
+      opt.value = value;
+      opt.textContent = label;
+      opt.selected = (patch.env.shape ?? 'adsr') === value;
+      shapeSel.appendChild(opt);
+    }
+    const envKnobs = document.createElement('div');
+    envKnobs.className = 'knob-row';
+    this.envKnobEls.clear();
+    const envParams = [
+      ['attack', 'Attack', 0.001, 2, 0.001, true],
+      ['decay', 'Decay', 0.01, 2, 0.01, false],
+      ['sustain', 'Sustain', 0, 1, 0.01, false],
+      ['release', 'Release', 0.01, 4, 0.01, false],
+    ] as const;
+    for (const [key, label, min, max, step, log] of envParams) {
+      const el = knob({ label, min, max, step, value: patch.env[key], log, unit: key === 'sustain' ? '' : 's' }, (v) => {
+        patch.env[key] = v;
+        this.save();
+      });
+      this.envKnobEls.set(key, el);
+      envKnobs.appendChild(el);
+    }
+    const applyShapeVisibility = (): void => {
+      const isFallingSine = shapeSel.value === 'fallingSine';
+      this.envKnobEls.get('sustain')!.style.display = isFallingSine ? 'none' : '';
+      this.envKnobEls.get('release')!.style.display = isFallingSine ? 'none' : '';
+    };
+    shapeSel.onchange = (): void => {
+      patch.env.shape = shapeSel.value as 'adsr' | 'fallingSine';
+      applyShapeVisibility();
+      this.save();
+    };
+    applyShapeVisibility();
+    envCard
+      .querySelector('.card-head')!
+      .append(onToggle('Enable/disable the envelope', patch.env.on !== false, (on) => (patch.env.on = on)), shapeSel);
+    envCard.appendChild(envKnobs);
+
+    // --- pitch envelope: a percussive downward glide on top of the played note ---
+    const pitchEnvCard = document.createElement('div');
+    pitchEnvCard.className = 'card';
+    pitchEnvCard.innerHTML = '<div class="card-head"><span class="card-title">Pitch Env</span></div>';
+    const pitchEnv = this.pitchEnv(patch);
+    pitchEnvCard
+      .querySelector('.card-head')!
+      .appendChild(onToggle('Enable/disable the pitch envelope', pitchEnv.on !== false, (on) => (pitchEnv.on = on)));
+    const pitchEnvKnobs = document.createElement('div');
+    pitchEnvKnobs.className = 'knob-row';
+    pitchEnvKnobs.append(
+      knob({ label: 'Amount', min: 0, max: 48, step: 1, value: pitchEnv.amount, unit: 'st' }, (v) => {
+        pitchEnv.amount = v;
+        this.save();
+      }),
+      knob({ label: 'Time', min: 0.005, max: 0.5, step: 0.005, value: pitchEnv.time, log: true, unit: 's' }, (v) => {
+        pitchEnv.time = v;
+        this.save();
+      }),
+    );
+    pitchEnvCard.appendChild(pitchEnvKnobs);
 
     const lfoCard = (title: string, trace: string, lfo: LfoConfig): HTMLDivElement => {
       const card = document.createElement('div');
@@ -768,6 +867,10 @@ export class ToneTab extends HTMLElement {
         }),
         knob({ label: 'Depth', min: 0, max: 1, step: 0.01, value: lfo.depth }, (v) => {
           lfo.depth = v;
+          this.save();
+        }),
+        knob({ label: 'Phase', min: -180, max: 180, step: 1, value: lfo.phase ?? 0, unit: '°' }, (v) => {
+          lfo.phase = v;
           this.save();
         }),
       );
