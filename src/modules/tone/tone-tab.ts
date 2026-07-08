@@ -41,6 +41,7 @@ import {
   LPF_TRACE,
 } from './scope-view';
 import type { EnvelopeHandle } from './scope-view';
+import { PatchHistory } from './patch-history';
 
 /** Trigger a browser download of a generated file. */
 function download(filename: string, blob: Blob): void {
@@ -96,10 +97,15 @@ export class ToneTab extends HTMLElement {
   private envHandles: EnvelopeHandle[] = [];
   private envKnobEls = new Map<'attack' | 'decay' | 'sustain' | 'release', DawKnob>();
   private envDragParam: EnvelopeHandle['param'] | null = null;
+  private history = new PatchHistory();
+  private historyTimer: number | undefined;
 
   connectedCallback(): void {
     this.className = 'tab-panel tone-tab';
-    bus.on('project:loaded', () => this.render());
+    bus.on('project:loaded', () => {
+      for (const p of store.data.patches) this.history.seed(p);
+      this.render();
+    });
     bus.on('ui:loaded', () => {
       const s = uiState().tone;
       this.patchId = s.patchId;
@@ -213,6 +219,7 @@ export class ToneTab extends HTMLElement {
         if (overwrite) {
           // keep the existing id so pad links stay intact
           store.update(() => Object.assign(existing, patch, { id: existing.id, name: existing.name }));
+          this.history.seed(existing);
           // linked pads always play the latest render
           store.setBuffer(toneBufferKey(existing.id), await renderPatch(existing));
           lastId = existing.id;
@@ -226,6 +233,7 @@ export class ToneTab extends HTMLElement {
         patch.name = wanted;
       }
       store.update((d) => d.patches.push(patch));
+      this.history.seed(patch);
       lastId = patch.id;
       imported++;
     }
@@ -247,14 +255,28 @@ export class ToneTab extends HTMLElement {
   private patch(): TonePatch {
     const found = store.data.patches.find((p) => p.id === this.patchId);
     if (found) return found;
-    if (store.data.patches.length === 0) store.data.patches.push(defaultPatch());
+    if (store.data.patches.length === 0) {
+      const p = defaultPatch();
+      store.data.patches.push(p);
+      this.history.seed(p);
+    }
     this.selectPatch(store.data.patches[0].id);
     return store.data.patches[0];
   }
 
   private selectPatch(id: string): void {
+    this.flushHistoryCommit();
     this.patchId = id;
     updateUi((s) => (s.tone.patchId = id));
+  }
+
+  /** Commit a pending debounced edit immediately instead of waiting for the timer. */
+  private flushHistoryCommit(): void {
+    if (this.historyTimer === undefined) return;
+    clearTimeout(this.historyTimer);
+    this.historyTimer = undefined;
+    const current = store.data.patches.find((p) => p.id === this.patchId);
+    if (current) this.history.commit(current);
   }
 
   private getTap(): Tone.Gain {
@@ -333,6 +355,11 @@ export class ToneTab extends HTMLElement {
   }
 
   private save(): void {
+    clearTimeout(this.historyTimer);
+    this.historyTimer = window.setTimeout(() => {
+      this.historyTimer = undefined;
+      this.history.commit(this.patch());
+    }, 500);
     store.scheduleSave();
     // overlays track the dial instantly from the cached render; the audio
     // re-render (and its fresh waveform/spectrum) follows once edits settle
@@ -603,6 +630,7 @@ export class ToneTab extends HTMLElement {
           p.id = uid();
           p.name = this.uniquePatchName(`Patch ${store.data.patches.length + 1}`);
           store.update((d) => d.patches.push(p));
+          this.history.seed(p);
           this.selectPatch(p.id);
           this.render();
         },
@@ -617,6 +645,7 @@ export class ToneTab extends HTMLElement {
           copy.name = this.uniquePatchName(`${patch.name} copy`);
           delete copy.wavFile;
           store.update((d) => d.patches.push(copy));
+          this.history.seed(copy);
           this.selectPatch(copy.id);
           this.render();
         },
@@ -647,6 +676,7 @@ export class ToneTab extends HTMLElement {
             // a deleted tone disappears from the sampler pads too
             d.pads = d.pads.map((p) => (p?.toneId === patch.id ? null : p));
           });
+          this.history.discard(patch.id);
           this.selectPatch('');
           this.render();
         },
@@ -713,12 +743,16 @@ export class ToneTab extends HTMLElement {
         muteBtn,
         soloBtn,
         btn('Duplicate', () => {
+          this.flushHistoryCommit();
           store.update(() => patch.layers.splice(i + 1, 0, { ...layer, phase: (layer.phase + 90) % 360 }));
+          this.history.commit(patch);
           this.render();
         }),
         btn('✕', () => {
           if (patch.layers.length <= 1) return;
+          this.flushHistoryCommit();
           store.update(() => patch.layers.splice(i, 1));
+          this.history.commit(patch);
           this.render();
         }),
       );
