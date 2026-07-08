@@ -1,14 +1,23 @@
 import * as Tone from '../../core/tone';
 import { engine } from '../../core/audio-engine';
 import { bus } from '../../core/event-bus';
-import type { ArrangeTrack, Sequence } from '../../core/model';
+import type { ArrangeTrack } from '../../core/model';
 import { uid } from '../../core/model';
 import { store } from '../../core/project-store';
 import { uiState, updateUi } from '../../core/ui-state';
 import { connectChain, PluginChainEl } from '../../plugins/chain';
+import type { DawPlugin } from '../../plugins/api';
 import { knob } from '../../ui/knob';
 import { transportButton } from '../../ui/transport-buttons';
-import { renderSequence } from '../sequence/sequence-playback';
+import {
+  clipBars,
+  createOfflineProvider,
+  resolveSong,
+  scheduleSong,
+  songBars,
+  type NodeProvider,
+  type SongPlaybackHandles,
+} from './song-graph';
 
 const MIN_BARS = 32;
 
@@ -16,9 +25,9 @@ export class ArrangeTab extends HTMLElement {
   private palette = '';
   private openFx = new Set<string>();
   private fxRenderQueued = false;
-  private playing: Tone.ToneBufferSource[] = [];
-  private seqRenderCache = new Map<string, AudioBuffer>();
-  private liveChains = new Map<string, { inGain: Tone.Gain; chain: PluginChainEl }>();
+  private activeSong: SongPlaybackHandles | null = null;
+  private liveTrackNodes = new Map<string, { inGain: Tone.Gain; chain: PluginChainEl }>();
+  private ephemeralClipFx: DawPlugin[] = [];
 
   connectedCallback(): void {
     this.className = 'tab-panel arrange-tab';
@@ -27,11 +36,7 @@ export class ArrangeTab extends HTMLElement {
       this.openFx = new Set(uiState().arrange.openFx);
       this.render();
     });
-    bus.on('project:loaded', () => {
-      this.seqRenderCache.clear();
-      this.render();
-    });
-    bus.on('project:changed', () => this.seqRenderCache.clear());
+    bus.on('project:loaded', () => this.render());
     // absolute-time playback survives tab switches; yield when another
     // module claims playback
     bus.on('transport:claim', ({ owner }) => {
@@ -48,125 +53,83 @@ export class ArrangeTab extends HTMLElement {
     this.render();
   }
 
-  private songBars(): number {
-    let end = MIN_BARS;
-    for (const t of store.data.arrangement.tracks) {
-      for (const c of t.clips) end = Math.max(end, c.bar + this.clipBars(c.ref) + 4);
-    }
-    return end;
+  private barSeconds(): number {
+    return engine.secondsPerBeat() * 4;
   }
 
-  private clipBars(ref: { type: 'sequence'; id: string } | { type: 'file'; file: string }): number {
-    const barSeconds = engine.secondsPerBeat() * 4;
-    if (ref.type === 'sequence') {
-      return store.data.sequences.find((s) => s.id === ref.id)?.bars ?? 1;
-    }
-    const buffer = store.getBuffer(ref.file);
-    return buffer ? Math.max(1, Math.ceil(buffer.duration / barSeconds)) : 1;
-  }
-
-  private async sequenceBuffer(seq: Sequence): Promise<AudioBuffer | null> {
-    if (seq.wavFile) {
-      const b = store.getBuffer(seq.wavFile);
-      if (b) return b;
-    }
-    const cached = this.seqRenderCache.get(seq.id);
-    if (cached) return cached;
-    const rendered = await renderSequence(seq);
-    this.seqRenderCache.set(seq.id, rendered);
-    return rendered;
-  }
-
-  /** Pre-resolve every clip's buffer in the live context. */
-  private async resolveClips(): Promise<Map<string, AudioBuffer>> {
-    const map = new Map<string, AudioBuffer>();
-    for (const track of store.data.arrangement.tracks) {
-      for (const clip of track.clips) {
-        const ref = clip.ref;
-        if (ref.type === 'sequence') {
-          const seq = store.data.sequences.find((s) => s.id === ref.id);
-          if (!seq) continue;
-          const buffer = await this.sequenceBuffer(seq);
-          if (buffer) map.set(clip.id, buffer);
-        } else {
-          const buffer = store.getBuffer(ref.file) ?? (await store.loadBuffer(ref.file));
-          if (buffer) map.set(clip.id, buffer);
-        }
-      }
-    }
-    return map;
-  }
-
-  private trackNodes(track: ArrangeTrack): { inGain: Tone.Gain; chain: PluginChainEl } {
-    let nodes = this.liveChains.get(track.id);
+  private trackBus(track: ArrangeTrack, songBus: Tone.ToneAudioNode): Tone.Gain {
+    let nodes = this.liveTrackNodes.get(track.id);
     if (!nodes) {
       const inGain = new Tone.Gain(track.gain);
       const chain = document.createElement('plugin-chain') as PluginChainEl;
-      chain.bind(inGain, engine.master, track.plugins, () => store.scheduleSave());
+      chain.bind(inGain, songBus, track.plugins, () => store.scheduleSave());
       nodes = { inGain, chain };
-      this.liveChains.set(track.id, nodes);
+      this.liveTrackNodes.set(track.id, nodes);
     }
-    return nodes;
+    nodes.inGain.gain.value = track.gain; // refresh in case the knob changed it since last play
+    return nodes.inGain;
+  }
+
+  private liveProvider(): NodeProvider {
+    return {
+      trackBus: (track, songBus) => this.trackBus(track, songBus),
+      clipBus: (clip, trackBus) => {
+        const g = new Tone.Gain(clip.gain);
+        this.ephemeralClipFx.push(...connectChain(clip.plugins, g, trackBus));
+        return g;
+      },
+    };
   }
 
   private async play(): Promise<void> {
     await engine.ensureStarted();
     this.stop();
     engine.claimTransport('arrange');
-    const buffers = await this.resolveClips();
-    const barSeconds = engine.secondsPerBeat() * 4;
-    const startAt = Tone.now() + 0.15;
-    for (const track of store.data.arrangement.tracks) {
-      const { inGain } = this.trackNodes(track);
-      inGain.gain.value = track.gain;
-      for (const clip of track.clips) {
-        const buffer = buffers.get(clip.id);
-        if (!buffer) continue;
-        const src = new Tone.ToneBufferSource(new Tone.ToneAudioBuffer(buffer)).connect(inGain);
-        src.start(startAt + clip.bar * barSeconds);
-        this.playing.push(src);
-      }
-    }
+    const tracks = store.data.arrangement.tracks;
+    const resolved = await resolveSong(tracks);
+    const barSeconds = this.barSeconds();
+    this.activeSong = scheduleSong(tracks, resolved, {
+      songBus: engine.master, // carries Master FX eagerly now (see app-shell.ts fix)
+      startSeconds: Tone.now() + 0.15,
+      barSeconds,
+      secondsPerStep: engine.secondsPerStep(),
+      provider: this.liveProvider(),
+    });
     // clips run on absolute time, but starting the transport keeps the
     // metronome ticking and lets the global play/stop button see the state
     engine.play();
   }
 
   private stop(): void {
-    for (const src of this.playing) {
-      try {
-        src.stop();
-        src.dispose();
-      } catch {
-        /* already stopped */
-      }
+    this.activeSong?.dispose();
+    this.activeSong = null;
+    for (const p of this.ephemeralClipFx) {
+      p.output.disconnect();
+      p.dispose();
     }
-    this.playing = [];
+    this.ephemeralClipFx = [];
   }
 
   private async exportSong(): Promise<void> {
-    const buffers = await this.resolveClips();
-    const barSeconds = engine.secondsPerBeat() * 4;
     const tracks = store.data.arrangement.tracks;
+    const resolved = await resolveSong(tracks);
+    const barSeconds = this.barSeconds();
     let endBar = 1;
-    for (const t of tracks) for (const c of t.clips) endBar = Math.max(endBar, c.bar + this.clipBars(c.ref));
-    const seconds = endBar * barSeconds + 1;
+    for (const t of tracks) for (const c of t.clips) endBar = Math.max(endBar, c.bar + clipBars(c.ref, barSeconds));
+    const seconds = Math.min(endBar, 800) * barSeconds + 1;
     const masterPlugins = store.data.arrangement.masterPlugins;
 
     const rendered = await Tone.Offline(() => {
       const dest = Tone.getDestination();
       const masterBus = new Tone.Gain(0.9);
       connectChain(masterPlugins, masterBus, dest);
-      for (const track of tracks) {
-        const inGain = new Tone.Gain(track.gain);
-        connectChain(track.plugins, inGain, masterBus);
-        for (const clip of track.clips) {
-          const buffer = buffers.get(clip.id);
-          if (!buffer) continue;
-          const src = new Tone.ToneBufferSource(new Tone.ToneAudioBuffer(buffer)).connect(inGain);
-          src.start(clip.bar * barSeconds + 0.01);
-        }
-      }
+      scheduleSong(tracks, resolved, {
+        songBus: masterBus,
+        startSeconds: 0,
+        barSeconds,
+        secondsPerStep: engine.secondsPerStep(),
+        provider: createOfflineProvider(),
+      });
     }, seconds);
     const path = `exports/${store.data.name.replace(/[^\w-]+/g, '_')}-song.wav`;
     const written = await store.saveWav(path, rendered.get() as AudioBuffer);
@@ -195,6 +158,14 @@ export class ArrangeTab extends HTMLElement {
       const opt = document.createElement('option');
       opt.value = `seq:${seq.id}`;
       opt.textContent = `Sequence: ${seq.name}`;
+      opt.selected = this.palette === opt.value;
+      palette.appendChild(opt);
+    }
+    for (const [index, pad] of store.data.pads.entries()) {
+      if (!pad) continue;
+      const opt = document.createElement('option');
+      opt.value = `pad:${index}`;
+      opt.textContent = `Pad: ${pad.name}`;
       opt.selected = this.palette === opt.value;
       palette.appendChild(opt);
     }
@@ -240,13 +211,15 @@ export class ArrangeTab extends HTMLElement {
     bar.appendChild(hint);
     this.appendChild(bar);
 
-    const bars = this.songBars();
+    const barSeconds = this.barSeconds();
+    const bars = songBars(arr.tracks, MIN_BARS, barSeconds);
     const lanes = document.createElement('div');
     lanes.className = 'arrange-lanes';
 
     for (const track of arr.tracks) {
       const lane = document.createElement('div');
       lane.className = 'arrange-track card';
+      lane.classList.toggle('muted', !!track.muted);
 
       const head = document.createElement('div');
       head.className = 'seq-track-head';
@@ -255,9 +228,17 @@ export class ArrangeTab extends HTMLElement {
       title.textContent = track.name;
       head.append(
         title,
+        btn(track.muted ? 'Muted' : 'Mute', () => {
+          store.update(() => (track.muted = !track.muted));
+          this.render();
+        }),
+        btn(track.solo ? 'Soloed' : 'Solo', () => {
+          store.update(() => (track.solo = !track.solo));
+          this.render();
+        }),
         knob({ label: 'Gain', min: 0, max: 1.2, step: 0.01, value: track.gain }, (v) => {
           track.gain = v;
-          const nodes = this.liveChains.get(track.id);
+          const nodes = this.liveTrackNodes.get(track.id);
           if (nodes) nodes.inGain.gain.value = v;
           store.scheduleSave();
         }),
@@ -268,8 +249,8 @@ export class ArrangeTab extends HTMLElement {
           this.render();
         }),
         btn('✕', () => {
-          this.liveChains.get(track.id)?.chain.teardown();
-          this.liveChains.delete(track.id);
+          this.liveTrackNodes.get(track.id)?.chain.teardown();
+          this.liveTrackNodes.delete(track.id);
           store.update((d) => {
             d.arrangement.tracks = d.arrangement.tracks.filter((t) => t.id !== track.id);
           });
@@ -283,20 +264,23 @@ export class ArrangeTab extends HTMLElement {
       row.style.gridTemplateColumns = `repeat(${bars}, 34px)`;
       const covered = new Set<number>();
       for (const clip of track.clips) {
-        const span = this.clipBars(clip.ref);
+        const span = clipBars(clip.ref, barSeconds);
         for (let b = clip.bar; b < clip.bar + span; b++) covered.add(b);
       }
       for (let b = 0; b < bars; b++) {
         const clip = track.clips.find((c) => c.bar === b);
         if (clip) {
-          const span = this.clipBars(clip.ref);
+          const span = clipBars(clip.ref, barSeconds);
           const el = document.createElement('div');
-          el.className = 'arrange-clip' + (clip.ref.type === 'sequence' ? ' seq' : ' smp');
+          el.className =
+            'arrange-clip' + (clip.ref.type === 'sequence' ? ' seq' : clip.ref.type === 'pad' ? ' pad' : ' smp');
           el.style.gridColumn = `${b + 1} / span ${span}`;
           el.textContent =
             clip.ref.type === 'sequence'
               ? store.data.sequences.find((s) => s.id === (clip.ref as { id: string }).id)?.name ?? '?'
-              : (clip.ref as { file: string }).file.split('/').pop() ?? '?';
+              : clip.ref.type === 'pad'
+                ? store.data.pads[(clip.ref as { index: number }).index]?.name ?? '?'
+                : (clip.ref as { file: string }).file.split('/').pop() ?? '?';
           el.onclick = (): void => {
             store.update(() => track.clips.splice(track.clips.indexOf(clip), 1));
             this.render();
@@ -310,8 +294,10 @@ export class ArrangeTab extends HTMLElement {
             if (!this.palette) return;
             const ref = this.palette.startsWith('seq:')
               ? { type: 'sequence' as const, id: this.palette.slice(4) }
-              : { type: 'file' as const, file: this.palette.slice(5) };
-            store.update(() => track.clips.push({ id: uid(), bar: b, ref }));
+              : this.palette.startsWith('pad:')
+                ? { type: 'pad' as const, index: Number(this.palette.slice(4)) }
+                : { type: 'file' as const, file: this.palette.slice(5) };
+            store.update(() => track.clips.push({ id: uid(), bar: b, ref, gain: 1, plugins: [] }));
             this.render();
           };
           row.appendChild(cell);
@@ -323,7 +309,8 @@ export class ArrangeTab extends HTMLElement {
         // plugin chains need the audio context — defer mounting until the
         // first gesture when FX panels are restored at boot
         if (engine.started) {
-          lane.appendChild(this.trackNodes(track).chain);
+          this.trackBus(track, engine.master); // ensures liveTrackNodes has this track's chain
+          lane.appendChild(this.liveTrackNodes.get(track.id)!.chain);
         } else if (!this.fxRenderQueued) {
           this.fxRenderQueued = true;
           engine.whenReady(() => {

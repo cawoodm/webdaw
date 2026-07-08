@@ -871,6 +871,14 @@ button.recording {
   background: var(--accent-2);
 }
 
+.arrange-clip.pad {
+  background: var(--accent-2);
+}
+
+.arrange-track.muted {
+  opacity: 0.45;
+}
+
 /* ---- plugins ---- */
 .plugin-chain {
   display: flex;
