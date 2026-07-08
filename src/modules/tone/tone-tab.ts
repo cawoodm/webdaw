@@ -99,6 +99,9 @@ export class ToneTab extends HTMLElement {
   private envDragParam: EnvelopeHandle['param'] | null = null;
   private history = new PatchHistory();
   private historyTimer: number | undefined;
+  private undoBtn: HTMLButtonElement | null = null;
+  private redoBtn: HTMLButtonElement | null = null;
+  private resetBtn: HTMLButtonElement | null = null;
 
   connectedCallback(): void {
     this.className = 'tab-panel tone-tab';
@@ -150,6 +153,17 @@ export class ToneTab extends HTMLElement {
         e.preventDefault();
         void this.playPreview();
       }
+    });
+    // Ctrl+Z / Ctrl+Shift+Z: undo/redo the current patch (tone tab only)
+    window.addEventListener('keydown', (e) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      if (!this.classList.contains('active-tab')) return;
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
+      if (e.key.toLowerCase() !== 'z') return;
+      e.preventDefault();
+      if (e.shiftKey) this.redoPatch();
+      else this.undoPatch();
     });
     // chromatic rows: play the current sample transposed in semitones.
     // Capture phase + preventDefault so the global piano keymap
@@ -277,6 +291,45 @@ export class ToneTab extends HTMLElement {
     this.historyTimer = undefined;
     const current = store.data.patches.find((p) => p.id === this.patchId);
     if (current) this.history.commit(current);
+    this.refreshHistoryButtons();
+  }
+
+  /** Sync the Undo/Redo/Reset button disabled state without a full re-render. */
+  private refreshHistoryButtons(): void {
+    const patch = this.patch();
+    if (this.undoBtn) this.undoBtn.disabled = !this.history.canUndo(patch.id);
+    if (this.redoBtn) this.redoBtn.disabled = !this.history.canRedo(patch.id);
+    if (this.resetBtn) this.resetBtn.disabled = !this.history.canUndo(patch.id);
+  }
+
+  private undoPatch(): void {
+    this.flushHistoryCommit();
+    const patch = this.patch();
+    const restored = this.history.undo(patch.id);
+    if (!restored) return;
+    Object.assign(patch, restored);
+    store.scheduleSave();
+    this.render();
+  }
+
+  private redoPatch(): void {
+    this.flushHistoryCommit();
+    const patch = this.patch();
+    const restored = this.history.redo(patch.id);
+    if (!restored) return;
+    Object.assign(patch, restored);
+    store.scheduleSave();
+    this.render();
+  }
+
+  private resetPatch(): void {
+    this.flushHistoryCommit();
+    const patch = this.patch();
+    const restored = this.history.reset(patch.id);
+    if (!restored) return;
+    Object.assign(patch, restored);
+    store.scheduleSave();
+    this.render();
   }
 
   private getTap(): Tone.Gain {
@@ -359,6 +412,7 @@ export class ToneTab extends HTMLElement {
     this.historyTimer = window.setTimeout(() => {
       this.historyTimer = undefined;
       this.history.commit(this.patch());
+      this.refreshHistoryButtons();
     }, 500);
     store.scheduleSave();
     // overlays track the dial instantly from the cached render; the audio
@@ -619,8 +673,33 @@ export class ToneTab extends HTMLElement {
       b.onclick = fn;
       return b;
     };
+    const undoBtn = iconBtn(
+      'Undo (Ctrl+Z)',
+      `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>`,
+      () => this.undoPatch(),
+    );
+    this.undoBtn = undoBtn;
+    const redoBtn = iconBtn(
+      'Redo (Ctrl+Shift+Z)',
+      `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <polyline points="15 14 20 9 15 4"/><path d="M4 20v-7a4 4 0 0 1 4-4h12"/></svg>`,
+      () => this.redoPatch(),
+    );
+    this.redoBtn = redoBtn;
+    const resetBtn = iconBtn(
+      'Reset to last checkpoint',
+      `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>`,
+      () => this.resetPatch(),
+    );
+    this.resetBtn = resetBtn;
+    this.refreshHistoryButtons();
     bar.append(
       select,
+      undoBtn,
+      redoBtn,
+      resetBtn,
       iconBtn(
         'New patch',
         `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
