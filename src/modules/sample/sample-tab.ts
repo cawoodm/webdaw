@@ -3,6 +3,7 @@ import { engine } from '../../core/audio-engine';
 import { bus } from '../../core/event-bus';
 import type { PadConfig, PadEvent, PadLoop, TonePatch } from '../../core/model';
 import { defaultLoop, defaultPatch, PAD_COUNT, sortedByName, toneBufferKey, uid } from '../../core/model';
+import { ensurePadBuffers, padBuffer, padSeconds, playPadInto } from '../../core/pad-voice';
 import { renderPatch } from '../../core/patch-voice';
 import { uniqueName } from '../../core/project-names';
 import { store } from '../../core/project-store';
@@ -182,31 +183,7 @@ export class SampleTab extends HTMLElement {
       engine.whenReady(() => void this.ensureToneBuffers());
       return;
     }
-    let rendered = false;
-    for (const pad of store.data.pads) {
-      if (!pad?.toneId) continue;
-      // re-render buffers made pre-gesture against the 44.1 kHz stub context
-      const cached = store.getBuffer(toneBufferKey(pad.toneId));
-      if (cached && cached.sampleRate === Tone.getContext().sampleRate) continue;
-      const patch = store.data.patches.find((p) => p.id === pad.toneId);
-      if (!patch) continue;
-      store.setBuffer(toneBufferKey(pad.toneId), await renderPatch(patch));
-      rendered = true;
-    }
-    if (rendered) this.render();
-  }
-
-  private padBuffer(pad: PadConfig): AudioBuffer | null {
-    if (pad.toneId) return store.getBuffer(toneBufferKey(pad.toneId));
-    return pad.file ? store.getBuffer(pad.file) : null;
-  }
-
-  /** A pad's trimmed sample length in seconds, when its buffer is known. */
-  private padSeconds(pad: PadConfig): number | undefined {
-    const buffer = this.padBuffer(pad);
-    if (!buffer) return undefined;
-    const end = pad.trimEnd > 0 ? Math.min(pad.trimEnd, buffer.duration) : buffer.duration;
-    return Math.max(0.01, end - pad.trimStart);
+    if (await ensurePadBuffers(store.data.pads)) this.render();
   }
 
   /**
@@ -216,22 +193,8 @@ export class SampleTab extends HTMLElement {
   private playPad(index: number, time?: number, durationBeats?: number): void {
     const pad = store.data.pads[index];
     if (!pad) return;
-    const buffer = this.padBuffer(pad);
-    if (!buffer) return;
-    const gainNode = new Tone.Gain(pad.gain).connect(engine.master);
-    const src = new Tone.ToneBufferSource(new Tone.ToneAudioBuffer(buffer)).connect(gainNode);
-    let duration = pad.trimEnd > 0 ? Math.max(0.01, pad.trimEnd - pad.trimStart) : undefined;
-    if (durationBeats !== undefined) {
-      const cap = durationBeats * engine.secondsPerBeat();
-      duration = duration === undefined ? cap : Math.min(duration, cap);
-    }
-    src.onended = (): void => {
-      src.dispose();
-      gainNode.dispose();
-    };
-    // live hits start without the ~100ms scheduling look-ahead
-    src.start(time ?? Tone.immediate(), pad.trimStart, duration);
-    if (time !== undefined) this.flashPad(index, time); // scheduled loop hits
+    const src = playPadInto(pad, engine.master, time, durationBeats);
+    if (src && time !== undefined) this.flashPad(index, time); // scheduled loop hits
   }
 
   private loopBeats(): number {
@@ -549,7 +512,7 @@ export class SampleTab extends HTMLElement {
   private clipBeats(ev: PadEvent, loopBeats: number): number {
     if (ev.duration !== undefined) return ev.duration;
     const pad = store.data.pads[ev.pad];
-    const seconds = pad ? this.padSeconds(pad) : undefined;
+    const seconds = pad ? padSeconds(pad) : undefined;
     const natural = seconds !== undefined ? seconds / engine.secondsPerBeat() : 0.25;
     return Math.max(0.25, Math.min(natural, loopBeats - ev.time));
   }
@@ -622,7 +585,7 @@ export class SampleTab extends HTMLElement {
     const pads = store.data.pads;
     const buffers = new Map<number, AudioBuffer>();
     pads.forEach((pad, i) => {
-      const b = pad ? this.padBuffer(pad) : null;
+      const b = pad ? padBuffer(pad) : null;
       if (b) buffers.set(i, b);
     });
     const rendered = await Tone.Offline(() => {
@@ -999,6 +962,9 @@ export class SampleTab extends HTMLElement {
           [d.pads[from], d.pads[i]] = [d.pads[i], d.pads[from]];
           for (const loop of d.padLoops)
             for (const ev of loop.events) ev.pad = ev.pad === from ? i : ev.pad === i ? from : ev.pad;
+          for (const t of d.arrangement.tracks)
+            for (const c of t.clips)
+              if (c.ref.type === 'pad') c.ref.index = c.ref.index === from ? i : c.ref.index === i ? from : c.ref.index;
         });
         this.selected = i;
         updateUi((s) => (s.sample.selectedPad = i));
@@ -1085,7 +1051,7 @@ export class SampleTab extends HTMLElement {
 
     const knobs = document.createElement('div');
     knobs.className = 'knob-row';
-    const buffer = this.padBuffer(pad);
+    const buffer = padBuffer(pad);
     const maxLen = buffer ? buffer.duration : 10;
     knobs.append(
       knob({ label: 'Gain', min: 0, max: 1.5, step: 0.01, value: pad.gain }, (v) => {
