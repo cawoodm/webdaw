@@ -17,7 +17,16 @@ import {
   type NodeProvider,
   type SongPlaybackHandles,
 } from './song-graph';
-import { floorSnapBar, gridBackgroundBars, pickBarTick, PX_PER_BAR_STEPS, SNAP_BEATS, visibleBarRange } from './timeline-math';
+import {
+  floorSnapBar,
+  gridBackgroundBars,
+  minSpanBars,
+  nearestSnapBar,
+  pickBarTick,
+  PX_PER_BAR_STEPS,
+  SNAP_BEATS,
+  visibleBarRange,
+} from './timeline-math';
 
 const HEAD_W = 150;
 const RULER_H = 22;
@@ -166,8 +175,24 @@ export class ArrangeTab extends HTMLElement {
 
   // ---- interactions (Tasks 5-7) ----
 
-  private onKeydown(_e: KeyboardEvent): void {
-    /* Task 6 */
+  private onKeydown(e: KeyboardEvent): void {
+    if (!this.classList.contains('active-tab')) return;
+    if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+    const target = e.target as HTMLElement;
+    if (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA') return;
+    const id = this.selectedClipId;
+    if (!id) return;
+    e.preventDefault();
+    store.update((d) => {
+      for (const t of d.arrangement.tracks) {
+        const i = t.clips.findIndex((c) => c.id === id);
+        if (i >= 0) t.clips.splice(i, 1);
+      }
+    });
+    this.selectedClipId = null;
+    this.clipEls.get(id)?.remove();
+    this.clipEls.delete(id);
+    this.viewDirty = true;
   }
 
   private clipLabel(ref: ArrangeClip['ref']): string {
@@ -176,7 +201,7 @@ export class ArrangeTab extends HTMLElement {
     return ref.file.split('/').pop() ?? '?';
   }
 
-  private buildClip(_track: ArrangeTrack, clip: ArrangeClip, _row: HTMLElement): HTMLElement {
+  private buildClip(track: ArrangeTrack, clip: ArrangeClip, row: HTMLElement): HTMLElement {
     const el = document.createElement('div');
     el.className = `arrange-clip ${clip.ref.type === 'sequence' ? 'seq' : clip.ref.type}`;
     el.classList.toggle('selected', this.selectedClipId === clip.id);
@@ -189,11 +214,65 @@ export class ArrangeTab extends HTMLElement {
       handle.title = 'Drag to trim';
       el.appendChild(handle);
     }
-    el.onclick = (e): void => {
-      e.stopPropagation();
-      this.selectClip(clip.id);
-    };
+    this.attachClipPointer(track, clip, el, row);
     return el;
+  }
+
+  private attachClipPointer(track: ArrangeTrack, clip: ArrangeClip, el: HTMLElement, row: HTMLElement): void {
+    el.ondblclick = (): void => this.openClipFx(track, clip);
+    el.onpointerdown = (e): void => {
+      e.stopPropagation();
+      const handle = el.querySelector('.clip-resize');
+      const resizing = handle !== null && e.target === handle;
+      const px = this.pxPerBar();
+      const snap = this.snapBeats();
+      const barSeconds = this.barSeconds();
+      const startSpan = clipSpanBars(clip, barSeconds);
+      const start = { x: e.clientX, y: e.clientY, bar: clip.bar, span: startSpan };
+      const bars = this.songBarsCount();
+      let moved = false;
+      let targetTrack = track;
+      el.setPointerCapture(e.pointerId);
+      el.onpointermove = (m): void => {
+        if (!moved && Math.abs(m.clientX - start.x) + Math.abs(m.clientY - start.y) < 4) return;
+        moved = true;
+        const deltaBars = (m.clientX - start.x) / px;
+        if (resizing) {
+          const span = Math.max(minSpanBars(snap), nearestSnapBar(start.span + deltaBars, snap));
+          clip.bars = Math.min(bars - clip.bar, span);
+          el.style.width = `${Math.max(4, clip.bars * px)}px`;
+        } else {
+          clip.bar = Math.max(0, Math.min(bars - startSpan, floorSnapBar(start.bar + deltaBars, snap)));
+          el.style.left = `${clip.bar * px}px`;
+          const rowRect = row.getBoundingClientRect();
+          for (const [tid, otherRow] of this.rows) {
+            const r = otherRow.getBoundingClientRect();
+            if (m.clientY >= r.top && m.clientY <= r.bottom) {
+              targetTrack = store.data.arrangement.tracks.find((t) => t.id === tid) ?? track;
+              el.style.transform = `translateY(${r.top - rowRect.top}px)`;
+              break;
+            }
+          }
+        }
+      };
+      el.onpointerup = (): void => {
+        el.onpointermove = null;
+        el.onpointerup = null;
+        el.style.transform = '';
+        if (!moved) {
+          this.selectClip(clip.id);
+          return;
+        }
+        store.update(() => {
+          if (targetTrack !== track) {
+            track.clips.splice(track.clips.indexOf(clip), 1);
+            targetTrack.clips.push(clip);
+          }
+        });
+        this.render(); // re-parents the clip element into the target row + refreshes maps
+        if (this.activeSong) void this.play(); // hear edits immediately, matching the sequence tab
+      };
+    };
   }
 
   private selectClip(id: string | null): void {
