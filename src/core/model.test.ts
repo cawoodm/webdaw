@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Sequence } from './model';
+import type { ProjectData, Sequence } from './model';
 import {
   clampClipBar,
   defaultLfo,
@@ -81,6 +81,29 @@ describe('project model', () => {
       ],
     });
     expect(JSON.parse(JSON.stringify(p))).toEqual(p);
+  });
+
+  it('backfills arrangement.bars for old projects', () => {
+    const p = defaultProject();
+    delete (p.arrangement as { bars?: number }).bars;
+    const data = normalizeProject(JSON.parse(JSON.stringify(p)) as ProjectData);
+    expect(data.arrangement.bars).toBe(32);
+  });
+
+  it('round-trips a clip with a fractional bar and span override', () => {
+    const p = defaultProject();
+    p.arrangement.bars = 64;
+    p.arrangement.tracks.push({
+      id: uid(),
+      name: 'T',
+      gain: 1,
+      plugins: [],
+      clips: [{ id: uid(), bar: 2.25, ref: { type: 'file', file: 'samples/a.wav' }, gain: 1, plugins: [], bars: 1.5 }],
+    });
+    const round = normalizeProject(JSON.parse(JSON.stringify(p)) as ProjectData);
+    expect(round.arrangement.bars).toBe(64);
+    expect(round.arrangement.tracks[0].clips[0].bar).toBe(2.25);
+    expect(round.arrangement.tracks[0].clips[0].bars).toBe(1.5);
   });
 
   it('a patch with envelope shape/on and LFO phase survives a JSON round-trip', () => {

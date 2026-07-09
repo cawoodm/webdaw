@@ -223,6 +223,8 @@ export interface ArrangeClip {
   id: string;
   bar: number;
   ref: ArrangeClipRef;
+  /** Fractional bar-span override from resizing (pad/file clips); absent = derived from the ref. */
+  bars?: number;
   gain: number; // clip volume trim, same convention as ArrangeTrack.gain
   plugins: PluginInstanceState[]; // per-clip FX chain, same shape as ArrangeTrack.plugins
 }
@@ -257,6 +259,8 @@ export interface ProjectData {
   padLoops: PadLoop[];
   sequences: Sequence[];
   arrangement: {
+    /** Song length in bars — the timeline's fixed width (1..MAX_BARS). */
+    bars: number;
     tracks: ArrangeTrack[];
     masterPlugins: PluginInstanceState[];
   };
@@ -323,7 +327,7 @@ export function defaultProject(): ProjectData {
     pads: new Array(PAD_COUNT).fill(null),
     padLoops: [defaultLoop()],
     sequences: [],
-    arrangement: { tracks: [], masterPlugins: [] },
+    arrangement: { bars: 32, tracks: [], masterPlugins: [] },
     savedAt: 0,
   };
 }
@@ -331,6 +335,8 @@ export function defaultProject(): ProjectData {
 /** Upgrade loaded data in place: legacy single-loop fields become padLoops[0]. */
 export function normalizeProject(data: ProjectData): ProjectData {
   data.savedAt ??= 0;
+  data.arrangement.bars ??= 32;
+  data.arrangement.bars = Math.max(1, Math.min(MAX_BARS, data.arrangement.bars));
   for (const track of data.arrangement.tracks) {
     for (const clip of track.clips) {
       clip.gain ??= 1;
