@@ -825,58 +825,201 @@ button.recording {
 }
 
 /* ---- arrange ---- */
-.arrange-lanes {
+:root {
+  --accent-3: #b794f4;
+}
+
+.arrange-scroll {
+  position: relative;
+  overflow: auto;
+  max-height: calc(100vh - 160px);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-panel);
+}
+
+.arrange-ruler-row {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  height: 22px;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+}
+
+.arrange-corner {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  flex: none;
+  width: 150px;
+  background: var(--bg-card);
+  border-right: 1px solid var(--border);
+}
+
+.arrange-ruler {
+  position: sticky;
+  left: 150px;
+  display: block;
+  height: 22px;
+}
+
+.arrange-track {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+}
+
+.arrange-track.muted {
+  opacity: 0.45;
+}
+
+.arrange-track.other-solo {
+  opacity: 0.6;
+}
+
+.arrange-track.soloed .arrange-head {
+  border-left: 3px solid var(--accent);
+}
+
+.arrange-head {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  flex: none;
+  width: 150px;
+  padding: 4px 6px;
+  background: var(--bg-card);
+  border-right: 1px solid var(--border);
+  border-left: 3px solid transparent;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 2px;
+  overflow: hidden;
+}
+
+.arrange-track-name {
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: text;
+}
+
+.arrange-head-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.arrange-head-controls button {
+  padding: 2px 4px;
+  line-height: 0;
+}
+
+.arrange-head-controls daw-knob {
+  transform: scale(0.7);
+  transform-origin: left center;
+}
+
+.fx-btn.has-fx {
+  color: var(--accent-2);
+  border-color: var(--accent-2);
 }
 
 .arrange-row {
-  display: grid;
-  gap: 2px;
-  overflow-x: auto;
-  padding-bottom: 4px;
-}
-
-.arrange-cell {
-  height: 40px;
-  background: var(--bg-panel);
-  border-radius: 3px;
-  cursor: pointer;
-}
-
-.arrange-cell.bar-start {
-  border-left: 2px solid var(--border);
-}
-
-.arrange-cell:hover {
-  outline: 1px solid var(--accent);
+  position: relative;
+  flex: none;
+  height: 48px;
+  background-color: var(--bg-panel);
+  cursor: crosshair;
 }
 
 .arrange-clip {
+  position: absolute;
+  top: 4px;
   height: 40px;
   border-radius: 4px;
   font-size: 11px;
+  color: #10231f;
   padding: 3px 6px;
   overflow: hidden;
-  cursor: pointer;
-  color: #10231f;
+  white-space: nowrap;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+  box-shadow: 0 0 5px rgb(0 0 0 / 40%);
 }
 
 .arrange-clip.seq {
   background: var(--accent);
 }
 
-.arrange-clip.smp {
-  background: var(--accent-2);
-}
-
 .arrange-clip.pad {
   background: var(--accent-2);
 }
 
-.arrange-track.muted {
-  opacity: 0.45;
+.arrange-clip.file {
+  background: var(--accent-3);
+}
+
+.arrange-clip.selected {
+  outline: 2px solid #fff;
+}
+
+.arrange-clip.has-fx::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #10231f;
+}
+
+.arrange-clip .clip-resize {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 7px;
+  height: 100%;
+  cursor: ew-resize;
+  background: rgb(0 0 0 / 25%);
+  border-radius: 0 4px 4px 0;
+}
+
+.arrange-playhead {
+  position: absolute;
+  top: 22px;
+  bottom: 0;
+  width: 2px;
+  background: var(--accent-2);
+  box-shadow: 0 0 6px var(--accent-2);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.arrange-playhead.hidden {
+  display: none;
+}
+
+.arrange-length input {
+  width: 60px;
+}
+
+.fx-dialog {
+  position: fixed;
+  top: 15vh;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 60;
+  min-width: 420px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 12px;
 }
 
 /* ---- plugins ---- */

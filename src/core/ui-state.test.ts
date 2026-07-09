@@ -6,7 +6,7 @@ describe('applyUiState', () => {
     const s = applyUiState();
     expect(s.activeTab).toBe('tone');
     expect(s.sample.selectedPad).toBe(0);
-    expect(s.arrange.openFx).toEqual([]);
+    expect(s.arrange.pxPerBar).toBe(16);
   });
 
   it('deep-merges partial stored state over defaults', () => {
@@ -18,11 +18,11 @@ describe('applyUiState', () => {
   });
 
   it('serializes a detached snapshot that survives a JSON round-trip', () => {
-    applyUiState({ arrange: { palette: 'seq:1', openFx: ['t1'] } } as never);
+    applyUiState({ arrange: { palette: 'seq:1', snapBeats: 0.5 } } as never);
     const snapshot = serializeUiState();
     expect(snapshot).toEqual(uiState());
     expect(snapshot).not.toBe(uiState());
-    snapshot.arrange.openFx.push('t2');
-    expect(uiState().arrange.openFx).toEqual(['t1']);
+    snapshot.arrange.snapBeats = 2;
+    expect(uiState().arrange.snapBeats).toBe(0.5);
   });
 });

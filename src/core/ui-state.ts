@@ -12,7 +12,7 @@ export interface UiState {
   tone: { patchId: string; live: boolean; loop: boolean };
   sample: { selectedPad: number; countIn: boolean; overdub: boolean; quantize: number; loopId: string };
   sequence: { seqId: string; quantize: number };
-  arrange: { palette: string; openFx: string[] };
+  arrange: { palette: string; snapBeats: number; pxPerBar: number };
 }
 
 function defaults(): UiState {
@@ -22,7 +22,7 @@ function defaults(): UiState {
     tone: { patchId: '', live: false, loop: false },
     sample: { selectedPad: 0, countIn: false, overdub: false, quantize: 0.25, loopId: '' },
     sequence: { seqId: '', quantize: 0.25 },
-    arrange: { palette: '', openFx: [] },
+    arrange: { palette: '', snapBeats: 1, pxPerBar: 16 },
   };
 }
 
