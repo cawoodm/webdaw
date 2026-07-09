@@ -1,5 +1,15 @@
 import { engine } from './audio-engine';
 import { bus } from './event-bus';
+import {
+  candidateInstrumentDefUrls,
+  deriveLibraryBase,
+  fallbackNameFromUrl,
+  IMPORT_URL_STORAGE_KEY,
+  instrumentAssetUrl,
+  nameCollisionAction,
+  normalizeProjectUrl,
+  toneUrl,
+} from './import-url';
 import { clearInstrumentCache, instrumentCache, isFileRef, parseInstrumentDef, type InstrumentDef, type LoadedInstrument } from './instruments';
 import { defaultProject, normalizeProject, type ProjectData, type TonePatch } from './model';
 import { idbDel, idbGet, idbKeys, idbSet } from './persistence';
@@ -382,6 +392,170 @@ class ProjectManager {
     await this.saveAll(); // the new dir is valid/portable from birth
     bus.emit('ui:loaded');
     bus.emit('project:loaded');
+  }
+
+  /**
+   * Fetch a project.json from a URL, resolve its `_instruments`/`_tones`
+   * references from the sibling library, and land it as a new project.
+   */
+  async importFromUrl(rawUrl: string): Promise<{ ok: true; warnings: string[] } | { ok: false; error: string }> {
+    const url = normalizeProjectUrl(rawUrl);
+    await idbSet(IMPORT_URL_STORAGE_KEY, rawUrl);
+
+    let res: Response;
+    try {
+      res = await fetch(url);
+    } catch {
+      return { ok: false, error: 'Network error fetching that URL.' };
+    }
+    if (!res.ok) return { ok: false, error: `Fetch failed: ${res.status} ${res.statusText}` };
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(await res.text());
+    } catch {
+      return { ok: false, error: 'That URL did not return valid JSON.' };
+    }
+    if (typeof parsed !== 'object' || parsed === null) {
+      return { ok: false, error: 'Not a valid project.json.' };
+    }
+    const raw = parsed as Partial<ProjectData>;
+
+    let name = sanitizeProjectName(raw.name ?? '') ?? sanitizeProjectName(fallbackNameFromUrl(url)) ?? 'Imported';
+    const existing = await this.listProjects();
+    if (nameCollisionAction(name, existing) === 'ask-overwrite') {
+      const overwrite = confirm(`A project named "${name}" already exists. Overwrite?`);
+      if (!overwrite) {
+        const renamed = prompt('New project name', name);
+        const sanitized = renamed ? sanitizeProjectName(renamed) : null;
+        if (!sanitized) return { ok: false, error: 'Import cancelled.' };
+        name = sanitized;
+      }
+    }
+
+    const data: ProjectData = { ...defaultProject(), ...raw };
+    data.name = name;
+    const normalized = normalizeProject(data);
+
+    const libraryBase = deriveLibraryBase(url);
+    const warnings = await this.resolveImportedInstruments(normalized, libraryBase, name);
+
+    await this.commitProject(name, normalized);
+    return { ok: true, warnings };
+  }
+
+  /** Resolve every `{type:'instrument', name}` ref in `data.sequences`, caching + (if a folder is connected) saving each into the new project's own instruments/ library. Returns names/ids that couldn't be resolved. */
+  private async resolveImportedInstruments(data: ProjectData, libraryBase: string, projectName: string): Promise<string[]> {
+    const names = new Set<string>();
+    for (const seq of data.sequences) {
+      if (seq.instrument?.type === 'instrument') names.add(seq.instrument.name);
+    }
+    if (names.size === 0) return [];
+
+    const warnings: string[] = [];
+    const destDir = await this.projectDir(projectName, true); // null with no folder connected
+    for (const name of names) {
+      const fetched = await this.fetchInstrumentDef(libraryBase, name);
+      if (!fetched) {
+        warnings.push(name);
+        continue;
+      }
+      const { def, rawText } = fetched;
+      const envelope = { attack: def.envelope?.attack ?? 0, release: def.envelope?.release ?? 1 };
+
+      if (def.type === 'audio') {
+        const samples = new Map<string, ArrayBuffer>();
+        for (const ref of new Set(Object.values(def.notes))) {
+          if (!isFileRef(ref)) continue;
+          try {
+            const sampleRes = await fetch(instrumentAssetUrl(libraryBase, name, ref));
+            if (!sampleRes.ok) throw new Error(String(sampleRes.status));
+            samples.set(ref, await sampleRes.arrayBuffer());
+          } catch (err) {
+            console.warn(`[import] failed to fetch ${name}/${ref}`, err);
+          }
+        }
+        const audio = new Map<string, AudioBuffer>();
+        for (const [note, ref] of Object.entries(def.notes)) {
+          const raw = samples.get(ref);
+          if (!raw) continue;
+          audio.set(note, await store.decodeExternal(raw));
+        }
+        instrumentCache.set(name, { name: def.name, type: 'audio', envelope, gain: def.gain ?? 1, audio });
+        if (destDir) await this.writeImportedInstrument(destDir, name, rawText, samples);
+      } else {
+        const tones = new Map<string, TonePatch>();
+        const missing: string[] = [];
+        for (const [note, id] of Object.entries(def.notes)) {
+          const patch = data.patches.find((p) => p.id === id) ?? (await this.fetchRemoteTone(libraryBase, id));
+          if (!patch) {
+            missing.push(id);
+            warnings.push(`${name}: tone ${id}`);
+            continue;
+          }
+          tones.set(note, patch);
+        }
+        instrumentCache.set(name, {
+          name: def.name,
+          type: 'tone',
+          envelope,
+          gain: def.gain ?? 1,
+          tones,
+          missingTones: missing.length > 0 ? missing : undefined,
+        });
+        if (destDir) await this.writeImportedInstrument(destDir, name, rawText, new Map());
+      }
+    }
+    return warnings;
+  }
+
+  /** Try both known instrument-def filename conventions at `libraryBase`; returns the first that resolves and parses. */
+  private async fetchInstrumentDef(libraryBase: string, name: string): Promise<{ def: InstrumentDef; rawText: string } | null> {
+    for (const candidate of candidateInstrumentDefUrls(libraryBase, name)) {
+      try {
+        const res = await fetch(candidate);
+        if (!res.ok) continue;
+        const rawText = await res.text();
+        const def = parseInstrumentDef(JSON.parse(rawText));
+        if (def) return { def, rawText };
+      } catch {
+        continue;
+      }
+    }
+    return null;
+  }
+
+  /** A `_tones/<id>.tone.json` lookup, by filename-equals-id convention (no directory listing is possible over a static file host). */
+  private async fetchRemoteTone(libraryBase: string, id: string): Promise<TonePatch | null> {
+    try {
+      const res = await fetch(toneUrl(libraryBase, id));
+      if (!res.ok) return null;
+      const patch = JSON.parse(await res.text()) as TonePatch;
+      return patch.id ? patch : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Write a resolved instrument's def + sample files into the new project's own instruments/ library, mirroring importInstrument()'s on-disk layout. */
+  private async writeImportedInstrument(
+    destDir: FileSystemDirectoryHandle,
+    name: string,
+    defRawText: string,
+    samples: Map<string, ArrayBuffer>,
+  ): Promise<void> {
+    const instrumentsDir = await destDir.getDirectoryHandle('instruments', { create: true });
+    const instrumentDir = await instrumentsDir.getDirectoryHandle(name, { create: true });
+    const defFh = await instrumentDir.getFileHandle(`${name}.inst.json`, { create: true });
+    const defWritable = await defFh.createWritable();
+    await defWritable.write(defRawText);
+    await defWritable.close();
+    for (const [filename, raw] of samples) {
+      const fh = await instrumentDir.getFileHandle(filename, { create: true });
+      const writable = await fh.createWritable();
+      await writable.write(raw);
+      await writable.close();
+    }
   }
 
   /**
