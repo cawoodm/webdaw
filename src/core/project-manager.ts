@@ -360,19 +360,28 @@ class ProjectManager {
       alert(`A project named "${name}" already exists.`);
       return false;
     }
+    const data = defaultProject();
+    data.name = name;
+    await this.commitProject(name, data);
+    return true;
+  }
+
+  /**
+   * Switch the active project to `name`/`data`: flush whatever's currently
+   * active, swap in the new data, and flush again so the new project is
+   * portable from birth. Shared by createProject() and importFromUrl().
+   */
+  private async commitProject(name: string, data: ProjectData): Promise<void> {
     await this.saveAll();
     engine.stop();
     this.activeName = name;
     store.setDir(await this.projectDir(name, true));
-    const data = defaultProject();
-    data.name = name;
     store.resetTo(data);
     applyUiState();
     await idbSet(ACTIVE_KEY, name);
     await this.saveAll(); // the new dir is valid/portable from birth
     bus.emit('ui:loaded');
     bus.emit('project:loaded');
-    return true;
   }
 
   /**
