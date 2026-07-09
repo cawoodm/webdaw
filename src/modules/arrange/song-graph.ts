@@ -20,11 +20,16 @@ export function clipBars(ref: ArrangeClipRef, barSeconds: number): number {
   return buffer ? Math.max(1, Math.ceil(buffer.duration / barSeconds)) : 1;
 }
 
+/** A clip's effective span: the resize override when present, else derived from the ref. */
+export function clipSpanBars(clip: ArrangeClip, barSeconds: number): number {
+  return clip.bars ?? clipBars(clip.ref, barSeconds);
+}
+
 /** Total bars the arrangement currently spans, clamped to [minBars, MAX_BARS]. */
 export function songBars(tracks: ArrangeTrack[], minBars: number, barSeconds: number): number {
   let end = minBars;
   for (const t of tracks) {
-    for (const c of t.clips) end = Math.max(end, c.bar + clipBars(c.ref, barSeconds) + 4);
+    for (const c of t.clips) end = Math.max(end, c.bar + clipSpanBars(c, barSeconds) + 4);
   }
   return Math.min(MAX_BARS, end);
 }
@@ -113,6 +118,7 @@ export function scheduleSong(tracks: ArrangeTrack[], resolved: ResolvedSong, opt
         if (!buffer) continue;
         const src = new Tone.ToneBufferSource(new Tone.ToneAudioBuffer(buffer)).connect(clipBus);
         src.start(at + 0.01);
+        if (clip.bars !== undefined) src.stop(at + 0.01 + clip.bars * opts.barSeconds);
         sources.push(src);
       }
     }

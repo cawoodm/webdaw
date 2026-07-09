@@ -11,6 +11,7 @@ import { knob } from '../../ui/knob';
 import { transportButton } from '../../ui/transport-buttons';
 import {
   clipBars,
+  clipSpanBars,
   createOfflineProvider,
   resolveSong,
   scheduleSong,
@@ -115,7 +116,7 @@ export class ArrangeTab extends HTMLElement {
     const resolved = await resolveSong(tracks);
     const barSeconds = this.barSeconds();
     let endBar = 1;
-    for (const t of tracks) for (const c of t.clips) endBar = Math.max(endBar, c.bar + clipBars(c.ref, barSeconds));
+    for (const t of tracks) for (const c of t.clips) endBar = Math.max(endBar, c.bar + clipSpanBars(c, barSeconds));
     const seconds = Math.min(endBar, 800) * barSeconds + 1;
     const masterPlugins = store.data.arrangement.masterPlugins;
 
