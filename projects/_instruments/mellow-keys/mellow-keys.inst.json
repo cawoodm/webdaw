@@ -1,0 +1,11 @@
+{
+  "format": "webdaw-instrument",
+  "version": 1,
+  "name": "Mellow Keys",
+  "type": "tone",
+  "envelope": { "attack": 0.01, "release": 0.4 },
+  "gain": 1,
+  "notes": {
+    "C4": "f2f3f3a1b2c3d4e5"
+  }
+}
