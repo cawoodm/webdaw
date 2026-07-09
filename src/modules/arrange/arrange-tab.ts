@@ -17,7 +17,7 @@ import {
   type NodeProvider,
   type SongPlaybackHandles,
 } from './song-graph';
-import { gridBackgroundBars, pickBarTick, PX_PER_BAR_STEPS, SNAP_BEATS } from './timeline-math';
+import { floorSnapBar, gridBackgroundBars, pickBarTick, PX_PER_BAR_STEPS, SNAP_BEATS, visibleBarRange } from './timeline-math';
 
 const HEAD_W = 150;
 const RULER_H = 22;
@@ -38,6 +38,8 @@ export class ArrangeTab extends HTMLElement {
   private ephemeralClipFx: DawPlugin[] = [];
   // ---- view state (rebuilt by render, consumed by the rAF loop) ----
   private rows = new Map<string, HTMLElement>();
+  private clipEls = new Map<string, HTMLElement>();
+  private selectedClipId: string | null = null;
   private viewDirty = true;
 
   connectedCallback(): void {
@@ -168,11 +170,35 @@ export class ArrangeTab extends HTMLElement {
     /* Task 6 */
   }
 
-  // not yet called within this file — Task 5 wires it into syncClips(); kept
-  // non-private for now so `noUnusedLocals` doesn't flag the unused stub.
-  buildClip(_track: ArrangeTrack, _clip: ArrangeClip, _row: HTMLElement): HTMLElement {
-    /* Task 5 */
-    return document.createElement('div');
+  private clipLabel(ref: ArrangeClip['ref']): string {
+    if (ref.type === 'sequence') return store.data.sequences.find((s) => s.id === ref.id)?.name ?? '?';
+    if (ref.type === 'pad') return store.data.pads[ref.index]?.name ?? '?';
+    return ref.file.split('/').pop() ?? '?';
+  }
+
+  private buildClip(_track: ArrangeTrack, clip: ArrangeClip, _row: HTMLElement): HTMLElement {
+    const el = document.createElement('div');
+    el.className = `arrange-clip ${clip.ref.type === 'sequence' ? 'seq' : clip.ref.type}`;
+    el.classList.toggle('selected', this.selectedClipId === clip.id);
+    el.classList.toggle('has-fx', clip.plugins.length > 0);
+    el.textContent = this.clipLabel(clip.ref);
+    el.title = `${this.clipLabel(clip.ref)} — drag: move · double-click: FX · Delete: remove`;
+    if (clip.ref.type !== 'sequence') {
+      const handle = document.createElement('div');
+      handle.className = 'clip-resize';
+      handle.title = 'Drag to trim';
+      el.appendChild(handle);
+    }
+    el.onclick = (e): void => {
+      e.stopPropagation();
+      this.selectClip(clip.id);
+    };
+    return el;
+  }
+
+  private selectClip(id: string | null): void {
+    this.selectedClipId = id;
+    for (const [cid, cel] of this.clipEls) cel.classList.toggle('selected', cid === id);
   }
 
   private openTrackFx(_track: ArrangeTrack): void {
@@ -225,7 +251,34 @@ export class ArrangeTab extends HTMLElement {
   }
 
   private syncClips(): void {
-    /* Task 5 — virtualized clip DOM */
+    const scroll = this.querySelector<HTMLElement>('.arrange-scroll');
+    if (!scroll) return;
+    const px = this.pxPerBar();
+    const barSeconds = this.barSeconds();
+    const range = visibleBarRange(scroll.scrollLeft, scroll.clientWidth, px, this.songBarsCount());
+    const wanted = new Set<string>();
+    for (const track of store.data.arrangement.tracks) {
+      const row = this.rows.get(track.id);
+      if (!row) continue;
+      for (const clip of track.clips) {
+        const span = clipSpanBars(clip, barSeconds);
+        if (clip.bar + span < range.from || clip.bar > range.to) continue;
+        wanted.add(clip.id);
+        let el = this.clipEls.get(clip.id);
+        if (!el) {
+          el = this.buildClip(track, clip, row);
+          this.clipEls.set(clip.id, el);
+          row.appendChild(el);
+        }
+        el.style.left = `${clip.bar * px}px`;
+        el.style.width = `${Math.max(4, span * px)}px`;
+      }
+    }
+    for (const [id, el] of this.clipEls) {
+      if (wanted.has(id)) continue;
+      el.remove();
+      this.clipEls.delete(id);
+    }
   }
 
   private updatePlayhead(): void {
@@ -251,6 +304,9 @@ export class ArrangeTab extends HTMLElement {
   private render(): void {
     this.innerHTML = '';
     this.rows.clear();
+    // innerHTML='' destroys any clip DOM tracked by clipEls (from a previous
+    // render) — drop the stale references so syncClips() rebuilds them fresh.
+    this.clipEls.clear();
     const arr = store.data.arrangement;
     const px = this.pxPerBar();
     const bars = this.songBarsCount();
@@ -516,6 +572,18 @@ export class ArrangeTab extends HTMLElement {
     row.style.backgroundSize = grid.size;
     row.title = 'Click: place the palette item · drag a clip: move · right edge: resize · double-click: clip FX · Delete: remove selected';
     this.rows.set(track.id, row);
+    row.onclick = (e): void => {
+      if (e.target !== row || !this.palette) return;
+      const bar = floorSnapBar((e.clientX - row.getBoundingClientRect().left) / px, this.snapBeats());
+      if (bar >= bars) return;
+      const ref = this.palette.startsWith('seq:')
+        ? { type: 'sequence' as const, id: this.palette.slice(4) }
+        : this.palette.startsWith('pad:')
+          ? { type: 'pad' as const, index: Number(this.palette.slice(4)) }
+          : { type: 'file' as const, file: this.palette.slice(5) };
+      store.update(() => track.clips.push({ id: uid(), bar, ref, gain: 1, plugins: [] }));
+      this.viewDirty = true;
+    };
 
     wrap.append(head, row);
     return wrap;
