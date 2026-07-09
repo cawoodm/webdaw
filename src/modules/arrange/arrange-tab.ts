@@ -232,6 +232,17 @@ export class ArrangeTab extends HTMLElement {
       const bars = this.songBarsCount();
       let moved = false;
       let targetTrack = track;
+      const origBars = clip.bars;
+      el.onpointercancel = (): void => {
+        el.onpointermove = null;
+        el.onpointerup = null;
+        el.onpointercancel = null;
+        el.style.transform = '';
+        clip.bar = start.bar;
+        clip.bars = origBars;
+        el.style.left = `${clip.bar * px}px`;
+        el.style.width = `${Math.max(4, clipSpanBars(clip, barSeconds) * px)}px`;
+      };
       el.setPointerCapture(e.pointerId);
       el.onpointermove = (m): void => {
         if (!moved && Math.abs(m.clientX - start.x) + Math.abs(m.clientY - start.y) < 4) return;
@@ -258,6 +269,7 @@ export class ArrangeTab extends HTMLElement {
       el.onpointerup = (): void => {
         el.onpointermove = null;
         el.onpointerup = null;
+        el.onpointercancel = null;
         el.style.transform = '';
         if (!moved) {
           this.selectClip(clip.id);

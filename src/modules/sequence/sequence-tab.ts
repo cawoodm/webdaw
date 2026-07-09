@@ -682,6 +682,18 @@ export class SequenceTab extends HTMLElement {
       const stepsPerPx = totalSteps / lane.offsetWidth;
       const start = {x: e.clientX, y: e.clientY, step: n.step, duration: n.duration};
       let moved = false;
+      const origNote = n.note;
+      clip.onpointercancel = (): void => {
+        clip.onpointermove = null;
+        clip.onpointerup = null;
+        clip.onpointercancel = null;
+        clip.style.transform = '';
+        n.step = start.step;
+        n.duration = start.duration;
+        n.note = origNote;
+        clip.style.background = noteColor(origNote);
+        place();
+      };
       clip.setPointerCapture(e.pointerId);
       clip.onpointermove = (m): void => {
         if (!moved && Math.abs(m.clientX - start.x) + Math.abs(m.clientY - start.y) < 3) return;
@@ -707,6 +719,7 @@ export class SequenceTab extends HTMLElement {
       clip.onpointerup = (): void => {
         clip.onpointermove = null;
         clip.onpointerup = null;
+        clip.onpointercancel = null;
         if (moved) this.commitNotes();
       };
     };
