@@ -446,6 +446,11 @@ export class ArrangeTab extends HTMLElement {
   // ---- render ----
 
   private render(): void {
+    // the FX dialog is non-modal — mute/solo/rename/duplicate/delete/drag can all
+    // trigger render() while it's open. Preserve it (and any mounted plugin-chain,
+    // which is now safe to reparent — see PluginChainEl) instead of recreating it,
+    // so an open FX editing session survives unrelated re-renders.
+    const existingDialog = this.querySelector<HTMLDialogElement>('.fx-dialog');
     this.innerHTML = '';
     this.rows.clear();
     // innerHTML='' destroys any clip DOM tracked by clipEls (from a previous
@@ -485,12 +490,18 @@ export class ArrangeTab extends HTMLElement {
 
     this.appendChild(scroll);
 
-    const dialog = document.createElement('dialog');
-    dialog.className = 'fx-dialog';
-    dialog.innerHTML = `<div class="fx-dialog-head"><h3 class="fx-title"></h3><button class="close-fx" title="Close">✕</button></div><div class="fx-extra"></div><div class="fx-slot"></div>`;
-    dialog.querySelector<HTMLButtonElement>('.close-fx')!.onclick = (): void => dialog.close();
-    dialog.onclose = (): void => this.closeFxContent();
-    this.appendChild(dialog);
+    if (existingDialog) {
+      // moving the element preserves its `open` attribute, mounted chain DOM,
+      // title, and wired handlers.
+      this.appendChild(existingDialog);
+    } else {
+      const dialog = document.createElement('dialog');
+      dialog.className = 'fx-dialog';
+      dialog.innerHTML = `<div class="fx-dialog-head"><h3 class="fx-title"></h3><button class="close-fx" title="Close">✕</button></div><div class="fx-extra"></div><div class="fx-slot"></div>`;
+      dialog.querySelector<HTMLButtonElement>('.close-fx')!.onclick = (): void => dialog.close();
+      dialog.onclose = (): void => this.closeFxContent();
+      this.appendChild(dialog);
+    }
 
     this.viewDirty = true;
   }

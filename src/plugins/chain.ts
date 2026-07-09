@@ -31,6 +31,12 @@ export function connectChain(
 /**
  * <plugin-chain> — editable insert chain UI with consistent host chrome
  * (title, bypass, remove) per plugin. Call bind() to attach audio + state.
+ *
+ * Lifecycle is explicit, not DOM-driven: this element may be freely
+ * reparented or detached (e.g. moved between dialogs, or wiped out by a
+ * parent's innerHTML reset) without affecting the live audio graph. Call
+ * teardown() yourself when the chain should actually release its plugins
+ * and rewire input straight to output.
  */
 export class PluginChainEl extends HTMLElement {
   private inNode: Tone.ToneAudioNode | null = null;
@@ -51,10 +57,6 @@ export class PluginChainEl extends HTMLElement {
     this.onChange = onChange;
     this.rewire();
     this.render();
-  }
-
-  disconnectedCallback(): void {
-    this.teardown();
   }
 
   teardown(): void {
