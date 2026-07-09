@@ -1022,6 +1022,18 @@ button.recording {
   padding: 12px;
 }
 
+.fx-dialog-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.fx-dialog-head h3 {
+  margin: 0;
+  font-size: 14px;
+}
+
 /* ---- plugins ---- */
 .plugin-chain {
   display: flex;

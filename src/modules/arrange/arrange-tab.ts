@@ -292,13 +292,66 @@ export class ArrangeTab extends HTMLElement {
     for (const [cid, cel] of this.clipEls) cel.classList.toggle('selected', cid === id);
   }
 
-  private openTrackFx(_track: ArrangeTrack): void {
-    /* Task 7 */
+  private clipFxTeardown: (() => void) | null = null;
+
+  private fxDialog(): { dialog: HTMLDialogElement; title: HTMLElement; extra: HTMLElement; slot: HTMLElement } {
+    const dialog = this.querySelector<HTMLDialogElement>('.fx-dialog')!;
+    return {
+      dialog,
+      title: dialog.querySelector<HTMLElement>('.fx-title')!,
+      extra: dialog.querySelector<HTMLElement>('.fx-extra')!,
+      slot: dialog.querySelector<HTMLElement>('.fx-slot')!,
+    };
   }
 
-  // not yet called within this file — Task 6 wires it into a clip double-click.
-  openClipFx(_track: ArrangeTrack, _clip: ArrangeClip): void {
-    /* Task 7 */
+  private clearFxContent(): void {
+    const { extra, slot } = this.fxDialog();
+    this.clipFxTeardown?.();
+    this.clipFxTeardown = null;
+    extra.innerHTML = '';
+    // a track's chain element stays alive (audio keeps running) — just unmount its DOM
+    while (slot.firstChild) slot.firstChild.remove();
+  }
+
+  private closeFxContent(): void {
+    // the dialog's close event is fired from a queued task, not synchronously —
+    // if an open method already re-populated and re-showed the dialog, leave it alone
+    if (this.fxDialog().dialog.open) return;
+    this.clearFxContent();
+    this.render(); // refresh has-fx dots
+  }
+
+  private openTrackFx(track: ArrangeTrack): void {
+    const { dialog, title, slot } = this.fxDialog();
+    this.clearFxContent(); // swapping content: tear down whatever the dialog showed before
+    title.textContent = `${track.name} — track FX`;
+    this.trackBus(track, engine.master); // ensure the live chain exists
+    slot.appendChild(this.liveTrackNodes.get(track.id)!.chain);
+    dialog.show(); // no-op if already open
+  }
+
+  private openClipFx(track: ArrangeTrack, clip: ArrangeClip): void {
+    void engine.ensureStarted().then(() => {
+      const { dialog, title, extra, slot } = this.fxDialog();
+      this.clearFxContent(); // swapping content: tear down whatever the dialog showed before
+      title.textContent = `${this.clipLabel(clip.ref)} (${track.name}) — clip FX`;
+      extra.appendChild(
+        knob({ label: 'Clip gain', min: 0, max: 1.5, step: 0.01, value: clip.gain }, (v) => {
+          clip.gain = v;
+          store.scheduleSave();
+        }),
+      );
+      // throwaway audio pair: the chain edits clip.plugins in place; audible on the clip's next play
+      const inGain = new Tone.Gain(0).connect(engine.master);
+      const chain = document.createElement('plugin-chain') as PluginChainEl;
+      chain.bind(inGain, engine.master, clip.plugins, () => store.scheduleSave());
+      this.clipFxTeardown = (): void => {
+        chain.teardown();
+        inGain.dispose();
+      };
+      slot.appendChild(chain);
+      dialog.show();
+    });
   }
 
   // ---- rAF-driven view sync (ruler, virtualized clips, playhead) ----
@@ -431,6 +484,14 @@ export class ArrangeTab extends HTMLElement {
     scroll.appendChild(playhead);
 
     this.appendChild(scroll);
+
+    const dialog = document.createElement('dialog');
+    dialog.className = 'fx-dialog';
+    dialog.innerHTML = `<div class="fx-dialog-head"><h3 class="fx-title"></h3><button class="close-fx" title="Close">✕</button></div><div class="fx-extra"></div><div class="fx-slot"></div>`;
+    dialog.querySelector<HTMLButtonElement>('.close-fx')!.onclick = (): void => dialog.close();
+    dialog.onclose = (): void => this.closeFxContent();
+    this.appendChild(dialog);
+
     this.viewDirty = true;
   }
 
