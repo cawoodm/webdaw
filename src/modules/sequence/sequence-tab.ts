@@ -2,7 +2,7 @@ import {engine} from '../../core/audio-engine';
 import {bus} from '../../core/event-bus';
 import {clearInstrumentCache} from '../../core/instruments';
 import type {NoteEvent, SeqInstrument, Sequence, SynthKind} from '../../core/model';
-import {pianoNotes, sortedByName, STEPS_PER_BAR, uid} from '../../core/model';
+import {pianoNotes, removeSequence, sortedByName, STEPS_PER_BAR, uid} from '../../core/model';
 import {projects} from '../../core/project-manager';
 import {uniqueName} from '../../core/project-names';
 import {store} from '../../core/project-store';
@@ -945,7 +945,7 @@ export class SequenceTab extends HTMLElement {
           if (!seq) return;
           this.stop();
           this.selectSeq('');
-          store.update(d => (d.sequences = d.sequences.filter(s => s.id !== seq.id)));
+          store.update(d => removeSequence(d, seq.id));
         },
       ),
       this.iconBtn(

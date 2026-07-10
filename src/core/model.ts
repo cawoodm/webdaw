@@ -332,6 +332,14 @@ export function defaultProject(): ProjectData {
   };
 }
 
+/** Remove a sequence and every arrangement clip that references it. */
+export function removeSequence(data: ProjectData, id: string): void {
+  data.sequences = data.sequences.filter((s) => s.id !== id);
+  for (const track of data.arrangement.tracks) {
+    track.clips = track.clips.filter((clip) => !(clip.ref.type === 'sequence' && clip.ref.id === id));
+  }
+}
+
 /** Upgrade loaded data in place: legacy single-loop fields become padLoops[0]. */
 export function normalizeProject(data: ProjectData): ProjectData {
   data.savedAt ??= 0;

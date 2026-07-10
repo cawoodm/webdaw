@@ -11,6 +11,7 @@ import {
   normalizeProject,
   PAD_COUNT,
   pianoNotes,
+  removeSequence,
   resolveLfos,
   uid,
 } from './model';
@@ -188,6 +189,37 @@ describe('project model', () => {
     const normalized = normalizeProject(stale);
     expect(normalized.sequences[0].notes).toEqual([]);
     expect(normalized.sequences[0].instrument).toBeUndefined();
+  });
+});
+
+describe('removeSequence', () => {
+  it('drops the sequence and any clips referencing it, keeping other clips', () => {
+    const p = defaultProject();
+    const seq: Sequence = { id: uid(), name: 'Lead', bars: 4, notes: [] };
+    const otherSeq: Sequence = { id: uid(), name: 'Bass', bars: 4, notes: [] };
+    p.sequences.push(seq, otherSeq);
+    p.arrangement.tracks.push({
+      id: uid(),
+      name: 'Track 1',
+      gain: 1,
+      plugins: [],
+      clips: [
+        { id: uid(), bar: 0, ref: { type: 'sequence', id: seq.id }, gain: 1, plugins: [] },
+        { id: uid(), bar: 4, ref: { type: 'sequence', id: otherSeq.id }, gain: 1, plugins: [] },
+        { id: uid(), bar: 8, ref: { type: 'pad', index: 0 }, gain: 1, plugins: [] },
+        { id: uid(), bar: 12, ref: { type: 'file', file: 'samples/x.wav' }, gain: 1, plugins: [] },
+      ],
+    });
+
+    removeSequence(p, seq.id);
+
+    expect(p.sequences).toEqual([otherSeq]);
+    const clips = p.arrangement.tracks[0].clips;
+    expect(clips).toHaveLength(3);
+    expect(clips.some((c) => c.ref.type === 'sequence' && c.ref.id === seq.id)).toBe(false);
+    expect(clips.some((c) => c.ref.type === 'sequence' && c.ref.id === otherSeq.id)).toBe(true);
+    expect(clips.some((c) => c.ref.type === 'pad')).toBe(true);
+    expect(clips.some((c) => c.ref.type === 'file')).toBe(true);
   });
 });
 

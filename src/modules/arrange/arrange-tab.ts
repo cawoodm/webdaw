@@ -570,6 +570,10 @@ export class ArrangeTab extends HTMLElement {
       opt.selected = this.palette === opt.value;
       fileGroup.appendChild(opt);
     }
+    if (this.palette && !Array.from(palette.options).some((o) => o.value === this.palette)) {
+      this.palette = '';
+      updateUi((s) => (s.arrange.palette = ''));
+    }
     palette.onchange = (): void => {
       this.palette = palette.value;
       updateUi((s) => (s.arrange.palette = palette.value));
