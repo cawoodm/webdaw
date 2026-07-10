@@ -198,6 +198,7 @@ export class ArrangeTab extends HTMLElement {
   private clipLabel(ref: ArrangeClip['ref']): string {
     if (ref.type === 'sequence') return store.data.sequences.find((s) => s.id === ref.id)?.name ?? '?';
     if (ref.type === 'pad') return store.data.pads[ref.index]?.name ?? '?';
+    if (ref.type === 'loop') return store.data.padLoops.find((l) => l.id === ref.id)?.name ?? '?';
     return ref.file.split('/').pop() ?? '?';
   }
 

@@ -16,6 +16,9 @@ export function clipBars(ref: ArrangeClipRef, barSeconds: number): number {
     const seconds = pad ? padSeconds(pad) : undefined;
     return seconds ? Math.max(1, Math.ceil(seconds / barSeconds)) : 1;
   }
+  if (ref.type === 'loop') {
+    return store.data.padLoops.find((l) => l.id === ref.id)?.bars ?? 1;
+  }
   const buffer = store.getBuffer(ref.file);
   return buffer ? Math.max(1, Math.ceil(buffer.duration / barSeconds)) : 1;
 }
@@ -58,6 +61,8 @@ export async function resolveSong(tracks: ArrangeTrack[]): Promise<ResolvedSong>
         const pad = store.data.pads[ref.index];
         const buffer = pad ? padBuffer(pad) : null;
         if (buffer) buffers.set(clip.id, buffer);
+      } else if (ref.type === 'loop') {
+        // loops are resolved at playback time; buffer map doesn't include them
       } else {
         const buffer = store.getBuffer(ref.file) ?? (await store.loadBuffer(ref.file));
         if (buffer) buffers.set(clip.id, buffer);
