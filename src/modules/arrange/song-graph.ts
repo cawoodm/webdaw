@@ -1,10 +1,11 @@
 import * as Tone from '../../core/tone';
 import type { ArrangeClip, ArrangeClipRef, ArrangeTrack } from '../../core/model';
 import { isTrackAudible, MAX_BARS } from '../../core/model';
-import { padBuffer, padSeconds } from '../../core/pad-voice';
+import { ensurePadBuffers, padBuffer, padSeconds, playPadInto } from '../../core/pad-voice';
 import { connectChain } from '../../plugins/chain';
 import { resolveInstrument, scheduleSequenceAt, type ResolvedInstrument, type ScheduledSequence } from '../sequence/sequence-playback';
 import { store } from '../../core/project-store';
+import { tileLoopEvents } from './timeline-math';
 
 /** A clip's bar-span, derived from its ref (no stored length). */
 export function clipBars(ref: ArrangeClipRef, barSeconds: number): number {
@@ -46,6 +47,10 @@ export interface ResolvedSong {
 
 /** Pre-resolve every clip's audio in the LIVE context (buffers + resolveInstrument), before Tone.Offline. */
 export async function resolveSong(tracks: ArrangeTrack[]): Promise<ResolvedSong> {
+  // tone-linked pads render in the LIVE context here — never inside Tone.Offline
+  if (tracks.some((t) => t.clips.some((c) => c.ref.type === 'loop'))) {
+    await ensurePadBuffers(store.data.pads);
+  }
   const buffers = new Map<string, AudioBuffer>();
   const sequences = new Map<string, ResolvedInstrument>();
   for (const track of tracks) {
@@ -118,6 +123,17 @@ export function scheduleSong(tracks: ArrangeTrack[], resolved: ResolvedSong, opt
         const seq = store.data.sequences.find((s) => s.id === (clip.ref as { id: string }).id);
         const resolvedSeq = seq && resolved.sequences.get(seq.id);
         if (seq && resolvedSeq) scheduledSequences.push(scheduleSequenceAt(seq, clipBus, opts.secondsPerStep, resolvedSeq, at));
+      } else if (clip.ref.type === 'loop') {
+        const loop = store.data.padLoops.find((l) => l.id === (clip.ref as { id: string }).id);
+        if (!loop) continue;
+        const secondsPerBeat = opts.barSeconds / 4;
+        const spanBeats = (clip.bars ?? loop.bars) * 4;
+        for (const ev of tileLoopEvents(loop.events, loop.bars * 4, spanBeats)) {
+          const pad = store.data.pads[ev.pad];
+          if (!pad) continue;
+          const src = playPadInto(pad, clipBus, at + 0.01 + ev.offsetBeats * secondsPerBeat, ev.duration);
+          if (src) sources.push(src);
+        }
       } else {
         const buffer = resolved.buffers.get(clip.id);
         if (!buffer) continue;
