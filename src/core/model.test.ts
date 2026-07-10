@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ProjectData, Sequence } from './model';
+import type { ProjectData, PadLoop, Sequence } from './model';
 import {
   clampClipBar,
   defaultLfo,
@@ -11,6 +11,7 @@ import {
   normalizeProject,
   PAD_COUNT,
   pianoNotes,
+  removeLoop,
   removeSequence,
   resolveLfos,
   uid,
@@ -220,6 +221,38 @@ describe('removeSequence', () => {
     expect(clips.some((c) => c.ref.type === 'sequence' && c.ref.id === otherSeq.id)).toBe(true);
     expect(clips.some((c) => c.ref.type === 'pad')).toBe(true);
     expect(clips.some((c) => c.ref.type === 'file')).toBe(true);
+  });
+});
+
+describe('removeLoop', () => {
+  it('drops the Beat and any clips referencing it, keeping other clips', () => {
+    const p = defaultProject();
+    const beat: PadLoop = { id: uid(), name: 'Beat A', bars: 2, events: [{ pad: 0, time: 0 }] };
+    const otherBeat: PadLoop = { id: uid(), name: 'Beat B', bars: 2, events: [] };
+    p.padLoops.push(beat, otherBeat);
+    p.arrangement.tracks.push({
+      id: uid(),
+      name: 'Track 1',
+      gain: 1,
+      plugins: [],
+      clips: [
+        { id: uid(), bar: 0, ref: { type: 'loop', id: beat.id }, gain: 1, plugins: [] },
+        { id: uid(), bar: 4, ref: { type: 'loop', id: otherBeat.id }, gain: 1, plugins: [] },
+        { id: uid(), bar: 8, ref: { type: 'pad', index: 0 }, gain: 1, plugins: [] },
+      ],
+    });
+    // the new ref variant is part of the persistence format
+    expect(JSON.parse(JSON.stringify(p))).toEqual(p);
+
+    removeLoop(p, beat.id);
+
+    expect(p.padLoops.some((l) => l.id === beat.id)).toBe(false);
+    expect(p.padLoops.some((l) => l.id === otherBeat.id)).toBe(true);
+    const clips = p.arrangement.tracks[0].clips;
+    expect(clips).toHaveLength(2);
+    expect(clips.some((c) => c.ref.type === 'loop' && c.ref.id === beat.id)).toBe(false);
+    expect(clips.some((c) => c.ref.type === 'loop' && c.ref.id === otherBeat.id)).toBe(true);
+    expect(clips.some((c) => c.ref.type === 'pad')).toBe(true);
   });
 });
 

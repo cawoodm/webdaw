@@ -2,7 +2,7 @@ import * as Tone from '../../core/tone';
 import { engine } from '../../core/audio-engine';
 import { bus } from '../../core/event-bus';
 import type { PadConfig, PadEvent, PadLoop, TonePatch } from '../../core/model';
-import { defaultLoop, defaultPatch, PAD_COUNT, sortedByName, toneBufferKey, uid } from '../../core/model';
+import { defaultLoop, defaultPatch, PAD_COUNT, removeLoop, sortedByName, toneBufferKey, uid } from '../../core/model';
 import { ensurePadBuffers, padBuffer, padSeconds, playPadInto } from '../../core/pad-voice';
 import { renderPatch } from '../../core/patch-voice';
 import { uniqueName } from '../../core/project-names';
@@ -889,7 +889,7 @@ export class SampleTab extends HTMLElement {
         () => {
           this.stopLoop();
           this.recording = false;
-          store.update((d) => (d.padLoops = d.padLoops.filter((l) => l.id !== loop.id)));
+          store.update((d) => removeLoop(d, loop.id));
           this.selectLoop('');
           this.render();
         },

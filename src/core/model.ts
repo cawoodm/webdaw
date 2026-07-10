@@ -217,7 +217,8 @@ export interface PluginInstanceState {
 export type ArrangeClipRef =
   | { type: 'sequence'; id: string }
   | { type: 'file'; file: string }
-  | { type: 'pad'; index: number }; // index into ProjectData.pads — pads have no id field
+  | { type: 'pad'; index: number } // index into ProjectData.pads — pads have no id field
+  | { type: 'loop'; id: string }; // PadLoop id — a named Beat from the Sample tab
 
 export interface ArrangeClip {
   id: string;
@@ -337,6 +338,14 @@ export function removeSequence(data: ProjectData, id: string): void {
   data.sequences = data.sequences.filter((s) => s.id !== id);
   for (const track of data.arrangement.tracks) {
     track.clips = track.clips.filter((clip) => !(clip.ref.type === 'sequence' && clip.ref.id === id));
+  }
+}
+
+/** Remove a pad loop ("Beat") and every arrangement clip that references it. */
+export function removeLoop(data: ProjectData, id: string): void {
+  data.padLoops = data.padLoops.filter((l) => l.id !== id);
+  for (const track of data.arrangement.tracks) {
+    track.clips = track.clips.filter((clip) => !(clip.ref.type === 'loop' && clip.ref.id === id));
   }
 }
 
