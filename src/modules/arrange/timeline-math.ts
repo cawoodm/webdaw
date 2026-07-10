@@ -3,6 +3,8 @@
  * Positions and spans are fractional BARS; snap sizes are BEATS (4 beats/bar).
  */
 
+import type { PadEvent } from '../../core/model';
+
 export const PX_PER_BAR_STEPS = [4, 6, 8, 12, 16, 24, 32, 48, 64];
 
 export const SNAP_BEATS: { beats: number; label: string }[] = [
@@ -82,4 +84,28 @@ export function visibleBarRange(
   const from = Math.max(0, Math.floor((scrollLeft - bufferPx) / pxPerBar));
   const to = Math.min(totalBars, Math.ceil((scrollLeft + viewWidth + bufferPx) / pxPerBar));
   return { from, to };
+}
+
+export interface TiledLoopEvent {
+  pad: number;
+  offsetBeats: number;
+  duration?: number;
+}
+
+/**
+ * Tile a Beat's pad events across a clip span: iteration k shifts every
+ * event by k*loopBeats. Events starting at/past the span edge are dropped
+ * whole — never truncated — so hits keep their natural tails and repeat
+ * crossovers stay click-free.
+ */
+export function tileLoopEvents(events: PadEvent[], loopBeats: number, spanBeats: number): TiledLoopEvent[] {
+  if (loopBeats <= 0 || spanBeats <= 0) return [];
+  const out: TiledLoopEvent[] = [];
+  for (let k = 0; k * loopBeats < spanBeats - 1e-9; k++) {
+    for (const ev of events) {
+      const offsetBeats = k * loopBeats + ev.time;
+      if (offsetBeats < spanBeats - 1e-9) out.push({ pad: ev.pad, offsetBeats, duration: ev.duration });
+    }
+  }
+  return out;
 }

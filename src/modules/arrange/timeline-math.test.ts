@@ -5,6 +5,7 @@ import {
   minSpanBars,
   nearestSnapBar,
   pickBarTick,
+  tileLoopEvents,
   visibleBarRange,
 } from './timeline-math';
 
@@ -53,5 +54,36 @@ describe('gridBackgroundBars', () => {
   it('drops levels finer than 5px so a zoomed-out grid never turns solid', () => {
     // pxPerBar 8, snap 1/4 beat: half-bar would be 4px — only the 8px bar level survives
     expect(gridBackgroundBars(8, 0.25).size).toBe('8px 100%');
+  });
+});
+
+describe('tileLoopEvents', () => {
+  const events = [
+    { pad: 0, time: 0 },
+    { pad: 1, time: 7.5, duration: 0.5 },
+  ];
+
+  it('repeats events across an exact multiple of the loop', () => {
+    expect(tileLoopEvents(events, 8, 16)).toEqual([
+      { pad: 0, offsetBeats: 0, duration: undefined },
+      { pad: 1, offsetBeats: 7.5, duration: 0.5 },
+      { pad: 0, offsetBeats: 8, duration: undefined },
+      { pad: 1, offsetBeats: 15.5, duration: 0.5 },
+    ]);
+  });
+
+  it('drops events past a fractional span edge instead of truncating', () => {
+    // 2-bar loop stretched to 3 bars: second iteration's 7.5-beat hit (offset 15.5) is outside 12 beats
+    expect(tileLoopEvents(events, 8, 12).map((t) => t.offsetBeats)).toEqual([0, 7.5, 8]);
+  });
+
+  it('keeps only events inside a span shorter than one loop', () => {
+    expect(tileLoopEvents(events, 8, 4).map((t) => t.offsetBeats)).toEqual([0]);
+  });
+
+  it('returns nothing for empty events or a degenerate loop/span', () => {
+    expect(tileLoopEvents([], 8, 16)).toEqual([]);
+    expect(tileLoopEvents(events, 0, 16)).toEqual([]);
+    expect(tileLoopEvents(events, 8, 0)).toEqual([]);
   });
 });
