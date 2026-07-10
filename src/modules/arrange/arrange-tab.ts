@@ -207,7 +207,7 @@ export class ArrangeTab extends HTMLElement {
     el.classList.toggle('selected', this.selectedClipId === clip.id);
     el.classList.toggle('has-fx', clip.plugins.length > 0);
     el.textContent = this.clipLabel(clip.ref);
-    el.title = `${this.clipLabel(clip.ref)} — drag: move · double-click: FX · Delete: remove`;
+    el.title = `${this.clipLabel(clip.ref)} — drag: move · double-click: remove · right-click: FX · Delete: remove selected`;
     if (clip.ref.type !== 'sequence') {
       const handle = document.createElement('div');
       handle.className = 'clip-resize';
@@ -219,7 +219,20 @@ export class ArrangeTab extends HTMLElement {
   }
 
   private attachClipPointer(track: ArrangeTrack, clip: ArrangeClip, el: HTMLElement, row: HTMLElement): void {
-    el.ondblclick = (): void => this.openClipFx(track, clip);
+    el.ondblclick = (): void => {
+      store.update(() => {
+        const i = track.clips.indexOf(clip);
+        if (i >= 0) track.clips.splice(i, 1);
+      });
+      if (this.selectedClipId === clip.id) this.selectedClipId = null;
+      el.remove();
+      this.clipEls.delete(clip.id);
+      this.viewDirty = true;
+    };
+    el.oncontextmenu = (e): void => {
+      e.preventDefault();
+      this.openClipFx(track, clip);
+    };
     el.onpointerdown = (e): void => {
       e.stopPropagation();
       const handle = el.querySelector('.clip-resize');
@@ -733,7 +746,7 @@ export class ArrangeTab extends HTMLElement {
     row.style.width = `${bars * px}px`;
     row.style.backgroundImage = grid.image;
     row.style.backgroundSize = grid.size;
-    row.title = 'Click: place the palette item · drag a clip: move · right edge: resize · double-click: clip FX · Delete: remove selected';
+    row.title = 'Click: place the palette item · drag a clip: move · right edge: resize · double-click a clip: remove · right-click a clip: FX · Delete: remove selected';
     this.rows.set(track.id, row);
     row.onclick = (e): void => {
       if (e.target !== row || !this.palette) return;
