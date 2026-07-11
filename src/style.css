@@ -827,6 +827,7 @@ button.recording {
 /* ---- arrange ---- */
 :root {
   --accent-3: #b794f4;
+  --accent-4: #ed64a6;
 }
 
 .arrange-scroll {
@@ -961,6 +962,10 @@ button.recording {
 
 .arrange-clip.file {
   background: var(--accent-3);
+}
+
+.arrange-clip.loop {
+  background: var(--accent-4);
 }
 
 .arrange-clip.selected {

@@ -551,6 +551,14 @@ export class ArrangeTab extends HTMLElement {
       opt.selected = this.palette === opt.value;
       seqGroup.appendChild(opt);
     }
+    const beatGroup = group('Beats');
+    for (const l of store.data.padLoops) {
+      const opt = document.createElement('option');
+      opt.value = `loop:${l.id}`;
+      opt.textContent = l.name;
+      opt.selected = this.palette === opt.value;
+      beatGroup.appendChild(opt);
+    }
     const padGroup = group('Pads');
     for (const [index, pad] of store.data.pads.entries()) {
       if (!pad) continue;
@@ -759,9 +767,11 @@ export class ArrangeTab extends HTMLElement {
       if (bar >= bars) return;
       const ref = this.palette.startsWith('seq:')
         ? { type: 'sequence' as const, id: this.palette.slice(4) }
-        : this.palette.startsWith('pad:')
-          ? { type: 'pad' as const, index: Number(this.palette.slice(4)) }
-          : { type: 'file' as const, file: this.palette.slice(5) };
+        : this.palette.startsWith('loop:')
+          ? { type: 'loop' as const, id: this.palette.slice(5) }
+          : this.palette.startsWith('pad:')
+            ? { type: 'pad' as const, index: Number(this.palette.slice(4)) }
+            : { type: 'file' as const, file: this.palette.slice(5) };
       store.update(() => track.clips.push({ id: uid(), bar, ref, gain: 1, plugins: [] }));
       this.viewDirty = true;
     };
