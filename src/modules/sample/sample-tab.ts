@@ -649,18 +649,18 @@ export class SampleTab extends HTMLElement {
         continue;
       }
       if (!Array.isArray(parsed.events) || typeof parsed.bars !== 'number') {
-        this.flash(`${file.name}: not a sample`);
+        this.flash(`${file.name}: not a Beat`);
         continue;
       }
-      let name = (parsed.name ?? file.name.replace(/\.json$/i, '')).trim() || 'Sample';
+      let name = (parsed.name ?? file.name.replace(/\.json$/i, '')).trim() || 'Beat';
       const existing = store.data.padLoops.find((l) => l.name.toLowerCase() === name.toLowerCase());
       let target: PadLoop | null = null;
       if (existing) {
-        if (confirm(`A sample named "${name}" already exists.\nOK: overwrite it — Cancel: import under a new name`)) {
+        if (confirm(`A Beat named "${name}" already exists.\nOK: overwrite it — Cancel: import under a new name`)) {
           target = existing;
         } else {
           const suggestion = uniqueName(name, store.data.padLoops.map((l) => l.name));
-          const renamed = prompt('New sample name', suggestion);
+          const renamed = prompt('New Beat name', suggestion);
           if (renamed === null) continue; // aborted
           name = uniqueName(renamed.trim() || suggestion, store.data.padLoops.map((l) => l.name));
         }
@@ -778,7 +778,7 @@ export class SampleTab extends HTMLElement {
     };
     const loop = this.loop();
     const loopSel = document.createElement('select');
-    loopSel.title = 'Switch sample';
+    loopSel.title = 'Switch Beat';
     for (const l of sortedByName(store.data.padLoops)) {
       const opt = document.createElement('option');
       opt.value = l.id;
@@ -845,7 +845,7 @@ export class SampleTab extends HTMLElement {
     };
     const exportBtn = document.createElement('button');
     exportBtn.className = 'export-btn';
-    exportBtn.title = 'Download this sample as .wav + .json (drop the .json back in to import)';
+    exportBtn.title = 'Download this Beat as .wav + .json (drop the .json back in to import)';
     exportBtn.innerHTML =
       '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
       '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Export';
@@ -854,13 +854,13 @@ export class SampleTab extends HTMLElement {
     bar.append(
       loopSel,
       iconBtn(
-        'New sample',
+        'New Beat',
         `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
           <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`,
         () => {
           const l: PadLoop = {
             id: uid(),
-            name: uniqueName(`Loop ${store.data.padLoops.length + 1}`, store.data.padLoops.map((x) => x.name)),
+            name: uniqueName(`Beat ${store.data.padLoops.length + 1}`, store.data.padLoops.map((x) => x.name)),
             bars: 2,
             events: [],
           };
@@ -870,11 +870,11 @@ export class SampleTab extends HTMLElement {
         },
       ),
       iconBtn(
-        'Rename sample',
+        'Rename Beat',
         `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true">
           <path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z"/></svg>`,
         () => {
-          const name = prompt('Sample name', loop.name);
+          const name = prompt('Beat name', loop.name);
           if (!name?.trim()) return;
           store.update(() => {
             loop.name = uniqueName(name.trim(), store.data.padLoops.filter((l) => l.id !== loop.id).map((l) => l.name));
@@ -883,7 +883,7 @@ export class SampleTab extends HTMLElement {
         },
       ),
       iconBtn(
-        'Delete sample',
+        'Delete Beat',
         `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`,
         () => {
