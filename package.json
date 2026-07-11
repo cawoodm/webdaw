@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "preview": "vite preview",
+    "preview": "vite preview --port 8083",
     "test": "vitest run",
     "docker": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/docker.ps1",
     "deploy:demos": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/deploy.ps1 demo*",

@@ -15,7 +15,8 @@ COPY . .
 RUN npm run build
 
 # Expose the port Vite preview uses
-EXPOSE 5173
+# Change this also in scripts/docker.ps1
+EXPOSE 8083
 
 # Serve the built app
 CMD ["npm", "run", "preview", "--", "--host", "0.0.0.0"]
