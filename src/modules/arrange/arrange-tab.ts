@@ -28,7 +28,7 @@ import {
   visibleBarRange,
 } from './timeline-math';
 
-const HEAD_W = 150;
+const HEAD_W = 180;
 const RULER_H = 22;
 
 const ICONS = {

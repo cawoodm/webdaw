@@ -16,6 +16,7 @@
 
 # DONE
 
+- Arrange: delete track is missing ✅ (main — button existed but was clipped by the 150px track head; head widened to 180px and the gain knob made a compact dial so duplicate/remove are visible)
 - Sampler: When keyboard keys are pressed show which key on the piano is playing ✅ (worktree-midi-file-support — already working on the sequencer piano roll: computer-keyboard + MIDI notes light the matching key via lightKey/midi:noteon; verified, no code change needed)
 - Sampler: Should not show orange vertical play bar (or lights) when sampler is not playing ✅ (worktree-midi-file-support — playhead/bar-highlight now gated on the sampler's own loopActive, not the shared transport)
 - Sequencer: Scroll vertically with mouse wheel, make keyboard twice as wide and show all note names ✅ (worktree-midi-file-support — wheel scrolls vertically, key column 34→68px, every key labelled)

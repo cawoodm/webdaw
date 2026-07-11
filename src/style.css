@@ -854,14 +854,14 @@ button.recording {
   left: 0;
   z-index: 1;
   flex: none;
-  width: 150px;
+  width: 180px;
   background: var(--bg-card);
   border-right: 1px solid var(--border);
 }
 
 .arrange-ruler {
   position: sticky;
-  left: 150px;
+  left: 180px;
   display: block;
   height: 22px;
 }
@@ -888,7 +888,7 @@ button.recording {
   left: 0;
   z-index: 2;
   flex: none;
-  width: 150px;
+  width: 180px;
   padding: 4px 6px;
   background: var(--bg-card);
   border-right: 1px solid var(--border);
@@ -919,8 +919,18 @@ button.recording {
 }
 
 .arrange-head-controls daw-knob {
-  transform: scale(0.7);
-  transform-origin: left center;
+  width: auto;
+}
+
+.arrange-head-controls daw-knob svg {
+  width: 24px;
+  height: 24px;
+  display: block;
+}
+
+.arrange-head-controls daw-knob .knob-label,
+.arrange-head-controls daw-knob .knob-value {
+  display: none;
 }
 
 .fx-btn.has-fx {
