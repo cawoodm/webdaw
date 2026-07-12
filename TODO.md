@@ -12,6 +12,8 @@
 
 # In-Progress
 
+- Arrange: Add back/forth buttons to move play cursor back/forth to nearest bar, add back to start button. When user clicks in the column header (where bars are numbered) jump back to the nearest (rounded down) snap position 🕜 (main)
+
 - pressing sequencer stop should not stop sampler (and vice versa). Only the global stop button stops everything. 🕜 (todos — stop buttons already independent; making Space toggle the active tab only)
 
 # DONE
