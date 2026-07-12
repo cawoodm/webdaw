@@ -40,6 +40,10 @@ class ProjectManager {
       this.root = handle;
       const perm = await handle.queryPermission({ mode: 'readwrite' });
       this.needsPermission = perm !== 'granted';
+      if (this.dirAvailable()) store.setRootDir(this.root);
+      if (this.needsPermission) {
+        alert(`Project folder "${handle.name}" is disconnected — the browser dropped access after a restart. You are working on the browser copy; files on disk (e.g. samples/) are invisible until you reconnect via the Reload button.`);
+      }
     }
     this.activeName = (await idbGet<string>(ACTIVE_KEY)) ?? DEFAULT_NAME;
     store.setMirrorKey(() => projectDataKey(this.activeName));
@@ -66,6 +70,7 @@ class ProjectManager {
     this.root = await window.showDirectoryPicker({ id: 'webdaw-root', mode: 'readwrite' });
     this.needsPermission = false;
     await idbSet(ROOT_KEY, this.root);
+    store.setRootDir(this.root);
     store.setDir(await this.projectDir(this.activeName, true));
     await this.saveAll();
     bus.emit('project:loaded');
@@ -77,6 +82,7 @@ class ProjectManager {
     const perm = await this.root.requestPermission({ mode: 'readwrite' });
     if (perm !== 'granted') return;
     this.needsPermission = false;
+    store.setRootDir(this.root);
     // The session so far ran on the IndexedDB mirror — keep it authoritative
     // and write it through to disk, exactly like connecting a fresh root.
     store.setDir(await this.projectDir(this.activeName, true));
@@ -117,6 +123,40 @@ class ProjectManager {
     return [...bySource.entries()]
       .map(([name, source]) => ({ name, source }))
       .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  /** Audio files in the active project's `samples/` dir and the global `_samples/` dir (project entries first, each alphabetical). */
+  async listSamples(): Promise<{ path: string; source: 'project' | 'global' }[]> {
+    if (!this.dirAvailable()) {
+      console.warn('[samples] root folder not connected — samples/ scan skipped');
+      return [];
+    }
+    const isAudio = (name: string): boolean => /\.(wav|mp3|ogg|flac|m4a|aiff)$/i.test(name);
+    const scan = async (dir: FileSystemDirectoryHandle | null, prefix: string, source: 'project' | 'global'): Promise<{ path: string; source: 'project' | 'global' }[]> => {
+      if (!dir) return [];
+      const names: string[] = [];
+      for await (const handle of dir.values()) {
+        if (handle.kind === 'file' && isAudio(handle.name)) names.push(handle.name);
+      }
+      names.sort((a, b) => a.localeCompare(b));
+      return names.map((name) => ({ path: `${prefix}${name}`, source }));
+    };
+    let projectSamples: FileSystemDirectoryHandle | null = null;
+    try {
+      const dir = await this.projectDir(this.activeName, false);
+      projectSamples = dir ? await dir.getDirectoryHandle('samples') : null;
+    } catch {
+      projectSamples = null;
+    }
+    let globalSamples: FileSystemDirectoryHandle | null = null;
+    try {
+      globalSamples = await this.root!.getDirectoryHandle('_samples');
+    } catch {
+      globalSamples = null;
+    }
+    const project = await scan(projectSamples, 'samples/', 'project');
+    const global = await scan(globalSamples, '_samples/', 'global');
+    return [...project, ...global];
   }
 
   /** Resolve and cache a library instrument by name (project copy shadows a global one of the same name). */
@@ -384,21 +424,28 @@ class ProjectManager {
     bus.emit('project:loaded');
   }
 
-  /** Load a project (newer of folder copy and IndexedDB mirror) and notify the UI. */
-  private async load(name: string): Promise<void> {
+  /** Load a project (newer of folder copy and IndexedDB mirror, unless `preferDisk`) and notify the UI. */
+  private async load(name: string, opts?: { preferDisk?: boolean }): Promise<void> {
     this.activeName = name;
     const dir = await this.projectDir(name, this.dirAvailable());
     store.setDir(dir);
 
     // Two copies can exist (folder + IndexedDB mirror); when both do, take
     // the newer one — a tab without folder permission saves only the mirror.
+    // `preferDisk` (explicit reload) takes the folder copy whenever it exists,
+    // even if the mirror looks newer.
     const diskData = dir ? await store.readJson<ProjectData>('project.json') : null;
     const mirrorData = (await idbGet<ProjectData>(projectDataKey(name))) ?? null;
     let data = diskData;
-    if (mirrorData && (!diskData || (mirrorData.savedAt ?? 0) > (diskData.savedAt ?? 0))) data = mirrorData;
+    if (opts?.preferDisk) {
+      if (!diskData) data = mirrorData;
+    } else if (mirrorData && (!diskData || (mirrorData.savedAt ?? 0) > (diskData.savedAt ?? 0))) {
+      data = mirrorData;
+    }
     const resolved: ProjectData = { ...defaultProject(), ...(data ?? {}) };
     resolved.name = name;
     store.resetTo(normalizeProject(resolved));
+    if (opts?.preferDisk && diskData) await idbSet(projectDataKey(name), store.data);
 
     let ui = dir ? await store.readJson<Partial<UiState>>('ui.json') : null;
     ui ??= (await idbGet<Partial<UiState>>(projectUiKey(name))) ?? null;
@@ -412,6 +459,21 @@ class ProjectManager {
     // same order as boot always used — modules re-apply UI state, then render
     bus.emit('ui:loaded');
     bus.emit('project:loaded');
+  }
+
+  /** Discard in-memory and mirror state and re-read the active project from disk. */
+  async reloadFromDisk(): Promise<void> {
+    if (this.root && this.needsPermission) {
+      const perm = await this.root.requestPermission({ mode: 'readwrite' });
+      if (perm === 'granted') {
+        this.needsPermission = false;
+        store.setRootDir(this.root);
+      } else {
+        alert('Folder access was denied — still working on the browser copy; disk files stay hidden.');
+      }
+    }
+    engine.stop();
+    await this.load(this.activeName, { preferDisk: true });
   }
 
   /** One-time move from the single-project keys to the per-project layout. */

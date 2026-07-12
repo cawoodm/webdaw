@@ -69,6 +69,12 @@ export class AppShell extends HTMLElement {
               <rect x="7" y="13" width="10" height="8" rx="0.5"/>
             </svg>
           </button>
+          <button class="reload-btn icon-btn" title="Reload project from disk (discards unsaved changes)" aria-label="Reload project from disk">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M20 11a8 8 0 1 0-2.34 5.66"/>
+              <path d="M20 5v6h-6"/>
+            </svg>
+          </button>
           <span class="project-name hint"></span>
         </div>
       </header>
@@ -254,6 +260,21 @@ export class AppShell extends HTMLElement {
       { capture: true },
     );
 
+    const reloadBtn = this.querySelector<HTMLButtonElement>('.reload-btn')!;
+    reloadBtn.onclick = async (): Promise<void> => {
+      if (store.dirty && !confirm('Discard unsaved changes and reload the project from disk?')) return;
+      reloadBtn.classList.add('saving');
+      reloadBtn.disabled = true;
+      try {
+        await projects.reloadFromDisk();
+      } finally {
+        reloadBtn.classList.remove('saving');
+        reloadBtn.disabled = false;
+      }
+    };
+
+    bus.on('project:diskDirty', (dirty) => saveBtn.classList.toggle('dirty', dirty));
+
     const masterDialog = this.querySelector<HTMLDialogElement>('.master-dialog')!;
     this.querySelector<HTMLButtonElement>('.master-fx')!.onclick = async (): Promise<void> => {
       await engine.ensureStarted();
@@ -288,6 +309,7 @@ export class AppShell extends HTMLElement {
       volKnob.value = engine.volume;
       this.updateProjectUi();
       void this.refreshProjects();
+      saveBtn.classList.toggle('dirty', store.diskDirty);
       if (this.masterChain) this.ensureMasterChain(true);
     });
     // Keep the header BPM in sync with programmatic tempo changes (e.g. MIDI
@@ -350,6 +372,7 @@ export class AppShell extends HTMLElement {
     const name = this.querySelector('.project-name')!;
     const reconnect = this.querySelector('.reconnect')!;
     reconnect.classList.toggle('hidden', !projects.needsPermission);
+    this.querySelector('.reload-btn')!.classList.toggle('hidden', projects.root === null);
     name.textContent = projects.root
       ? projects.needsPermission
         ? `${projects.root.name} (permission needed)`

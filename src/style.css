@@ -129,12 +129,30 @@ input[type='number'] {
   max-width: 160px;
 }
 
-.save-btn.saving svg {
+.save-btn.saving svg,
+.reload-btn.saving svg {
   animation: save-pulse 0.5s ease-in-out infinite alternate;
 }
 
-.save-btn:disabled {
+.save-btn:disabled,
+.reload-btn:disabled {
   cursor: wait;
+}
+
+.save-btn {
+  position: relative;
+}
+
+.save-btn.dirty::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent-2);
+  border: 1px solid var(--bg-card);
 }
 
 @keyframes save-pulse {
@@ -1017,6 +1035,11 @@ button.recording {
 
 .arrange-playhead.hidden {
   display: none;
+}
+
+.arrange-playhead.cursor {
+  opacity: 0.4;
+  box-shadow: none;
 }
 
 .arrange-length input {

@@ -18,6 +18,8 @@ const PROJECT_FILE = 'project.json';
 class ProjectStore {
   data: ProjectData = defaultProject();
   dir: FileSystemDirectoryHandle | null = null;
+  /** The user-picked ROOT folder, for resolving `_`-prefixed paths (e.g. `_samples/x.wav`) that live above the project dir. */
+  rootDir: FileSystemDirectoryHandle | null = null;
 
   private buffers = new Map<string, AudioBuffer>();
   private pendingWavs = new Set<string>();
@@ -25,11 +27,27 @@ class ProjectStore {
   private decodeCtx: OfflineAudioContext | null = null;
   private mirrorKey: () => string = () => 'project:default:data';
   private dirtyFlag = false;
+  private diskDirtyFlag = false;
   private onSavedCb: (() => void) | null = null;
 
   /** True when in-memory edits haven't been saved yet. */
   get dirty(): boolean {
     return this.dirtyFlag;
+  }
+
+  /**
+   * True when the project folder's `project.json` doesn't reflect the
+   * current in-memory data — either because of unsaved edits, or because no
+   * folder is connected (a browser-only save never counts as clean).
+   */
+  get diskDirty(): boolean {
+    return this.diskDirtyFlag;
+  }
+
+  private setDiskDirty(value: boolean): void {
+    if (this.diskDirtyFlag === value) return;
+    this.diskDirtyFlag = value;
+    bus.emit('project:diskDirty', value);
   }
 
   /** The manager tells the store where its IndexedDB mirror lives. */
@@ -47,6 +65,11 @@ class ProjectStore {
     this.dir = dir;
   }
 
+  /** Attach/detach the ROOT folder handle, for resolving `_`-prefixed paths. */
+  setRootDir(dir: FileSystemDirectoryHandle | null): void {
+    this.rootDir = dir;
+  }
+
   /** Swap in another project's data; clears caches and pending writes. */
   resetTo(data: ProjectData): void {
     clearTimeout(this.saveTimer);
@@ -54,6 +77,7 @@ class ProjectStore {
     this.buffers.clear();
     this.pendingWavs.clear();
     this.dirtyFlag = false;
+    this.setDiskDirty(false);
   }
 
   /**
@@ -72,12 +96,14 @@ class ProjectStore {
   update(mutate: (data: ProjectData) => void): void {
     mutate(this.data);
     this.dirtyFlag = true;
+    this.setDiskDirty(true);
     bus.emit('project:changed');
     this.scheduleSave();
   }
 
   scheduleSave(): void {
     this.dirtyFlag = true;
+    this.setDiskDirty(true);
     clearTimeout(this.saveTimer);
     this.saveTimer = window.setTimeout(() => void this.save(), 800);
   }
@@ -90,6 +116,7 @@ class ProjectStore {
     this.onSavedCb?.();
     if (!this.dir) return;
     await this.writeFile(PROJECT_FILE, JSON.stringify(this.data, null, 2));
+    this.setDiskDirty(false);
   }
 
   // ---- audio buffers ----
@@ -211,10 +238,11 @@ class ProjectStore {
   }
 
   private async resolveDir(path: string, create: boolean): Promise<{ dir: FileSystemDirectoryHandle; name: string } | null> {
-    if (!this.dir) return null;
     const parts = path.split('/');
     const name = parts.pop()!;
-    let dir = this.dir;
+    const fromRoot = parts[0]?.startsWith('_') ?? false;
+    let dir = fromRoot ? this.rootDir : this.dir;
+    if (!dir) return null;
     for (const part of parts) {
       try {
         dir = await dir.getDirectoryHandle(part, { create });

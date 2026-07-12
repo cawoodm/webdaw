@@ -5,6 +5,8 @@ export interface BusEvents {
   'ui:loaded': void;
   'project:loaded': void;
   'project:changed': void;
+  /** In-memory data has (true) or no longer has (false) edits not yet written to disk. */
+  'project:diskDirty': boolean;
   'tone:sendToPad': { patchId: string; name: string; buffer: AudioBuffer };
   'tab:activate': TabId;
   /** A module is taking over playback — everyone else releases their scheduled parts. */
