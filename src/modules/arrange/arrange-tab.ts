@@ -505,10 +505,37 @@ export class ArrangeTab extends HTMLElement {
       // throwaway audio pair: the chain edits clip.plugins in place; audible on the clip's next play
       const inGain = new Tone.Gain(0).connect(engine.master);
       const chain = document.createElement('plugin-chain') as PluginChainEl;
+      // pre-FX source render for plugin UIs (e.g. the EQ's average spectrum):
+      // the clip alone, at bar 0, without its gain/FX — resolved in the LIVE
+      // context first, then one Tone.Offline (never nested)
+      const renderSource = async (): Promise<AudioBuffer | null> => {
+        const barSeconds = this.barSeconds();
+        const srcTrack: ArrangeTrack = {
+          id: 'fx-src',
+          name: 'fx-src',
+          gain: 1,
+          plugins: [],
+          clips: [{ ...clip, bar: 0, gain: 1, plugins: [] }],
+        };
+        const resolved = await resolveSong([srcTrack]);
+        const seconds = Math.min(30, clipSpanBars(clip, barSeconds) * barSeconds + 0.5);
+        return engine.runExclusive(async () => {
+          const rendered = await Tone.Offline(() => {
+            scheduleSong([srcTrack], resolved, {
+              songBus: Tone.getDestination(),
+              startSeconds: 0,
+              barSeconds,
+              secondsPerStep: engine.secondsPerStep(),
+              provider: createOfflineProvider(),
+            });
+          }, seconds);
+          return rendered.get() as AudioBuffer;
+        });
+      };
       chain.bind(inGain, engine.master, clip.plugins, () => {
         store.scheduleSave();
         this.scheduleHistoryCommit();
-      });
+      }, { renderSource });
       this.clipFxTeardown = (): void => {
         chain.teardown();
         inGain.dispose();
