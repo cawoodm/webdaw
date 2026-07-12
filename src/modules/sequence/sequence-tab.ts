@@ -1,5 +1,6 @@
 import {engine} from '../../core/audio-engine';
 import {bus} from '../../core/event-bus';
+import {SnapshotHistory} from '../../core/history';
 import {clearInstrumentCache} from '../../core/instruments';
 import type {NoteEvent, SeqInstrument, Sequence, SynthKind} from '../../core/model';
 import {pianoNotes, removeSequence, sortedByName, STEPS_PER_BAR, uid} from '../../core/model';
@@ -70,6 +71,11 @@ export class SequenceTab extends HTMLElement {
   private seqId = '';
   /** Sequence id painted by the last render() — distinguishes a load from an edit re-render. */
   private renderedSeqId = '';
+  private history = new SnapshotHistory<Sequence>();
+  private historyTimer: number | undefined;
+  private historySeqId = '';
+  private undoBtn: HTMLButtonElement | null = null;
+  private redoBtn: HTMLButtonElement | null = null;
   /** A fresh load rendered while the panel was hidden (0 viewport); apply the initial scroll once visible. */
   private scrollPending = false;
   private playback: LivePlayback | null = null;
@@ -87,6 +93,7 @@ export class SequenceTab extends HTMLElement {
     bus.on('project:loaded', () => {
       clearInstrumentCache();
       void this.refreshInstruments();
+      for (const s of store.data.sequences) this.history.seed(s.id, s);
       this.render();
     });
     bus.on('project:changed', () => this.render());
@@ -118,6 +125,17 @@ export class SequenceTab extends HTMLElement {
     });
     bus.on('midi:noteoff', ({note}) => {
       if (this.isActive()) this.noteOffInternal(note);
+    });
+    // Ctrl+Z / Ctrl+Shift+Z: undo/redo the current sequence (sequence tab only)
+    window.addEventListener('keydown', e => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      if (!this.isActive()) return;
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
+      if (e.key.toLowerCase() !== 'z') return;
+      e.preventDefault();
+      if (e.shiftKey) this.redoSeq();
+      else this.undoSeq();
     });
     const tick = (): void => {
       this.applyPendingScroll();
@@ -157,6 +175,7 @@ export class SequenceTab extends HTMLElement {
   }
 
   private selectSeq(id: string): void {
+    this.flushHistoryCommit();
     this.seqId = id;
     updateUi(s => (s.sequence.seqId = id));
   }
@@ -168,6 +187,54 @@ export class SequenceTab extends HTMLElement {
   /** Current quantization in 16th-note steps (from the Quantize dropdown, stored in beats). */
   private qSteps(): number {
     return (uiState().sequence.quantize || 0.25) * 4;
+  }
+
+  /** Debounced history commit for the sequence being edited: 500ms of quiet = one undo step. */
+  private scheduleHistoryCommit(): void {
+    const seq = this.seq();
+    if (!seq) return;
+    // an edit to a different sequence than the pending one: capture the old edit first
+    if (this.historyTimer !== undefined && this.historySeqId !== seq.id) this.flushHistoryCommit();
+    this.historySeqId = seq.id;
+    clearTimeout(this.historyTimer);
+    this.historyTimer = window.setTimeout(() => this.flushHistoryCommit(), 500);
+  }
+
+  /** Commit any pending edit immediately (no-op when nothing is pending). */
+  private flushHistoryCommit(): void {
+    if (this.historyTimer === undefined) return;
+    clearTimeout(this.historyTimer);
+    this.historyTimer = undefined;
+    const seq = store.data.sequences.find(s => s.id === this.historySeqId);
+    if (seq) this.history.commit(seq.id, seq);
+    this.refreshHistoryButtons();
+  }
+
+  /** Sync Undo/Redo disabled state without a full re-render. */
+  private refreshHistoryButtons(): void {
+    const seq = this.seq();
+    if (this.undoBtn) this.undoBtn.disabled = !seq || !this.history.canUndo(seq.id);
+    if (this.redoBtn) this.redoBtn.disabled = !seq || !this.history.canRedo(seq.id);
+  }
+
+  private undoSeq(): void {
+    this.flushHistoryCommit();
+    const seq = this.seq();
+    if (!seq) return;
+    const restored = this.history.undo(seq.id);
+    if (!restored) return;
+    store.update(() => Object.assign(seq, restored));
+    this.rebuildLivePartIfPlaying();
+  }
+
+  private redoSeq(): void {
+    this.flushHistoryCommit();
+    const seq = this.seq();
+    if (!seq) return;
+    const restored = this.history.redo(seq.id);
+    if (!restored) return;
+    store.update(() => Object.assign(seq, restored));
+    this.rebuildLivePartIfPlaying();
   }
 
   // ---- live note input (monitor + record) ----
@@ -216,6 +283,7 @@ export class SequenceTab extends HTMLElement {
     const startStep = nearestSnapSteps(start.beat * 4, q) % totalSteps;
     const duration = Math.max(q, nearestSnapSteps((engine.positionBeats - start.beat) * 4, q));
     store.update(() => seq.notes.push({step: startStep, note, duration, velocity: start.velocity}));
+    this.scheduleHistoryCommit();
     this.rebuildLivePartIfPlaying();
   }
 
@@ -302,6 +370,7 @@ export class SequenceTab extends HTMLElement {
           created.push(seq);
         }
       });
+      for (const s of created) this.history.seed(s.id, s);
       if (created.length > 0) firstId ??= created[0].id;
       if (result.bpm !== null && Math.abs(result.bpm - engine.bpm) > 0.5) {
         const bpm = result.bpm;
@@ -351,6 +420,7 @@ export class SequenceTab extends HTMLElement {
             existing.instrument = data.instrument;
             existing.notes = data.notes;
           });
+          this.history.seed(existing.id, existing);
           lastId = existing.id;
         } else {
           const name = uniqueName(
@@ -359,11 +429,13 @@ export class SequenceTab extends HTMLElement {
           );
           const seq: Sequence = {id: uid(), name, bars: data.bars, instrument: data.instrument, notes: data.notes};
           store.update(d => d.sequences.push(seq));
+          this.history.seed(seq.id, seq);
           lastId = seq.id;
         }
       } else {
         const seq: Sequence = {id: uid(), name: data.name, bars: data.bars, instrument: data.instrument, notes: data.notes};
         store.update(d => d.sequences.push(seq));
+        this.history.seed(seq.id, seq);
         lastId = seq.id;
       }
     }
@@ -396,7 +468,10 @@ export class SequenceTab extends HTMLElement {
       if (res.ok) {
         await this.refreshInstruments();
         const seq = this.seq();
-        if (seq) store.update(() => (seq.instrument = {type: 'instrument', name: res.name}));
+        if (seq) {
+          store.update(() => (seq.instrument = {type: 'instrument', name: res.name}));
+          this.scheduleHistoryCommit();
+        }
         this.rebuildLivePartIfPlaying();
       } else {
         alert(res.error);
@@ -430,6 +505,7 @@ export class SequenceTab extends HTMLElement {
   /** After direct mutations of seq.notes: persist (triggers a re-render) + re-schedule. */
   private commitNotes(): void {
     store.update(() => {});
+    this.scheduleHistoryCommit();
     this.rebuildLivePartIfPlaying();
   }
 
@@ -602,6 +678,7 @@ export class SequenceTab extends HTMLElement {
       } else if (v.startsWith('synth:')) {
         store.update(() => (seq.instrument = {type: 'synth', kind: v.slice(6) as SynthKind}));
       }
+      this.scheduleHistoryCommit();
       this.monitorKey = '';
       this.rebuildLivePartIfPlaying();
     };
@@ -621,6 +698,7 @@ export class SequenceTab extends HTMLElement {
       await store.importAudioFile(file, path);
       this.monitorKey = '';
       store.update(() => (seq.instrument = {type: 'wav', file: path}));
+      this.scheduleHistoryCommit();
       this.rebuildLivePartIfPlaying();
     };
     input.click();
@@ -743,6 +821,7 @@ export class SequenceTab extends HTMLElement {
       n.velocity = Number(input.value) / 100;
       clip.style.opacity = String(0.35 + 0.65 * n.velocity);
       store.scheduleSave();
+      this.scheduleHistoryCommit();
     };
     pop.append(label, input);
     document.body.appendChild(pop);
@@ -902,6 +981,7 @@ export class SequenceTab extends HTMLElement {
           };
           this.selectSeq(s.id);
           store.update(d => d.sequences.push(s));
+          this.history.seed(s.id, s);
         },
       ),
       this.iconBtn(
@@ -919,6 +999,7 @@ export class SequenceTab extends HTMLElement {
           delete copy.wavFile;
           this.selectSeq(copy.id);
           store.update(d => d.sequences.push(copy));
+          this.history.seed(copy.id, copy);
         },
       ),
       this.iconBtn(
@@ -935,6 +1016,7 @@ export class SequenceTab extends HTMLElement {
               store.data.sequences.filter(s => s.id !== seq.id).map(s => s.name),
             );
           });
+          this.scheduleHistoryCommit();
         },
       ),
       this.iconBtn(
@@ -944,10 +1026,21 @@ export class SequenceTab extends HTMLElement {
         () => {
           if (!seq) return;
           this.stop();
-          this.selectSeq('');
           store.update(d => removeSequence(d, seq.id));
+          this.history.discard(seq.id);
+          this.selectSeq('');
         },
       ),
+      (this.undoBtn = this.iconBtn(
+        'Undo (Ctrl+Z)',
+        '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg>',
+        () => this.undoSeq(),
+      )),
+      (this.redoBtn = this.iconBtn(
+        'Redo (Ctrl+Shift+Z)',
+        '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/></svg>',
+        () => this.redoSeq(),
+      )),
       this.iconBtn(
         'Clear all notes',
         `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -981,6 +1074,7 @@ export class SequenceTab extends HTMLElement {
         () => this.exportSeqFile(),
       ),
     );
+    this.refreshHistoryButtons();
 
     if (seq) {
       const barsInput = document.createElement('input');
@@ -993,6 +1087,7 @@ export class SequenceTab extends HTMLElement {
         const v = Math.min(64, Math.max(1, Math.round(Number(barsInput.value) || 1)));
         barsInput.value = String(v);
         store.update(() => (seq.bars = v));
+        this.scheduleHistoryCommit();
       };
       const barsLabel = document.createElement('label');
       barsLabel.className = 'hint check-toggle';
