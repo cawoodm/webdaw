@@ -34,6 +34,7 @@ class EqualizerPlugin implements DawPlugin {
   private averager = new SpectrumAverager();
   private staticSpectrum: { mags: Float32Array; size: number; sampleRate: number } | null = null;
   private redrawUi: (() => void) | null = null;
+  private stopLoop: (() => void) | null = null;
 
   constructor() {
     this.rebuild();
@@ -97,6 +98,7 @@ class EqualizerPlugin implements DawPlugin {
   }
 
   dispose(): void {
+    this.stopLoop?.();
     for (const f of this.filters) f.dispose();
     this.inGain.dispose();
     this.analyser.dispose();
@@ -241,7 +243,8 @@ class EqualizerPlugin implements DawPlugin {
         cx.stroke();
       }
     };
-    startPluginCanvasLoop(canvas, () => !this.analyser.disposed, draw);
+    this.stopLoop?.();
+    this.stopLoop = startPluginCanvasLoop(canvas, () => !this.analyser.disposed, draw);
     this.redrawUi = (): void => this.renderStrip(strip, wrap);
 
     // ---- interactions ----

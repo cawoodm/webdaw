@@ -143,6 +143,7 @@ class SpectrumPlugin implements DawPlugin {
   private analyser = new Tone.Analyser('fft', 1024);
   readonly input = this.analyser;
   readonly output = this.analyser;
+  private stopLoop: (() => void) | null = null;
 
   createUI(): HTMLElement {
     const wrap = document.createElement('div');
@@ -152,7 +153,8 @@ class SpectrumPlugin implements DawPlugin {
     canvas.height = 120;
     canvas.className = 'spectrum-canvas';
     wrap.appendChild(canvas);
-    drawSpectrum(canvas, this.analyser);
+    this.stopLoop?.();
+    this.stopLoop = drawSpectrum(canvas, this.analyser);
     return wrap;
   }
 
@@ -163,6 +165,7 @@ class SpectrumPlugin implements DawPlugin {
   setState(): void {}
 
   dispose(): void {
+    this.stopLoop?.();
     this.analyser.dispose();
   }
 }
