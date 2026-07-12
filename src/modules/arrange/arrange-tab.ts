@@ -1,9 +1,11 @@
 import * as Tone from '../../core/tone';
 import { engine } from '../../core/audio-engine';
 import { bus } from '../../core/event-bus';
-import type { ArrangeClip, ArrangeTrack } from '../../core/model';
+import type { ArrangeClip, ArrangeTrack, ProjectData } from '../../core/model';
 import { MAX_BARS, uid } from '../../core/model';
+import { projects } from '../../core/project-manager';
 import { store } from '../../core/project-store';
+import { SnapshotHistory } from '../../core/history';
 import { uiState, updateUi } from '../../core/ui-state';
 import { connectChain, PluginChainEl } from '../../plugins/chain';
 import type { DawPlugin } from '../../plugins/api';
@@ -38,11 +40,18 @@ const ICONS = {
   copy: `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`,
   zoomIn: `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3M11 8v6M8 11h6"/></svg>`,
   zoomOut: `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3M8 11h6"/></svg>`,
+  toStart: `<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><rect x="5" y="5" width="2" height="14"/><path d="M19 5 9 12l10 7z"/></svg>`,
+  stepBack: `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>`,
+  stepForward: `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>`,
 };
 
 export class ArrangeTab extends HTMLElement {
   private palette = '';
+  private sampleFiles: { path: string; source: 'project' | 'global' }[] = [];
+  private samplesScanned = false;
   private activeSong: SongPlaybackHandles | null = null;
+  /** Bar playback last started from (opts.fromBar) — combined with engine.positionBeats for the moving playhead. */
+  private playFromBar = 0;
   private liveTrackNodes = new Map<string, { inGain: Tone.Gain; chain: PluginChainEl }>();
   private ephemeralClipFx: DawPlugin[] = [];
   // ---- view state (rebuilt by render, consumed by the rAF loop) ----
@@ -50,6 +59,12 @@ export class ArrangeTab extends HTMLElement {
   private clipEls = new Map<string, HTMLElement>();
   private selectedClipId: string | null = null;
   private viewDirty = true;
+  // ---- undo/redo ----
+  private history = new SnapshotHistory<ProjectData['arrangement']>();
+  private historyTimer: number | undefined;
+  private undoBtn: HTMLButtonElement | null = null;
+  private redoBtn: HTMLButtonElement | null = null;
+  private static readonly HISTORY_KEY = 'arrangement';
 
   connectedCallback(): void {
     this.className = 'tab-panel arrange-tab';
@@ -57,7 +72,15 @@ export class ArrangeTab extends HTMLElement {
       this.palette = uiState().arrange.palette;
       this.render();
     });
-    bus.on('project:loaded', () => this.render());
+    bus.on('project:loaded', () => {
+      this.history.seed(ArrangeTab.HISTORY_KEY, store.data.arrangement);
+      this.samplesScanned = false;
+      void this.refreshSamples();
+      this.render();
+    });
+    bus.on('tab:activate', (tab) => {
+      if (tab === 'arrange') void this.refreshSamples();
+    });
     // absolute-time playback survives tab switches; yield when another
     // module claims playback
     bus.on('transport:claim', ({ owner }) => {
@@ -77,6 +100,61 @@ export class ArrangeTab extends HTMLElement {
     this.render();
   }
 
+  /** Rescan samples/ (project) and _samples/ (root) for the palette; re-renders only when the list actually changed. */
+  private async refreshSamples(): Promise<void> {
+    const next = await projects.listSamples();
+    const changed = JSON.stringify(next) !== JSON.stringify(this.sampleFiles);
+    const firstScan = !this.samplesScanned;
+    this.samplesScanned = true;
+    if (changed || firstScan) {
+      this.sampleFiles = next;
+      this.render();
+    }
+  }
+
+  // ---- undo/redo ----
+
+  /** Debounced history commit: 500ms of no further arrange edits = one undo step. */
+  private scheduleHistoryCommit(): void {
+    clearTimeout(this.historyTimer);
+    this.historyTimer = window.setTimeout(() => this.flushHistoryCommit(), 500);
+  }
+
+  /** Commit any pending edit immediately (before undo/redo read the stack). */
+  private flushHistoryCommit(): void {
+    if (this.historyTimer === undefined) return;
+    clearTimeout(this.historyTimer);
+    this.historyTimer = undefined;
+    this.history.commit(ArrangeTab.HISTORY_KEY, store.data.arrangement);
+    this.refreshHistoryButtons();
+  }
+
+  /** Sync Undo/Redo disabled state without a full re-render. */
+  private refreshHistoryButtons(): void {
+    if (this.undoBtn) this.undoBtn.disabled = !this.history.canUndo(ArrangeTab.HISTORY_KEY);
+    if (this.redoBtn) this.redoBtn.disabled = !this.history.canRedo(ArrangeTab.HISTORY_KEY);
+  }
+
+  private undoArrange(): void {
+    this.flushHistoryCommit();
+    const restored = this.history.undo(ArrangeTab.HISTORY_KEY);
+    if (!restored) return;
+    store.update((d) => {
+      d.arrangement = restored;
+    });
+    this.render();
+  }
+
+  private redoArrange(): void {
+    this.flushHistoryCommit();
+    const restored = this.history.redo(ArrangeTab.HISTORY_KEY);
+    if (!restored) return;
+    store.update((d) => {
+      d.arrangement = restored;
+    });
+    this.render();
+  }
+
   // ---- prefs ----
 
   private pxPerBar(): number {
@@ -91,6 +169,10 @@ export class ArrangeTab extends HTMLElement {
     return store.data.arrangement.bars;
   }
 
+  private cursorBar(): number {
+    return uiState().arrange.cursorBar;
+  }
+
   private barSeconds(): number {
     return engine.secondsPerBeat() * 4;
   }
@@ -102,7 +184,10 @@ export class ArrangeTab extends HTMLElement {
     if (!nodes) {
       const inGain = new Tone.Gain(track.gain);
       const chain = document.createElement('plugin-chain') as PluginChainEl;
-      chain.bind(inGain, songBus, track.plugins, () => store.scheduleSave());
+      chain.bind(inGain, songBus, track.plugins, () => {
+        store.scheduleSave();
+        this.scheduleHistoryCommit();
+      });
       nodes = { inGain, chain };
       this.liveTrackNodes.set(track.id, nodes);
     }
@@ -127,14 +212,64 @@ export class ArrangeTab extends HTMLElement {
     engine.claimTransport('arrange');
     const tracks = store.data.arrangement.tracks;
     const resolved = await resolveSong(tracks);
+    this.playFromBar = this.cursorBar();
     this.activeSong = scheduleSong(tracks, resolved, {
       songBus: engine.master,
       startSeconds: Tone.now() + 0.15,
       barSeconds: this.barSeconds(),
       secondsPerStep: engine.secondsPerStep(),
       provider: this.liveProvider(),
+      fromBar: this.playFromBar,
     });
     engine.play();
+  }
+
+  /** True while this tab's song is actually sounding — the moving playhead only applies then. */
+  private transportActive(): boolean {
+    return engine.started && engine.playing && this.activeSong !== null;
+  }
+
+  /** Restart playback from the cursor's current value — used by every cursor-moving action while playing. */
+  private restartIfPlaying(): void {
+    if (!this.transportActive()) return;
+    this.stop();
+    if (engine.started) engine.stop();
+    void this.play();
+  }
+
+  /** Move the play cursor, persist it, and restart playback from there if currently playing. */
+  private setCursor(bar: number): void {
+    const clamped = Math.max(0, Math.min(this.songBarsCount(), bar));
+    updateUi((s) => (s.arrange.cursorBar = clamped));
+    this.viewDirty = true;
+    this.restartIfPlaying();
+  }
+
+  /** The bar to step from: the live playhead while playing, else the parked cursor. */
+  private currentBar(): number {
+    return this.transportActive() ? this.playFromBar + engine.positionBeats / 4 : this.cursorBar();
+  }
+
+  private toStart(): void {
+    this.setCursor(0);
+  }
+
+  private stepBack(): void {
+    this.setCursor(Math.max(0, Math.floor(this.currentBar() - 1)));
+  }
+
+  private stepForward(): void {
+    const bars = this.songBarsCount();
+    this.setCursor(Math.min(Math.max(0, bars - 1), Math.floor(this.currentBar()) + 1));
+  }
+
+  private onRulerClick(e: MouseEvent): void {
+    const scroll = this.querySelector<HTMLElement>('.arrange-scroll');
+    if (!scroll) return;
+    const px = this.pxPerBar();
+    const bar = (e.offsetX + scroll.scrollLeft) / px;
+    const snapped = floorSnapBar(bar, this.snapBeats());
+    this.setCursor(Math.max(0, Math.min(this.songBarsCount() - 1e-9, snapped)));
   }
 
   private stop(): void {
@@ -177,9 +312,17 @@ export class ArrangeTab extends HTMLElement {
 
   private onKeydown(e: KeyboardEvent): void {
     if (!this.classList.contains('active-tab')) return;
-    if (e.key !== 'Delete' && e.key !== 'Backspace') return;
     const target = e.target as HTMLElement;
-    if (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA') return;
+    const isTextInput = target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA';
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+      if (isTextInput) return;
+      e.preventDefault();
+      if (e.shiftKey) this.redoArrange();
+      else this.undoArrange();
+      return;
+    }
+    if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+    if (isTextInput) return;
     const id = this.selectedClipId;
     if (!id) return;
     e.preventDefault();
@@ -189,6 +332,7 @@ export class ArrangeTab extends HTMLElement {
         if (i >= 0) t.clips.splice(i, 1);
       }
     });
+    this.scheduleHistoryCommit();
     this.selectedClipId = null;
     this.clipEls.get(id)?.remove();
     this.clipEls.delete(id);
@@ -225,6 +369,7 @@ export class ArrangeTab extends HTMLElement {
         const i = track.clips.indexOf(clip);
         if (i >= 0) track.clips.splice(i, 1);
       });
+      this.scheduleHistoryCommit();
       if (this.selectedClipId === clip.id) this.selectedClipId = null;
       el.remove();
       this.clipEls.delete(clip.id);
@@ -295,6 +440,7 @@ export class ArrangeTab extends HTMLElement {
             targetTrack.clips.push(clip);
           }
         });
+        this.scheduleHistoryCommit();
         this.render(); // re-parents the clip element into the target row + refreshes maps
         if (this.activeSong) void this.play(); // hear edits immediately, matching the sequence tab
       };
@@ -353,12 +499,16 @@ export class ArrangeTab extends HTMLElement {
         knob({ label: 'Clip gain', min: 0, max: 1.5, step: 0.01, value: clip.gain }, (v) => {
           clip.gain = v;
           store.scheduleSave();
+          this.scheduleHistoryCommit();
         }),
       );
       // throwaway audio pair: the chain edits clip.plugins in place; audible on the clip's next play
       const inGain = new Tone.Gain(0).connect(engine.master);
       const chain = document.createElement('plugin-chain') as PluginChainEl;
-      chain.bind(inGain, engine.master, clip.plugins, () => store.scheduleSave());
+      chain.bind(inGain, engine.master, clip.plugins, () => {
+        store.scheduleSave();
+        this.scheduleHistoryCommit();
+      });
       this.clipFxTeardown = (): void => {
         chain.teardown();
         inGain.dispose();
@@ -443,12 +593,13 @@ export class ArrangeTab extends HTMLElement {
     const playhead = this.querySelector<HTMLElement>('.arrange-playhead');
     const scroll = this.querySelector<HTMLElement>('.arrange-scroll');
     if (!playhead || !scroll) return;
-    const active = engine.started && engine.playing && this.activeSong !== null;
-    playhead.classList.toggle('hidden', !active);
-    if (!active) return;
-    const barsPos = engine.positionBeats / 4;
+    const active = this.transportActive();
+    // stopped: still show the (dimmed) line at the parked cursor instead of hiding it
+    playhead.classList.toggle('cursor', !active);
+    const barsPos = active ? this.playFromBar + engine.positionBeats / 4 : this.cursorBar();
     const x = HEAD_W + barsPos * this.pxPerBar();
     playhead.style.left = `${x}px`;
+    if (!active) return;
     const viewWidth = scroll.clientWidth;
     const margin = viewWidth * 0.2;
     const vx = x - scroll.scrollLeft;
@@ -488,7 +639,8 @@ export class ArrangeTab extends HTMLElement {
     corner.className = 'arrange-corner';
     const ruler = document.createElement('canvas');
     ruler.className = 'arrange-ruler';
-    ruler.title = 'Bars';
+    ruler.title = 'Click: move the play cursor to the nearest bar (snapped)';
+    ruler.onclick = (e): void => this.onRulerClick(e);
     rulerRow.append(corner, ruler);
     scroll.appendChild(rulerRow);
 
@@ -499,7 +651,7 @@ export class ArrangeTab extends HTMLElement {
     }
 
     const playhead = document.createElement('div');
-    playhead.className = 'arrange-playhead hidden';
+    playhead.className = 'arrange-playhead';
     scroll.appendChild(playhead);
 
     this.appendChild(scroll);
@@ -571,15 +723,29 @@ export class ArrangeTab extends HTMLElement {
     const files = new Set<string>();
     for (const p of store.data.patches) if (p.wavFile) files.add(p.wavFile);
     for (const pad of store.data.pads) if (pad?.file) files.add(pad.file);
+    for (const s of this.sampleFiles) if (s.source === 'project') files.add(s.path);
     const fileGroup = group('Files');
-    for (const f of files) {
+    for (const f of [...files].sort((a, b) => a.localeCompare(b))) {
       const opt = document.createElement('option');
       opt.value = `file:${f}`;
       opt.textContent = f.split('/').pop() ?? f;
       opt.selected = this.palette === opt.value;
       fileGroup.appendChild(opt);
     }
-    if (this.palette && !Array.from(palette.options).some((o) => o.value === this.palette)) {
+    const globalFiles = this.sampleFiles.filter((s) => s.source === 'global');
+    if (globalFiles.length > 0) {
+      const globalGroup = group('Global samples');
+      for (const s of globalFiles) {
+        const opt = document.createElement('option');
+        opt.value = `file:${s.path}`;
+        opt.textContent = s.path.split('/').pop() ?? s.path;
+        opt.selected = this.palette === opt.value;
+        globalGroup.appendChild(opt);
+      }
+    }
+    // A `file:` palette value may point at a scanned-only sample — don't clear it before the async scan completes.
+    const canValidate = this.samplesScanned || !this.palette.startsWith('file:');
+    if (this.palette && canValidate && !Array.from(palette.options).some((o) => o.value === this.palette)) {
       this.palette = '';
       updateUi((s) => (s.arrange.palette = ''));
     }
@@ -602,6 +768,20 @@ export class ArrangeTab extends HTMLElement {
       this.render();
     };
 
+    const undoBtn = iconBtn(
+      'Undo (Ctrl+Z)',
+      '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg>',
+      () => this.undoArrange(),
+    );
+    const redoBtn = iconBtn(
+      'Redo (Ctrl+Shift+Z)',
+      '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/></svg>',
+      () => this.redoArrange(),
+    );
+    this.undoBtn = undoBtn;
+    this.redoBtn = redoBtn;
+    this.refreshHistoryButtons();
+
     const lengthWrap = document.createElement('label');
     lengthWrap.className = 'arrange-length';
     lengthWrap.title = `Song length in bars (1–${MAX_BARS})`;
@@ -614,6 +794,7 @@ export class ArrangeTab extends HTMLElement {
     length.onchange = (): void => {
       const v = Math.max(1, Math.min(MAX_BARS, Math.round(Number(length.value) || 1)));
       store.update((d) => (d.arrangement.bars = v));
+      this.scheduleHistoryCommit();
       this.render();
     };
     lengthWrap.appendChild(length);
@@ -638,6 +819,7 @@ export class ArrangeTab extends HTMLElement {
           clips: [],
         }),
       );
+      this.scheduleHistoryCommit();
       this.render();
     };
 
@@ -647,13 +829,18 @@ export class ArrangeTab extends HTMLElement {
     exportBtn.onclick = (): void => void this.exportSong();
 
     bar.append(
+      iconBtn('Play cursor to start (bar 1)', ICONS.toStart, () => this.toStart()),
+      iconBtn('Play cursor back one bar', ICONS.stepBack, () => this.stepBack()),
       transportButton('play', 'Play the song (Space)', () => void this.play()),
       transportButton('stop', 'Stop (Space)', () => {
         this.stop();
         if (engine.started) engine.stop();
       }),
+      iconBtn('Play cursor forward one bar', ICONS.stepForward, () => this.stepForward()),
       palette,
       snap,
+      undoBtn,
+      redoBtn,
       lengthWrap,
       iconBtn('Zoom out (fewer px per bar)', ICONS.zoomOut, () => zoom(-1)),
       iconBtn('Zoom in (more px per bar)', ICONS.zoomIn, () => zoom(1)),
@@ -687,6 +874,7 @@ export class ArrangeTab extends HTMLElement {
       const next = prompt('Track name', track.name);
       if (!next) return;
       store.update(() => (track.name = next));
+      this.scheduleHistoryCommit();
       this.render();
     };
 
@@ -699,12 +887,14 @@ export class ArrangeTab extends HTMLElement {
     };
     const muteBtn = iconBtn('Mute track', ICONS.mute, () => {
       store.update(() => (track.muted = !track.muted));
+      this.scheduleHistoryCommit();
       this.render();
     });
     muteBtn.classList.add('mute-btn');
     muteBtn.classList.toggle('active', !!track.muted);
     const soloBtn = iconBtn('Solo track — only soloed tracks play', ICONS.solo, () => {
       store.update(() => (track.solo = !track.solo));
+      this.scheduleHistoryCommit();
       this.render();
     });
     soloBtn.classList.add('solo-btn');
@@ -726,6 +916,7 @@ export class ArrangeTab extends HTMLElement {
         }
         d.arrangement.tracks.splice(d.arrangement.tracks.indexOf(track) + 1, 0, copy);
       });
+      this.scheduleHistoryCommit();
       this.render();
     });
     const delBtn = iconBtn('Remove track', '✕', () => {
@@ -734,6 +925,7 @@ export class ArrangeTab extends HTMLElement {
       store.update((d) => {
         d.arrangement.tracks = d.arrangement.tracks.filter((t) => t.id !== track.id);
       });
+      this.scheduleHistoryCommit();
       this.render();
     });
 
@@ -748,6 +940,7 @@ export class ArrangeTab extends HTMLElement {
         const nodes = this.liveTrackNodes.get(track.id);
         if (nodes) nodes.inGain.gain.value = v;
         store.scheduleSave();
+        this.scheduleHistoryCommit();
       }),
       dupBtn,
       delBtn,
@@ -773,6 +966,7 @@ export class ArrangeTab extends HTMLElement {
             ? { type: 'pad' as const, index: Number(this.palette.slice(4)) }
             : { type: 'file' as const, file: this.palette.slice(5) };
       store.update(() => track.clips.push({ id: uid(), bar, ref, gain: 1, plugins: [] }));
+      this.scheduleHistoryCommit();
       this.viewDirty = true;
     };
 
