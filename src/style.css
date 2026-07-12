@@ -1137,6 +1137,50 @@ button.recording {
   width: 100%;
 }
 
+.eq2-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.eq2-canvas {
+  background: #000;
+  border-radius: 4px;
+  touch-action: none;
+}
+
+.eq2-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.eq2-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1px 6px;
+}
+
+.eq2-chip.off {
+  opacity: 0.5;
+}
+
+.eq2-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.eq2-add {
+  font-size: 11px;
+  padding: 1px 6px;
+}
+
 /* ---- dialogs ---- */
 dialog {
   background: var(--bg-card);

@@ -2,6 +2,7 @@ import * as Tone from '../core/tone';
 import { knob } from '../ui/knob';
 import type { DawPlugin, ParamSpec, PluginFactory, PluginMeta } from './api';
 import { drawSpectrum } from './spectrum-view';
+import { EQ_FACTORY } from './equalizer';
 
 /** Generic wrapper: a Tone effect + knob per parameter. */
 class EffectPlugin implements DawPlugin {
@@ -166,81 +167,9 @@ class SpectrumPlugin implements DawPlugin {
   }
 }
 
-/** 3-band EQ (high-pass, peak, low-pass) drawn over a live spectrum. */
-class EqPlugin implements DawPlugin {
-  readonly meta: PluginMeta = { id: 'eq', name: 'EQ' };
-  private hp = new Tone.Filter(40, 'highpass');
-  private peak = new Tone.Filter({ frequency: 1000, type: 'peaking', Q: 1 });
-  private lp = new Tone.Filter(18000, 'lowpass');
-  private analyser = new Tone.Analyser('fft', 1024);
-  readonly input: Tone.ToneAudioNode = this.hp;
-  readonly output: Tone.ToneAudioNode = this.analyser;
-  private state: Record<string, number> = { hpFreq: 40, peakFreq: 1000, peakGain: 0, lpFreq: 18000 };
-
-  constructor() {
-    this.hp.connect(this.peak);
-    this.peak.connect(this.lp);
-    this.lp.connect(this.analyser);
-  }
-
-  private apply(): void {
-    this.hp.frequency.value = this.state.hpFreq;
-    this.peak.frequency.value = this.state.peakFreq;
-    (this.peak as unknown as { gain: Tone.Param<'decibels'> }).gain.value = this.state.peakGain;
-    this.lp.frequency.value = this.state.lpFreq;
-  }
-
-  createUI(): HTMLElement {
-    const wrap = document.createElement('div');
-    wrap.className = 'eq-wrap';
-    const canvas = document.createElement('canvas');
-    canvas.width = 360;
-    canvas.height = 100;
-    canvas.className = 'spectrum-canvas';
-    wrap.appendChild(canvas);
-    drawSpectrum(canvas, this.analyser);
-    const row = document.createElement('div');
-    row.className = 'plugin-params';
-    const mk = (key: string, label: string, min: number, max: number, unit: string): void => {
-      row.appendChild(
-        knob({ label, min, max, step: 1, value: this.state[key], log: min > 0, unit }, (v) => {
-          this.state[key] = v;
-          this.apply();
-          row.dispatchEvent(new CustomEvent('plugin-state-changed', { bubbles: true }));
-        }),
-      );
-    };
-    mk('hpFreq', 'HighPass', 20, 2000, 'Hz');
-    mk('peakFreq', 'Peak', 100, 10000, 'Hz');
-    row.appendChild(
-      knob({ label: 'Gain', min: -24, max: 24, step: 0.5, value: this.state.peakGain, unit: 'dB' }, (v) => {
-        this.state.peakGain = v;
-        this.apply();
-        row.dispatchEvent(new CustomEvent('plugin-state-changed', { bubbles: true }));
-      }),
-    );
-    mk('lpFreq', 'LowPass', 200, 20000, 'Hz');
-    wrap.appendChild(row);
-    return wrap;
-  }
-
-  getState(): Record<string, number> {
-    return { ...this.state };
-  }
-
-  setState(state: Record<string, number>): void {
-    Object.assign(this.state, state);
-    this.apply();
-  }
-
-  dispose(): void {
-    for (const n of [this.hp, this.peak, this.lp, this.analyser]) n.dispose();
-  }
-}
-
 export const PLUGIN_REGISTRY: PluginFactory[] = [
   { meta: { id: 'spectrum', name: 'Spectrum' }, create: () => new SpectrumPlugin() },
-  { meta: { id: 'eq', name: 'EQ' }, create: () => new EqPlugin() },
+  EQ_FACTORY,
   delayFactory,
   reverbFactory,
   chorusFactory,
