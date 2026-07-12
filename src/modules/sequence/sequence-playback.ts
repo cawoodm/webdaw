@@ -155,6 +155,11 @@ export interface ScheduledSequence {
  * handle to dispose the synth/sampler this call created — callers scheduling
  * this live (as opposed to a one-shot Tone.Offline render that's discarded
  * wholesale right after) must dispose it once the sequence's playback ends.
+ *
+ * `skipBeats` (default 0, i.e. today's behavior unchanged) drops notes that
+ * start before that many beats into the sequence — used when a play-cursor
+ * lands inside this clip. There is no mid-note resume: a dropped note simply
+ * never sounds.
  */
 export function scheduleSequenceAt(
   seq: Sequence,
@@ -162,10 +167,13 @@ export function scheduleSequenceAt(
   secondsPerStep: number,
   resolved: ResolvedInstrument,
   startSeconds = 0,
+  skipBeats = 0,
 ): ScheduledSequence {
   const synth = resolved.instrument.type === 'synth' ? makeSynth(resolved.instrument.kind).connect(dest) : null;
   const sampler = resolved.instrument.type === 'instrument' ? makeInstrumentPlayer(resolved.loaded!, dest) : null;
+  const skipSteps = skipBeats * 4;
   for (const n of seq.notes) {
+    if (n.step < skipSteps) continue;
     const time = startSeconds + n.step * secondsPerStep + 0.01;
     triggerNote(resolved, dest, synth, sampler, n, time, secondsPerStep, false);
   }
