@@ -5,6 +5,12 @@ export interface PluginMeta {
   name: string;
 }
 
+/** Optional host context handed to plugin UIs (chain host decides what it knows). */
+export interface PluginUiContext {
+  /** Offline-render the pre-FX source audio this chain is attached to, if known. */
+  renderSource?: () => Promise<AudioBuffer | null>;
+}
+
 /**
  * A DAW plugin is an audio processor with a small UI.
  * Nodes are created against the currently active Tone context, so plugins
@@ -14,7 +20,7 @@ export interface DawPlugin {
   readonly meta: PluginMeta;
   readonly input: Tone.ToneAudioNode;
   readonly output: Tone.ToneAudioNode;
-  createUI(): HTMLElement;
+  createUI(ctx?: PluginUiContext): HTMLElement;
   getState(): Record<string, number>;
   setState(state: Record<string, number>): void;
   dispose(): void;

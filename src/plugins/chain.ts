@@ -1,7 +1,7 @@
 import * as Tone from '../core/tone';
 import type { PluginInstanceState } from '../core/model';
 import { uid } from '../core/model';
-import type { DawPlugin } from './api';
+import type { DawPlugin, PluginUiContext } from './api';
 import { createPlugin, PLUGIN_REGISTRY } from './builtins';
 
 /**
@@ -44,17 +44,20 @@ export class PluginChainEl extends HTMLElement {
   private states: PluginInstanceState[] = [];
   private live = new Map<string, DawPlugin>();
   private onChange: () => void = () => {};
+  private ctx: PluginUiContext | undefined;
 
   bind(
     inNode: Tone.ToneAudioNode,
     outNode: Tone.ToneAudioNode,
     states: PluginInstanceState[],
     onChange: () => void,
+    ctx?: PluginUiContext,
   ): void {
     this.inNode = inNode;
     this.outNode = outNode;
     this.states = states;
     this.onChange = onChange;
+    this.ctx = ctx;
     this.rewire();
     this.render();
   }
@@ -111,6 +114,7 @@ export class PluginChainEl extends HTMLElement {
       header.innerHTML = `<span class="plugin-name">${plugin.meta.name}</span>`;
       const bypassBtn = document.createElement('button');
       bypassBtn.textContent = st.bypassed ? 'On' : 'Bypass';
+      bypassBtn.classList.toggle('active', st.bypassed);
       bypassBtn.onclick = (): void => {
         st.bypassed = !st.bypassed;
         this.rewire();
@@ -127,7 +131,7 @@ export class PluginChainEl extends HTMLElement {
       };
       header.append(bypassBtn, removeBtn);
       host.appendChild(header);
-      const ui = plugin.createUI();
+      const ui = plugin.createUI(this.ctx);
       ui.addEventListener('plugin-state-changed', () => {
         st.state = plugin.getState();
         this.onChange();

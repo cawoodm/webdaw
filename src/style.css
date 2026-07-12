@@ -1091,11 +1091,26 @@ button.recording {
   opacity: 0.5;
 }
 
+.plugin-host.bypassed > :not(.plugin-host-header) {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+.plugin-host.bypassed .plugin-name {
+  text-decoration: line-through;
+  color: var(--text-dim);
+}
+
 .plugin-host-header {
   display: flex;
   align-items: center;
   gap: 8px;
   margin-bottom: 6px;
+}
+
+.plugin-host-header button.active {
+  color: var(--accent-2);
+  border-color: var(--accent-2);
 }
 
 .plugin-name {
