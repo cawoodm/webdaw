@@ -1,7 +1,8 @@
 import * as Tone from '../../core/tone';
 import { engine } from '../../core/audio-engine';
 import { bus } from '../../core/event-bus';
-import type { PadConfig, PadEvent, PadLoop, TonePatch } from '../../core/model';
+import { SnapshotHistory } from '../../core/history';
+import type { PadConfig, PadEvent, PadLoop, ProjectData, TonePatch } from '../../core/model';
 import { defaultLoop, defaultPatch, PAD_COUNT, removeLoop, sortedByName, toneBufferKey, uid } from '../../core/model';
 import { ensurePadBuffers, padBuffer, padSeconds, playPadInto } from '../../core/pad-voice';
 import { renderPatch } from '../../core/patch-voice';
@@ -54,6 +55,12 @@ export class SampleTab extends HTMLElement {
   private lastPlayState = false;
   /** Last number shown in the count-in overlay (-1 when hidden), to avoid DOM churn per frame. */
   private lastCountShown = -1;
+  // ---- undo/redo ----
+  private history = new SnapshotHistory<{ pads: ProjectData['pads']; padLoops: ProjectData['padLoops'] }>();
+  private historyTimer: number | undefined;
+  private undoBtn: HTMLButtonElement | null = null;
+  private redoBtn: HTMLButtonElement | null = null;
+  private static readonly HISTORY_KEY = 'sample';
 
   connectedCallback(): void {
     this.className = 'tab-panel sample-tab';
@@ -88,6 +95,7 @@ export class SampleTab extends HTMLElement {
     };
     requestAnimationFrame(indicatorTick);
     bus.on('project:loaded', () => {
+      this.history.seed(SampleTab.HISTORY_KEY, this.sampleSnapshot());
       this.render();
       void this.ensureToneBuffers();
     });
@@ -124,8 +132,68 @@ export class SampleTab extends HTMLElement {
     updateUi((s) => (s.sample.loopId = id));
   }
 
+  // ---- undo/redo ----
+
+  private sampleSnapshot(): { pads: ProjectData['pads']; padLoops: ProjectData['padLoops'] } {
+    return { pads: store.data.pads, padLoops: store.data.padLoops };
+  }
+
+  /** Debounced history commit: 500ms of no further sample edits = one undo step. */
+  private scheduleHistoryCommit(): void {
+    clearTimeout(this.historyTimer);
+    this.historyTimer = window.setTimeout(() => this.flushHistoryCommit(), 500);
+  }
+
+  /** Commit any pending edit immediately (no-op when nothing is pending). */
+  private flushHistoryCommit(): void {
+    if (this.historyTimer === undefined) return;
+    clearTimeout(this.historyTimer);
+    this.historyTimer = undefined;
+    this.history.commit(SampleTab.HISTORY_KEY, this.sampleSnapshot());
+    this.refreshHistoryButtons();
+  }
+
+  /** Sync Undo/Redo disabled state without a full re-render. */
+  private refreshHistoryButtons(): void {
+    if (this.undoBtn) this.undoBtn.disabled = !this.history.canUndo(SampleTab.HISTORY_KEY);
+    if (this.redoBtn) this.redoBtn.disabled = !this.history.canRedo(SampleTab.HISTORY_KEY);
+  }
+
+  private undoSample(): void {
+    this.flushHistoryCommit();
+    const restored = this.history.undo(SampleTab.HISTORY_KEY);
+    if (!restored) return;
+    store.update((d) => {
+      d.pads = restored.pads;
+      d.padLoops = restored.padLoops;
+    });
+    this.render();
+    void this.ensureToneBuffers();
+  }
+
+  private redoSample(): void {
+    this.flushHistoryCommit();
+    const restored = this.history.redo(SampleTab.HISTORY_KEY);
+    if (!restored) return;
+    store.update((d) => {
+      d.pads = restored.pads;
+      d.padLoops = restored.padLoops;
+    });
+    this.render();
+    void this.ensureToneBuffers();
+  }
+
   /** Keypad 1-8 fire pads 1-8; Shift+1-8 fire pads 9-16 (sample tab only). */
   private onKeyDown = (e: KeyboardEvent): void => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+      if (!this.classList.contains('active-tab')) return;
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
+      e.preventDefault();
+      if (e.shiftKey) this.redoSample();
+      else this.undoSample();
+      return;
+    }
     if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
     if (!this.classList.contains('active-tab')) return;
     const target = e.target as HTMLElement;
@@ -170,6 +238,7 @@ export class SampleTab extends HTMLElement {
       const prev = d.pads[index];
       d.pads[index] = { name, toneId: patchId, color: prev?.color, gain: prev?.gain ?? 1, trimStart: 0, trimEnd: 0 };
     });
+    this.scheduleHistoryCommit();
     this.selected = index;
     updateUi((s) => (s.sample.selectedPad = index));
     this.render();
@@ -211,6 +280,7 @@ export class SampleTab extends HTMLElement {
       // round to the nearest quantize step (may wrap past the loop end)
       const time = this.nearestSnap(posBeats % this.loopBeats()) % this.loopBeats();
       store.update(() => this.loop().events.push({ pad: index, time }));
+      this.scheduleHistoryCommit();
       this.updateStatus();
     }
   }
@@ -395,6 +465,7 @@ export class SampleTab extends HTMLElement {
   /** After direct mutations of padEvents: persist, re-render, re-schedule. */
   private commitGridEdit(): void {
     store.update(() => {});
+    this.scheduleHistoryCommit();
     this.rebuildLoopPartIfPlaying();
   }
 
@@ -675,6 +746,7 @@ export class SampleTab extends HTMLElement {
           d.padLoops.push(target);
         }
       });
+      this.scheduleHistoryCommit();
       this.selectLoop(target!.id);
       this.flash(`Imported "${target!.name}"`);
     }
@@ -809,6 +881,7 @@ export class SampleTab extends HTMLElement {
     }
     barsSel.onchange = (): void => {
       store.update(() => (loop.bars = Number(barsSel.value)));
+      this.scheduleHistoryCommit();
     };
     const quantSel = document.createElement('select');
     quantSel.title = 'Quantize: recording rounds to the nearest step, grid edits snap down to it';
@@ -851,6 +924,20 @@ export class SampleTab extends HTMLElement {
       '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Export';
     exportBtn.onclick = (): void => void this.exportLoop();
 
+    const undoBtn = iconBtn(
+      'Undo (Ctrl+Z)',
+      '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></svg>',
+      () => this.undoSample(),
+    );
+    const redoBtn = iconBtn(
+      'Redo (Ctrl+Shift+Z)',
+      '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H10a6 6 0 0 0 0 12h3"/></svg>',
+      () => this.redoSample(),
+    );
+    this.undoBtn = undoBtn;
+    this.redoBtn = redoBtn;
+    this.refreshHistoryButtons();
+
     bar.append(
       loopSel,
       iconBtn(
@@ -865,6 +952,7 @@ export class SampleTab extends HTMLElement {
             events: [],
           };
           store.update((d) => d.padLoops.push(l));
+          this.scheduleHistoryCommit();
           this.selectLoop(l.id);
           this.render();
         },
@@ -879,6 +967,7 @@ export class SampleTab extends HTMLElement {
           store.update(() => {
             loop.name = uniqueName(name.trim(), store.data.padLoops.filter((l) => l.id !== loop.id).map((l) => l.name));
           });
+          this.scheduleHistoryCommit();
           this.render();
         },
       ),
@@ -890,10 +979,13 @@ export class SampleTab extends HTMLElement {
           this.stopLoop();
           this.recording = false;
           store.update((d) => removeLoop(d, loop.id));
+          this.history.seed(SampleTab.HISTORY_KEY, this.sampleSnapshot());
           this.selectLoop('');
           this.render();
         },
       ),
+      undoBtn,
+      redoBtn,
       barsSel,
       quantWrap,
       check('Count-in', 'One bar of metronome clicks before recording starts', uiState().sample.countIn, (v) =>
@@ -904,6 +996,7 @@ export class SampleTab extends HTMLElement {
       ),
       btn('Clear events', () => {
         store.update(() => (this.loop().events = []));
+        this.scheduleHistoryCommit();
         this.updateStatus();
       }),
       exportBtn,
@@ -966,6 +1059,7 @@ export class SampleTab extends HTMLElement {
             for (const c of t.clips)
               if (c.ref.type === 'pad') c.ref.index = c.ref.index === from ? i : c.ref.index === i ? from : c.ref.index;
         });
+        this.scheduleHistoryCommit();
         this.selected = i;
         updateUi((s) => (s.sample.selectedPad = i));
         this.render();
@@ -1014,6 +1108,7 @@ export class SampleTab extends HTMLElement {
         const prev = d.pads[index];
         d.pads[index] = { name: patch.name, toneId: patch.id, color: prev?.color, gain: prev?.gain ?? 1, trimStart: 0, trimEnd: 0 };
       });
+      this.scheduleHistoryCommit();
       this.render();
     };
     editor.appendChild(toneSel);
@@ -1035,6 +1130,7 @@ export class SampleTab extends HTMLElement {
           const prev = d.pads[index];
           d.pads[index] = { name, file: path, color: prev?.color, gain: prev?.gain ?? 1, trimStart: 0, trimEnd: 0 };
         });
+        this.scheduleHistoryCommit();
         this.render();
       };
       input.click();
@@ -1057,14 +1153,17 @@ export class SampleTab extends HTMLElement {
       knob({ label: 'Gain', min: 0, max: 1.5, step: 0.01, value: pad.gain }, (v) => {
         pad.gain = v;
         store.scheduleSave();
+        this.scheduleHistoryCommit();
       }),
       knob({ label: 'Trim in', min: 0, max: maxLen, step: 0.01, value: pad.trimStart, unit: 's' }, (v) => {
         pad.trimStart = v;
         store.scheduleSave();
+        this.scheduleHistoryCommit();
       }),
       knob({ label: 'Trim out', min: 0, max: maxLen, step: 0.01, value: pad.trimEnd, unit: 's' }, (v) => {
         pad.trimEnd = v;
         store.scheduleSave();
+        this.scheduleHistoryCommit();
       }),
     );
     editor.appendChild(knobs);
@@ -1086,6 +1185,7 @@ export class SampleTab extends HTMLElement {
     colorInput.oninput = (): void => {
       pad.color = colorInput.value;
       store.scheduleSave();
+      this.scheduleHistoryCommit();
       this.paintPad(index);
     };
     colorRow.append(colorInput, document.createTextNode(' Pad color'));
@@ -1095,6 +1195,7 @@ export class SampleTab extends HTMLElement {
     clear.textContent = 'Clear pad';
     clear.onclick = (): void => {
       store.update((d) => (d.pads[index] = null));
+      this.scheduleHistoryCommit();
       this.render();
     };
     editor.appendChild(clear);
