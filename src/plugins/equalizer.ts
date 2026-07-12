@@ -70,11 +70,13 @@ class EqualizerPlugin implements DawPlugin {
   private recomputeCurves(): void {
     this.curves = this.bands.map((b) => {
       const scratch = new Tone.Filter({ frequency: b.freq, type: TONE_TYPES[b.type], Q: b.q });
-      if (b.type === 1) (scratch as unknown as { gain: Tone.Param<'decibels'> }).gain.value = b.gain;
-      if (b.type === 0 || b.type === 3) scratch.rolloff = -b.slope as Tone.FilterRollOff;
-      const mags = scratch.getFrequencyResponse(RESPONSE_LEN);
-      scratch.dispose();
-      return mags;
+      try {
+        if (b.type === 1) (scratch as unknown as { gain: Tone.Param<'decibels'> }).gain.value = b.gain;
+        if (b.type === 0 || b.type === 3) scratch.rolloff = -b.slope as Tone.FilterRollOff;
+        return scratch.getFrequencyResponse(RESPONSE_LEN);
+      } finally {
+        scratch.dispose();
+      }
     });
     this.redrawUi?.();
   }
@@ -273,6 +275,9 @@ class EqualizerPlugin implements DawPlugin {
       this.edited(wrap);
     };
     canvas.onpointerup = (): void => {
+      dragging = -1;
+    };
+    canvas.onpointercancel = (): void => {
       dragging = -1;
     };
     canvas.ondblclick = (e): void => {
