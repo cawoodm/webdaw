@@ -5,7 +5,7 @@ import { ensurePadBuffers, padBuffer, padSeconds, playPadInto } from '../../core
 import { connectChain } from '../../plugins/chain';
 import { resolveInstrument, scheduleSequenceAt, type ResolvedInstrument, type ScheduledSequence } from '../sequence/sequence-playback';
 import { store } from '../../core/project-store';
-import { tileLoopEvents } from './timeline-math';
+import { clipCursorWindow, tileLoopEvents } from './timeline-math';
 
 /** A clip's bar-span, derived from its ref (no stored length). */
 export function clipBars(ref: ArrangeClipRef, barSeconds: number): number {
@@ -104,6 +104,8 @@ export interface SongScheduleOptions {
   barSeconds: number;
   secondsPerStep: number;
   provider: NodeProvider;
+  /** Bar the play-cursor sits at; clips are shifted/skipped so playback starts from here. Default 0 = today's behavior. */
+  fromBar?: number;
 }
 
 export interface SongPlaybackHandles {
@@ -114,21 +116,29 @@ export interface SongPlaybackHandles {
 export function scheduleSong(tracks: ArrangeTrack[], resolved: ResolvedSong, opts: SongScheduleOptions): SongPlaybackHandles {
   const sources: Tone.ToneBufferSource[] = [];
   const scheduledSequences: ScheduledSequence[] = [];
+  const fromBar = opts.fromBar ?? 0;
   for (const track of tracks.filter((t) => isTrackAudible(t, tracks))) {
     const trackBus = opts.provider.trackBus(track, opts.songBus);
     for (const clip of track.clips) {
+      const spanBars = clipSpanBars(clip, opts.barSeconds);
+      const window = clipCursorWindow(clip.bar, spanBars, fromBar);
+      if (window.skip) continue;
       const clipBus = opts.provider.clipBus(clip, trackBus);
-      const at = opts.startSeconds + clip.bar * opts.barSeconds;
+      // shifted so bar `fromBar` lands at opts.startSeconds — clips starting at/after
+      // the cursor keep today's plain `opts.startSeconds + clip.bar * barSeconds` value
+      const at = opts.startSeconds + clip.bar * opts.barSeconds - fromBar * opts.barSeconds;
       if (clip.ref.type === 'sequence') {
         const seq = store.data.sequences.find((s) => s.id === (clip.ref as { id: string }).id);
         const resolvedSeq = seq && resolved.sequences.get(seq.id);
-        if (seq && resolvedSeq) scheduledSequences.push(scheduleSequenceAt(seq, clipBus, opts.secondsPerStep, resolvedSeq, at));
+        if (seq && resolvedSeq)
+          scheduledSequences.push(scheduleSequenceAt(seq, clipBus, opts.secondsPerStep, resolvedSeq, at, window.skipBeats));
       } else if (clip.ref.type === 'loop') {
         const loop = store.data.padLoops.find((l) => l.id === (clip.ref as { id: string }).id);
         if (!loop) continue;
         const secondsPerBeat = opts.barSeconds / 4;
         const spanBeats = (clip.bars ?? loop.bars) * 4;
         for (const ev of tileLoopEvents(loop.events, loop.bars * 4, spanBeats)) {
+          if (ev.offsetBeats < window.skipBeats) continue;
           const pad = store.data.pads[ev.pad];
           if (!pad) continue;
           const src = playPadInto(pad, clipBus, at + 0.01 + ev.offsetBeats * secondsPerBeat, ev.duration);
@@ -138,8 +148,16 @@ export function scheduleSong(tracks: ArrangeTrack[], resolved: ResolvedSong, opt
         const buffer = resolved.buffers.get(clip.id);
         if (!buffer) continue;
         const src = new Tone.ToneBufferSource(new Tone.ToneAudioBuffer(buffer)).connect(clipBus);
-        src.start(at + 0.01);
-        if (clip.bars !== undefined) src.stop(at + 0.01 + clip.bars * opts.barSeconds);
+        if (window.skipBeats > 0) {
+          // cursor lands inside this buffer clip: can't schedule at the (past) shifted
+          // `at` — start now with a buffer offset instead of restarting from 0
+          const offsetSeconds = (window.skipBeats / 4) * opts.barSeconds;
+          src.start(opts.startSeconds + 0.01, offsetSeconds);
+          if (clip.bars !== undefined) src.stop(opts.startSeconds + 0.01 + (clip.bars * opts.barSeconds - offsetSeconds));
+        } else {
+          src.start(at + 0.01);
+          if (clip.bars !== undefined) src.stop(at + 0.01 + clip.bars * opts.barSeconds);
+        }
         sources.push(src);
       }
     }

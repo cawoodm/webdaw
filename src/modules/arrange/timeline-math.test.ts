@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  clipCursorWindow,
   floorSnapBar,
   gridBackgroundBars,
   minSpanBars,
@@ -54,6 +55,25 @@ describe('gridBackgroundBars', () => {
   it('drops levels finer than 5px so a zoomed-out grid never turns solid', () => {
     // pxPerBar 8, snap 1/4 beat: half-bar would be 4px — only the 8px bar level survives
     expect(gridBackgroundBars(8, 0.25).size).toBe('8px 100%');
+  });
+});
+
+describe('clipCursorWindow', () => {
+  it('is a no-op when there is no cursor (fromBar <= 0)', () => {
+    expect(clipCursorWindow(2, 4, 0)).toEqual({ skip: false, skipBeats: 0 });
+    expect(clipCursorWindow(2, 4, -1)).toEqual({ skip: false, skipBeats: 0 });
+  });
+  it('skips a clip that ends at/before the cursor', () => {
+    expect(clipCursorWindow(2, 2, 4)).toEqual({ skip: true, skipBeats: 0 }); // ends exactly at cursor
+    expect(clipCursorWindow(2, 1, 4)).toEqual({ skip: true, skipBeats: 0 }); // ends before cursor
+  });
+  it('plays unshifted when the clip starts at/after the cursor', () => {
+    expect(clipCursorWindow(4, 2, 4)).toEqual({ skip: false, skipBeats: 0 }); // starts exactly at cursor
+    expect(clipCursorWindow(5, 2, 4)).toEqual({ skip: false, skipBeats: 0 }); // starts after cursor
+  });
+  it('reports elapsed beats when the cursor lands inside the clip', () => {
+    expect(clipCursorWindow(2, 4, 4)).toEqual({ skip: false, skipBeats: 8 }); // 2 bars = 8 beats elapsed
+    expect(clipCursorWindow(0, 4, 1)).toEqual({ skip: false, skipBeats: 4 });
   });
 });
 

@@ -86,6 +86,26 @@ export function visibleBarRange(
   return { from, to };
 }
 
+export interface ClipCursorWindow {
+  /** Clip ends at/before the cursor — nothing of it plays from here. */
+  skip: boolean;
+  /** Beats already elapsed into the clip before the cursor (0 unless the cursor lands inside the clip). */
+  skipBeats: number;
+}
+
+/**
+ * How a clip's bar span relates to a playback cursor at `fromBar` (both in bars).
+ * `fromBar <= 0` always yields the no-op window (today's behavior). A clip that
+ * ends at/before the cursor is fully skipped; one starting at/after the cursor
+ * plays unshifted (skipBeats 0); one the cursor lands inside reports how many
+ * beats of it have already elapsed.
+ */
+export function clipCursorWindow(clipBar: number, spanBars: number, fromBar: number): ClipCursorWindow {
+  if (fromBar <= 0) return { skip: false, skipBeats: 0 };
+  if (clipBar + spanBars <= fromBar) return { skip: true, skipBeats: 0 };
+  return { skip: false, skipBeats: Math.max(0, (fromBar - clipBar) * 4) };
+}
+
 export interface TiledLoopEvent {
   pad: number;
   offsetBeats: number;
