@@ -353,12 +353,10 @@ export class ArrangeTab extends HTMLElement {
     el.classList.toggle('has-fx', clip.plugins.length > 0);
     el.textContent = this.clipLabel(clip.ref);
     el.title = `${this.clipLabel(clip.ref)} — drag: move · double-click: remove · right-click: FX · Delete: remove selected`;
-    if (clip.ref.type !== 'sequence') {
-      const handle = document.createElement('div');
-      handle.className = 'clip-resize';
-      handle.title = 'Drag to trim';
-      el.appendChild(handle);
-    }
+    const handle = document.createElement('div');
+    handle.className = 'clip-resize';
+    handle.title = 'Drag to resize — a clip stretched past its length repeats';
+    el.appendChild(handle);
     this.attachClipPointer(track, clip, el, row);
     return el;
   }
