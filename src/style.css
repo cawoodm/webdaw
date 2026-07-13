@@ -1011,6 +1011,30 @@ button.recording {
   background: #10231f;
 }
 
+.arrange-clip .clip-actions {
+  position: absolute;
+  left: 3px;
+  bottom: 1px;
+  display: none;
+  gap: 1px;
+}
+
+.arrange-clip:hover .clip-actions {
+  display: inline-flex;
+}
+
+.arrange-clip .clip-actions button {
+  padding: 1px 3px;
+  background: rgb(0 0 0 / 30%);
+  border: none;
+  color: #e7f5f1;
+  line-height: 1;
+}
+
+.arrange-clip .clip-actions button:hover {
+  background: rgb(0 0 0 / 55%);
+}
+
 .arrange-clip .clip-resize {
   position: absolute;
   top: 0;

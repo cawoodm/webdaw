@@ -39,6 +39,7 @@ const ICONS = {
   mute: `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H2v6h4l5 4V5z"/></svg>`,
   solo: `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>`,
   fx: `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3"/><path d="M1 14h6M9 8h6M17 16h6"/></svg>`,
+  trash: `<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M10 11v6M14 11v6"/></svg>`,
   copy: `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`,
   zoomIn: `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3M11 8v6M8 11h6"/></svg>`,
   zoomOut: `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3M8 11h6"/></svg>`,
@@ -420,22 +421,60 @@ export class ArrangeTab extends HTMLElement {
     handle.className = 'clip-resize';
     handle.title = 'Drag to resize — a clip stretched past its length repeats';
     el.appendChild(handle);
+    el.appendChild(this.buildClipActions(track, clip, el));
     this.attachClipPointer(track, clip, el, row);
     return el;
   }
 
-  private attachClipPointer(track: ArrangeTrack, clip: ArrangeClip, el: HTMLElement, row: HTMLElement): void {
-    el.ondblclick = (): void => {
-      store.update(() => {
-        const i = track.clips.indexOf(clip);
-        if (i >= 0) track.clips.splice(i, 1);
-      });
-      this.scheduleHistoryCommit();
-      if (this.selectedClipId === clip.id) this.selectedClipId = null;
-      el.remove();
-      this.clipEls.delete(clip.id);
-      this.viewDirty = true;
+  private buildClipActions(track: ArrangeTrack, clip: ArrangeClip, el: HTMLElement): HTMLElement {
+    const actions = document.createElement('div');
+    actions.className = 'clip-actions';
+    // don't let the icons start a clip drag or clear the selection
+    actions.onpointerdown = (e): void => e.stopPropagation();
+    actions.ondblclick = (e): void => e.stopPropagation();
+    const btn = (title: string, svg: string, fn: () => void): HTMLButtonElement => {
+      const b = document.createElement('button');
+      b.title = title;
+      b.innerHTML = svg;
+      b.onclick = (e): void => {
+        e.stopPropagation();
+        fn();
+      };
+      return b;
     };
+    actions.append(
+      btn('Clip effects (right-click)', ICONS.fx, () => this.openClipFx(track, clip)),
+      btn('Duplicate the clip to its right', ICONS.copy, () => this.duplicateClip(track, clip)),
+      btn('Delete the clip (double-click / Delete)', ICONS.trash, () => this.deleteClip(track, clip, el)),
+    );
+    return actions;
+  }
+
+  private duplicateClip(track: ArrangeTrack, clip: ArrangeClip): void {
+    const span = clipSpanBars(clip, this.barSeconds());
+    const copy: ArrangeClip = structuredClone(clip);
+    copy.id = uid();
+    copy.plugins = copy.plugins.map((p) => ({ ...p, id: uid() }));
+    copy.bar = Math.max(0, Math.min(this.songBarsCount() - span, clip.bar + span));
+    store.update(() => track.clips.push(copy));
+    this.scheduleHistoryCommit();
+    this.viewDirty = true; // syncClips builds the new clip's DOM
+  }
+
+  private deleteClip(track: ArrangeTrack, clip: ArrangeClip, el: HTMLElement): void {
+    store.update(() => {
+      const i = track.clips.indexOf(clip);
+      if (i >= 0) track.clips.splice(i, 1);
+    });
+    this.scheduleHistoryCommit();
+    if (this.selectedClipId === clip.id) this.selectedClipId = null;
+    el.remove();
+    this.clipEls.delete(clip.id);
+    this.viewDirty = true;
+  }
+
+  private attachClipPointer(track: ArrangeTrack, clip: ArrangeClip, el: HTMLElement, row: HTMLElement): void {
+    el.ondblclick = (): void => this.deleteClip(track, clip, el);
     el.oncontextmenu = (e): void => {
       e.preventDefault();
       this.openClipFx(track, clip);
@@ -543,16 +582,24 @@ export class ArrangeTab extends HTMLElement {
   }
 
   private openTrackFx(track: ArrangeTrack): void {
-    const { dialog, title, slot } = this.fxDialog();
-    this.clearFxContent(); // swapping content: tear down whatever the dialog showed before
-    title.textContent = `${track.name} — track FX`;
-    this.trackBus(track, engine.master); // ensure the live chain exists
-    slot.appendChild(this.liveTrackNodes.get(track.id)!.chain);
-    dialog.show(); // no-op if already open
+    // runExclusive: see openClipFx — live nodes can't be built mid-offline-render
+    void engine.runExclusive(async () => {
+      const { dialog, title, slot } = this.fxDialog();
+      this.clearFxContent(); // swapping content: tear down whatever the dialog showed before
+      title.textContent = `${track.name} — track FX`;
+      this.trackBus(track, engine.master); // ensure the live chain exists
+      slot.appendChild(this.liveTrackNodes.get(track.id)!.chain);
+      dialog.show(); // no-op if already open
+    });
   }
 
   private openClipFx(track: ArrangeTrack, clip: ArrangeClip): void {
-    void engine.ensureStarted().then(() => {
+    // runExclusive: the live Gain/chain must not be constructed while a
+    // Tone.Offline render (e.g. boot-time patch renders right after the first
+    // gesture) has swapped the global context — nodes would bind to the wrong
+    // context and connect() throws.
+    void engine.ensureStarted().then(() =>
+      engine.runExclusive(async () => {
       const { dialog, title, extra, slot } = this.fxDialog();
       this.clearFxContent(); // swapping content: tear down whatever the dialog showed before
       title.textContent = `${this.clipLabel(clip.ref)} (${track.name}) — clip FX`;
@@ -623,7 +670,8 @@ export class ArrangeTab extends HTMLElement {
       };
       slot.appendChild(chain);
       dialog.show();
-    });
+      }),
+    );
   }
 
   // ---- rAF-driven view sync (ruler, virtualized clips, playhead) ----
