@@ -10,6 +10,7 @@ import { uiState, updateUi } from '../../core/ui-state';
 import { connectChain, PluginChainEl } from '../../plugins/chain';
 import type { DawPlugin } from '../../plugins/api';
 import { knob } from '../../ui/knob';
+import { makeDialogDraggable } from '../../ui/draggable-dialog';
 import { transportButton } from '../../ui/transport-buttons';
 import {
   clipSpanBars,
@@ -17,6 +18,7 @@ import {
   resolveSong,
   scheduleSong,
   type NodeProvider,
+  type ResolvedSong,
   type SongPlaybackHandles,
 } from './song-graph';
 import {
@@ -50,8 +52,16 @@ export class ArrangeTab extends HTMLElement {
   private sampleFiles: { path: string; source: 'project' | 'global' }[] = [];
   private samplesScanned = false;
   private activeSong: SongPlaybackHandles | null = null;
-  /** Bar playback last started from (opts.fromBar) — combined with engine.positionBeats for the moving playhead. */
-  private playFromBar = 0;
+  /** Live cycle handles: the sounding cycle plus the pre-scheduled next one (song looping). */
+  private songCycles: SongPlaybackHandles[] = [];
+  private loopTimer: number | null = null;
+  // playhead anchor: the current cycle's start, rolled forward at each loop-back
+  private cycleStartBeats = 0;
+  private cycleFromBar = 0;
+  /** Beats in the current cycle; 0 = playback doesn't loop (no clips, or cursor past the end). */
+  private cycleLenBeats = 0;
+  /** Bar the last clip ends at — every loop-back cycle spans [0, songEndBar). */
+  private songEndBar = 0;
   private liveTrackNodes = new Map<string, { inGain: Tone.Gain; chain: PluginChainEl }>();
   private ephemeralClipFx: DawPlugin[] = [];
   // ---- view state (rebuilt by render, consumed by the rAF loop) ----
@@ -212,16 +222,63 @@ export class ArrangeTab extends HTMLElement {
     engine.claimTransport('arrange');
     const tracks = store.data.arrangement.tracks;
     const resolved = await resolveSong(tracks);
-    this.playFromBar = this.cursorBar();
+    const fromBar = this.cursorBar();
+    const barSeconds = this.barSeconds();
+    let endBar = 0;
+    for (const t of tracks) for (const c of t.clips) endBar = Math.max(endBar, c.bar + clipSpanBars(c, barSeconds));
+    const startSeconds = Tone.now() + 0.15;
     this.activeSong = scheduleSong(tracks, resolved, {
       songBus: engine.master,
-      startSeconds: Tone.now() + 0.15,
-      barSeconds: this.barSeconds(),
+      startSeconds,
+      barSeconds,
       secondsPerStep: engine.secondsPerStep(),
       provider: this.liveProvider(),
-      fromBar: this.playFromBar,
+      fromBar,
     });
+    this.songCycles = [this.activeSong];
+    this.cycleStartBeats = 0;
+    this.cycleFromBar = fromBar;
+    this.songEndBar = endBar;
+    // the song always loops back to bar 0 when the last clip ends
+    this.cycleLenBeats = endBar > fromBar + 1e-9 ? (endBar - fromBar) * 4 : 0;
+    if (this.cycleLenBeats > 0) this.chainNextCycle(tracks, resolved, startSeconds + (endBar - fromBar) * barSeconds);
     engine.play();
+  }
+
+  /**
+   * Pre-schedule the next full loop cycle (bar 0 → songEndBar) shortly before
+   * the current one ends, at its exact absolute start time — gapless, no drift.
+   * The cycle before last is disposed only then, so its release tails ring out.
+   */
+  private chainNextCycle(tracks: ArrangeTrack[], resolved: ResolvedSong, cycleStartSeconds: number): void {
+    this.loopTimer = window.setTimeout(() => {
+      this.loopTimer = null;
+      if (this.songCycles.length === 0) return; // stopped in the meantime
+      const barSeconds = this.barSeconds();
+      const handle = scheduleSong(tracks, resolved, {
+        songBus: engine.master,
+        startSeconds: cycleStartSeconds,
+        barSeconds,
+        secondsPerStep: engine.secondsPerStep(),
+        provider: this.liveProvider(),
+      });
+      this.songCycles.push(handle);
+      this.activeSong = handle;
+      if (this.songCycles.length > 2) this.songCycles.shift()!.dispose();
+      this.chainNextCycle(tracks, resolved, cycleStartSeconds + this.songEndBar * barSeconds);
+    }, Math.max(0, (cycleStartSeconds - Tone.now() - 0.35) * 1000));
+  }
+
+  /** Bars into the song for the moving playhead, rolling the anchor forward at each loop-back. */
+  private playheadBar(): number {
+    let beats = engine.positionBeats - this.cycleStartBeats;
+    while (this.cycleLenBeats > 0 && beats >= this.cycleLenBeats) {
+      this.cycleStartBeats += this.cycleLenBeats;
+      this.cycleFromBar = 0;
+      this.cycleLenBeats = this.songEndBar * 4;
+      beats = engine.positionBeats - this.cycleStartBeats;
+    }
+    return this.cycleFromBar + beats / 4;
   }
 
   /** True while this tab's song is actually sounding — the moving playhead only applies then. */
@@ -247,7 +304,7 @@ export class ArrangeTab extends HTMLElement {
 
   /** The bar to step from: the live playhead while playing, else the parked cursor. */
   private currentBar(): number {
-    return this.transportActive() ? this.playFromBar + engine.positionBeats / 4 : this.cursorBar();
+    return this.transportActive() ? this.playheadBar() : this.cursorBar();
   }
 
   private toStart(): void {
@@ -273,6 +330,12 @@ export class ArrangeTab extends HTMLElement {
   }
 
   private stop(): void {
+    if (this.loopTimer !== null) {
+      window.clearTimeout(this.loopTimer);
+      this.loopTimer = null;
+    }
+    for (const c of this.songCycles) if (c !== this.activeSong) c.dispose();
+    this.songCycles = [];
     this.activeSong?.dispose();
     this.activeSong = null;
     for (const p of this.ephemeralClipFx) {
@@ -641,7 +704,7 @@ export class ArrangeTab extends HTMLElement {
     const active = this.transportActive();
     // stopped: still show the (dimmed) line at the parked cursor instead of hiding it
     playhead.classList.toggle('cursor', !active);
-    const barsPos = active ? this.playFromBar + engine.positionBeats / 4 : this.cursorBar();
+    const barsPos = active ? this.playheadBar() : this.cursorBar();
     const x = HEAD_W + barsPos * this.pxPerBar();
     playhead.style.left = `${x}px`;
     if (!active) return;
@@ -711,6 +774,7 @@ export class ArrangeTab extends HTMLElement {
       dialog.innerHTML = `<div class="fx-dialog-head"><h3 class="fx-title"></h3><button class="close-fx" title="Close">✕</button></div><div class="fx-extra"></div><div class="fx-slot"></div>`;
       dialog.querySelector<HTMLButtonElement>('.close-fx')!.onclick = (): void => dialog.close();
       dialog.onclose = (): void => this.closeFxContent();
+      makeDialogDraggable(dialog, dialog.querySelector<HTMLElement>('.fx-dialog-head')!);
       this.appendChild(dialog);
     }
 
