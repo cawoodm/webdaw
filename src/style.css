@@ -1072,6 +1072,15 @@ button.recording {
   font-size: 14px;
 }
 
+.fx-repeat {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 12px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
 /* ---- plugins ---- */
 .plugin-chain {
   display: flex;

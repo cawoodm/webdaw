@@ -160,6 +160,11 @@ export interface ScheduledSequence {
  * start before that many beats into the sequence — used when a play-cursor
  * lands inside this clip. There is no mid-note resume: a dropped note simply
  * never sounds.
+ *
+ * `spanBeats` (default undefined, i.e. today's single-pass behavior) tiles the
+ * sequence's notes every `seq.bars` bars across a stretched clip span, same
+ * edge rule as `tileLoopEvents`: a repetition's note starting at/past the span
+ * edge is dropped whole, never truncated.
  */
 export function scheduleSequenceAt(
   seq: Sequence,
@@ -168,14 +173,28 @@ export function scheduleSequenceAt(
   resolved: ResolvedInstrument,
   startSeconds = 0,
   skipBeats = 0,
+  spanBeats?: number,
 ): ScheduledSequence {
   const synth = resolved.instrument.type === 'synth' ? makeSynth(resolved.instrument.kind).connect(dest) : null;
   const sampler = resolved.instrument.type === 'instrument' ? makeInstrumentPlayer(resolved.loaded!, dest) : null;
   const skipSteps = skipBeats * 4;
-  for (const n of seq.notes) {
-    if (n.step < skipSteps) continue;
-    const time = startSeconds + n.step * secondsPerStep + 0.01;
-    triggerNote(resolved, dest, synth, sampler, n, time, secondsPerStep, false);
+  if (spanBeats === undefined) {
+    for (const n of seq.notes) {
+      if (n.step < skipSteps) continue;
+      const time = startSeconds + n.step * secondsPerStep + 0.01;
+      triggerNote(resolved, dest, synth, sampler, n, time, secondsPerStep, false);
+    }
+  } else {
+    const seqSteps = seq.bars * STEPS_PER_BAR;
+    const spanSteps = spanBeats * 4;
+    for (let k = 0; k * seqSteps < spanSteps - 1e-9; k++) {
+      for (const n of seq.notes) {
+        const step = k * seqSteps + n.step;
+        if (step < skipSteps || step >= spanSteps - 1e-9) continue;
+        const time = startSeconds + step * secondsPerStep + 0.01;
+        triggerNote(resolved, dest, synth, sampler, n, time, secondsPerStep, false);
+      }
+    }
   }
   return {
     dispose(): void {

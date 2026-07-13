@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  bufferLoopPlan,
   clipCursorWindow,
   floorSnapBar,
   gridBackgroundBars,
@@ -105,5 +106,65 @@ describe('tileLoopEvents', () => {
     expect(tileLoopEvents([], 8, 16)).toEqual([]);
     expect(tileLoopEvents(events, 0, 16)).toEqual([]);
     expect(tileLoopEvents(events, 8, 0)).toEqual([]);
+  });
+});
+
+describe('bufferLoopPlan', () => {
+  it('gapless: one looping source spanning the whole clip when there is no cursor skip', () => {
+    const plan = bufferLoopPlan('gapless', 2.6, 2, 3, 0);
+    expect(plan.playbackRate).toBe(1);
+    expect(plan.loop).toBe(true);
+    expect(plan.starts).toEqual([{ at: 0, offset: 0, stopAfter: 6 }]);
+  });
+
+  it('gapless: cursor inside the second pass offsets into the buffer', () => {
+    const plan = bufferLoopPlan('gapless', 2.6, 2, 3, 6);
+    expect(plan.starts).toHaveLength(1);
+    expect(plan.starts[0].at).toBe(0);
+    expect(plan.starts[0].offset).toBeCloseTo(0.4, 10);
+    expect(plan.starts[0].stopAfter).toBe(3);
+  });
+
+  it('bar: repeats every natural-bar period, each full-length', () => {
+    const plan = bufferLoopPlan('bar', 2.6, 2, 6, 0);
+    expect(plan.playbackRate).toBe(1);
+    expect(plan.loop).toBe(false);
+    expect(plan.starts).toEqual([
+      { at: 0, offset: 0, stopAfter: 2.6 },
+      { at: 4, offset: 0, stopAfter: 2.6 },
+      { at: 8, offset: 0, stopAfter: 2.6 },
+    ]);
+  });
+
+  it('bar: last repetition truncated at the span edge', () => {
+    const plan = bufferLoopPlan('bar', 2.6, 2, 4.5, 0);
+    expect(plan.starts).toEqual([
+      { at: 0, offset: 0, stopAfter: 2.6 },
+      { at: 4, offset: 0, stopAfter: 2.6 },
+      { at: 8, offset: 0, stopAfter: 1 },
+    ]);
+  });
+
+  it('bar: cursor mid-repetition skips past repetitions and offsets into the current one', () => {
+    const plan = bufferLoopPlan('bar', 2.6, 2, 6, 10); // skipSeconds 5
+    expect(plan.starts).toEqual([
+      { at: 0, offset: 1, stopAfter: 1.6 },
+      { at: 3, offset: 0, stopAfter: 2.6 },
+    ]);
+  });
+
+  it('resample: rounds the target bar count down and up', () => {
+    const down = bufferLoopPlan('resample', 2.6, 2, 3, 0);
+    expect(down.playbackRate).toBe(1.3);
+    expect(down.loop).toBe(true);
+
+    const up = bufferLoopPlan('resample', 3.5, 2, 3, 0);
+    expect(up.playbackRate).toBe(0.875);
+  });
+
+  it('returns an empty-starts plan once the cursor consumes the whole remaining span', () => {
+    expect(bufferLoopPlan('gapless', 2.6, 2, 3, 12).starts).toEqual([]);
+    expect(bufferLoopPlan('bar', 2.6, 2, 3, 12).starts).toEqual([]);
+    expect(bufferLoopPlan('resample', 2.6, 2, 3, 12).starts).toEqual([]);
   });
 });

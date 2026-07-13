@@ -1,7 +1,7 @@
 import * as Tone from '../../core/tone';
 import { engine } from '../../core/audio-engine';
 import { bus } from '../../core/event-bus';
-import type { ArrangeClip, ArrangeTrack, ProjectData } from '../../core/model';
+import type { ArrangeClip, ArrangeTrack, ClipLoopMode, ProjectData } from '../../core/model';
 import { MAX_BARS, uid } from '../../core/model';
 import { projects } from '../../core/project-manager';
 import { store } from '../../core/project-store';
@@ -502,6 +502,26 @@ export class ArrangeTab extends HTMLElement {
           this.scheduleHistoryCommit();
         }),
       );
+      if (clip.ref.type === 'file' || clip.ref.type === 'pad') {
+        const label = document.createElement('label');
+        label.className = 'fx-repeat';
+        label.title = "Repeat mode when the clip is stretched past the sample's length";
+        label.append('Repeat ');
+        const sel = document.createElement('select');
+        sel.append(
+          new Option('Back-to-back', 'gapless'),
+          new Option('Bar-aligned', 'bar'),
+          new Option('Re-sample', 'resample'),
+        );
+        sel.value = clip.loopMode ?? 'gapless';
+        sel.onchange = (): void => {
+          clip.loopMode = sel.value as ClipLoopMode;
+          store.scheduleSave();
+          this.scheduleHistoryCommit();
+        };
+        label.appendChild(sel);
+        extra.appendChild(label);
+      }
       // throwaway audio pair: the chain edits clip.plugins in place; audible on the clip's next play
       const inGain = new Tone.Gain(0).connect(engine.master);
       const chain = document.createElement('plugin-chain') as PluginChainEl;

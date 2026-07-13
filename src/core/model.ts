@@ -220,12 +220,16 @@ export type ArrangeClipRef =
   | { type: 'pad'; index: number } // index into ProjectData.pads — pads have no id field
   | { type: 'loop'; id: string }; // PadLoop id — a named Beat from the Sample tab
 
+export type ClipLoopMode = 'gapless' | 'bar' | 'resample';
+
 export interface ArrangeClip {
   id: string;
   bar: number;
   ref: ArrangeClipRef;
   /** Fractional bar-span override from resizing (pad/file clips); absent = derived from the ref. */
   bars?: number;
+  /** How a clip stretched past its natural length repeats; absent = 'gapless'. Ignored for sequence/loop refs. */
+  loopMode?: ClipLoopMode;
   gain: number; // clip volume trim, same convention as ArrangeTrack.gain
   plugins: PluginInstanceState[]; // per-clip FX chain, same shape as ArrangeTrack.plugins
 }

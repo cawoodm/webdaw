@@ -5,7 +5,7 @@ import { ensurePadBuffers, padBuffer, padSeconds, playPadInto } from '../../core
 import { connectChain } from '../../plugins/chain';
 import { resolveInstrument, scheduleSequenceAt, type ResolvedInstrument, type ScheduledSequence } from '../sequence/sequence-playback';
 import { store } from '../../core/project-store';
-import { clipCursorWindow, tileLoopEvents } from './timeline-math';
+import { bufferLoopPlan, clipCursorWindow, tileLoopEvents } from './timeline-math';
 
 /** A clip's bar-span, derived from its ref (no stored length). */
 export function clipBars(ref: ArrangeClipRef, barSeconds: number): number {
@@ -131,7 +131,17 @@ export function scheduleSong(tracks: ArrangeTrack[], resolved: ResolvedSong, opt
         const seq = store.data.sequences.find((s) => s.id === (clip.ref as { id: string }).id);
         const resolvedSeq = seq && resolved.sequences.get(seq.id);
         if (seq && resolvedSeq)
-          scheduledSequences.push(scheduleSequenceAt(seq, clipBus, opts.secondsPerStep, resolvedSeq, at, window.skipBeats));
+          scheduledSequences.push(
+            scheduleSequenceAt(
+              seq,
+              clipBus,
+              opts.secondsPerStep,
+              resolvedSeq,
+              at,
+              window.skipBeats,
+              clip.bars !== undefined ? clip.bars * 4 : undefined,
+            ),
+          );
       } else if (clip.ref.type === 'loop') {
         const loop = store.data.padLoops.find((l) => l.id === (clip.ref as { id: string }).id);
         if (!loop) continue;
@@ -147,18 +157,33 @@ export function scheduleSong(tracks: ArrangeTrack[], resolved: ResolvedSong, opt
       } else {
         const buffer = resolved.buffers.get(clip.id);
         if (!buffer) continue;
-        const src = new Tone.ToneBufferSource(new Tone.ToneAudioBuffer(buffer)).connect(clipBus);
-        if (window.skipBeats > 0) {
-          // cursor lands inside this buffer clip: can't schedule at the (past) shifted
-          // `at` — start now with a buffer offset instead of restarting from 0
-          const offsetSeconds = (window.skipBeats / 4) * opts.barSeconds;
-          src.start(opts.startSeconds + 0.01, offsetSeconds);
-          if (clip.bars !== undefined) src.stop(opts.startSeconds + 0.01 + (clip.bars * opts.barSeconds - offsetSeconds));
+        const naturalBars = clipBars(clip.ref, opts.barSeconds);
+        if (clip.bars !== undefined && clip.bars > naturalBars + 1e-9) {
+          // stretched past natural length: repeat per clip.loopMode
+          const plan = bufferLoopPlan(clip.loopMode ?? 'gapless', buffer.duration, opts.barSeconds, clip.bars, window.skipBeats);
+          const base = (window.skipBeats > 0 ? opts.startSeconds : at) + 0.01;
+          for (const s of plan.starts) {
+            const src = new Tone.ToneBufferSource(new Tone.ToneAudioBuffer(buffer)).connect(clipBus);
+            src.playbackRate.value = plan.playbackRate;
+            src.loop = plan.loop;
+            src.start(base + s.at, s.offset);
+            src.stop(base + s.at + s.stopAfter);
+            sources.push(src);
+          }
         } else {
-          src.start(at + 0.01);
-          if (clip.bars !== undefined) src.stop(at + 0.01 + clip.bars * opts.barSeconds);
+          const src = new Tone.ToneBufferSource(new Tone.ToneAudioBuffer(buffer)).connect(clipBus);
+          if (window.skipBeats > 0) {
+            // cursor lands inside this buffer clip: can't schedule at the (past) shifted
+            // `at` — start now with a buffer offset instead of restarting from 0
+            const offsetSeconds = (window.skipBeats / 4) * opts.barSeconds;
+            src.start(opts.startSeconds + 0.01, offsetSeconds);
+            if (clip.bars !== undefined) src.stop(opts.startSeconds + 0.01 + (clip.bars * opts.barSeconds - offsetSeconds));
+          } else {
+            src.start(at + 0.01);
+            if (clip.bars !== undefined) src.stop(at + 0.01 + clip.bars * opts.barSeconds);
+          }
+          sources.push(src);
         }
-        sources.push(src);
       }
     }
   }

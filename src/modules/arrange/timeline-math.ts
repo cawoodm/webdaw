@@ -3,7 +3,7 @@
  * Positions and spans are fractional BARS; snap sizes are BEATS (4 beats/bar).
  */
 
-import type { PadEvent } from '../../core/model';
+import type { ClipLoopMode, PadEvent } from '../../core/model';
 
 export const PX_PER_BAR_STEPS = [4, 6, 8, 12, 16, 24, 32, 48, 64];
 
@@ -128,4 +128,74 @@ export function tileLoopEvents(events: PadEvent[], loopBeats: number, spanBeats:
     }
   }
   return out;
+}
+
+export interface BufferLoopStart {
+  /** Seconds after the (cursor-adjusted) clip start at which this source starts. */
+  at: number;
+  /** Offset into the buffer, in BUFFER seconds (nonzero only when the cursor lands inside this repetition). */
+  offset: number;
+  /** Output seconds until the source is stopped. */
+  stopAfter: number;
+}
+
+export interface BufferLoopPlan {
+  playbackRate: number; // 1 for gapless/bar
+  loop: boolean; // true for gapless/resample
+  starts: BufferLoopStart[];
+}
+
+/**
+ * How a file/pad clip stretched past its natural length repeats its buffer.
+ * `skipBeats` is the play-cursor offset into the clip (0 when playback starts
+ * at/before the clip). See docs/superpowers/specs/2026-07-13-clip-repeat-design.md.
+ */
+export function bufferLoopPlan(
+  mode: ClipLoopMode,
+  durationSeconds: number,
+  barSeconds: number,
+  spanBars: number,
+  skipBeats: number,
+): BufferLoopPlan {
+  const skipSeconds = (skipBeats / 4) * barSeconds;
+  const spanSeconds = spanBars * barSeconds;
+  const remaining = spanSeconds - skipSeconds;
+
+  if (mode === 'resample') {
+    const targetBars = Math.max(1, Math.round(durationSeconds / barSeconds));
+    const periodSeconds = targetBars * barSeconds;
+    const playbackRate = durationSeconds / periodSeconds;
+    if (remaining <= 0) return { playbackRate, loop: true, starts: [] };
+    return {
+      playbackRate,
+      loop: true,
+      starts: [{ at: 0, offset: (skipSeconds % periodSeconds) * playbackRate, stopAfter: remaining }],
+    };
+  }
+
+  if (mode === 'bar') {
+    if (remaining <= 0) return { playbackRate: 1, loop: false, starts: [] };
+    const naturalBars = Math.max(1, Math.ceil(durationSeconds / barSeconds - 1e-9));
+    const periodSeconds = naturalBars * barSeconds;
+    const starts: BufferLoopStart[] = [];
+    for (let k = 0; k * periodSeconds < spanSeconds - 1e-9; k++) {
+      const repStart = k * periodSeconds;
+      const repPlay = Math.min(durationSeconds, spanSeconds - repStart);
+      if (repStart + repPlay <= skipSeconds) continue;
+      if (repStart < skipSeconds) {
+        starts.push({ at: 0, offset: skipSeconds - repStart, stopAfter: repPlay - (skipSeconds - repStart) });
+      } else {
+        starts.push({ at: repStart - skipSeconds, offset: 0, stopAfter: repPlay });
+      }
+    }
+    return { playbackRate: 1, loop: false, starts };
+  }
+
+  // 'gapless'
+  if (remaining <= 0) return { playbackRate: 1, loop: true, starts: [] };
+  return {
+    playbackRate: 1,
+    loop: true,
+    starts: [{ at: 0, offset: skipSeconds % durationSeconds, stopAfter: remaining }],
+  };
 }

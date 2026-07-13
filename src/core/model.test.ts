@@ -78,11 +78,14 @@ describe('project model', () => {
           bar: 4,
           ref: { type: 'pad', index: 2 },
           gain: 0.8,
+          loopMode: 'resample',
           plugins: [{ id: uid(), pluginId: 'delay', state: { delayTime: 0.25, feedback: 0.4, wet: 0.3 }, bypassed: false }],
         },
       ],
     });
-    expect(JSON.parse(JSON.stringify(p))).toEqual(p);
+    const round = JSON.parse(JSON.stringify(p));
+    expect(round).toEqual(p);
+    expect(round.arrangement.tracks[0].clips[0].loopMode).toBe('resample');
   });
 
   it('backfills arrangement.bars for old projects', () => {
