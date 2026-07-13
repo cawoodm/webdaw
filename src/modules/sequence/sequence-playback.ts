@@ -209,9 +209,11 @@ export async function renderSequence(seq: Sequence): Promise<AudioBuffer> {
   const sps = engine.secondsPerStep();
   const seconds = seq.bars * STEPS_PER_BAR * sps + 0.5;
   const resolved = await resolveInstrument(seq);
-  const rendered = await Tone.Offline(() => {
-    if (resolved) scheduleSequenceAt(seq, Tone.getDestination(), sps, resolved);
-  }, seconds);
+  const rendered = await engine.runExclusive(() =>
+    Tone.Offline(() => {
+      if (resolved) scheduleSequenceAt(seq, Tone.getDestination(), sps, resolved);
+    }, seconds),
+  );
   return rendered.get() as AudioBuffer;
 }
 

@@ -659,21 +659,23 @@ export class SampleTab extends HTMLElement {
       const b = pad ? padBuffer(pad) : null;
       if (b) buffers.set(i, b);
     });
-    const rendered = await Tone.Offline(() => {
-      for (const ev of events) {
-        const pad = pads[ev.pad];
-        const buffer = buffers.get(ev.pad);
-        if (!pad || !buffer) continue;
-        const g = new Tone.Gain(pad.gain).connect(Tone.getDestination());
-        const src = new Tone.ToneBufferSource(new Tone.ToneAudioBuffer(buffer)).connect(g);
-        let duration = pad.trimEnd > 0 ? Math.max(0.01, pad.trimEnd - pad.trimStart) : undefined;
-        if (ev.duration !== undefined) {
-          const cap = ev.duration * spb;
-          duration = duration === undefined ? cap : Math.min(duration, cap);
+    const rendered = await engine.runExclusive(() =>
+      Tone.Offline(() => {
+        for (const ev of events) {
+          const pad = pads[ev.pad];
+          const buffer = buffers.get(ev.pad);
+          if (!pad || !buffer) continue;
+          const g = new Tone.Gain(pad.gain).connect(Tone.getDestination());
+          const src = new Tone.ToneBufferSource(new Tone.ToneAudioBuffer(buffer)).connect(g);
+          let duration = pad.trimEnd > 0 ? Math.max(0.01, pad.trimEnd - pad.trimStart) : undefined;
+          if (ev.duration !== undefined) {
+            const cap = ev.duration * spb;
+            duration = duration === undefined ? cap : Math.min(duration, cap);
+          }
+          src.start(ev.time * spb, pad.trimStart, duration);
         }
-        src.start(ev.time * spb, pad.trimStart, duration);
-      }
-    }, seconds);
+      }, seconds),
+    );
     const loop = this.loop();
     const base = loop.name.replace(/[^\w-]+/g, '_');
     download(`${base}.wav`, new Blob([encodeWav(rendered.get() as AudioBuffer)], { type: 'audio/wav' }));
