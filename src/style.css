@@ -1011,6 +1011,11 @@ button.recording {
   background: #10231f;
 }
 
+.clip-loop-btn.loop-on {
+  color: #3b82f6;
+  border-color: #3b82f6;
+}
+
 .arrange-clip .clip-actions {
   position: absolute;
   left: 3px;

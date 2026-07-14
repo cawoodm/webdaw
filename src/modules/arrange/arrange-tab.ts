@@ -43,6 +43,7 @@ const ICONS = {
   copy: `<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`,
   zoomIn: `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3M11 8v6M8 11h6"/></svg>`,
   zoomOut: `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3M8 11h6"/></svg>`,
+  loop: `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>`,
   toStart: `<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><rect x="5" y="5" width="2" height="14"/><path d="M19 5 9 12l10 7z"/></svg>`,
   stepBack: `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>`,
   stepForward: `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>`,
@@ -53,16 +54,20 @@ export class ArrangeTab extends HTMLElement {
   private sampleFiles: { path: string; source: 'project' | 'global' }[] = [];
   private samplesScanned = false;
   private activeSong: SongPlaybackHandles | null = null;
-  /** Live cycle handles: the sounding cycle plus the pre-scheduled next one (song looping). */
-  private songCycles: SongPlaybackHandles[] = [];
+  /** Live cycle handles with the audio-clock second their content ends (loop scheduling). */
+  private songCycles: { handle: SongPlaybackHandles; until: number }[] = [];
   private loopTimer: number | null = null;
   // playhead anchor: the current cycle's start, rolled forward at each loop-back
   private cycleStartBeats = 0;
   private cycleFromBar = 0;
   /** Beats in the current cycle; 0 = playback doesn't loop (no clips, or cursor past the end). */
   private cycleLenBeats = 0;
-  /** Bar the last clip ends at — every loop-back cycle spans [0, songEndBar). */
-  private songEndBar = 0;
+  // where the playhead lands after a loop-back, and how long those cycles are
+  private wrapFromBar = 0;
+  private wrapLenBeats = 0;
+  /** Clip-loop toggle: the selected clip plays solo on repeat. */
+  private clipLoopOn = false;
+  private loopBtn: HTMLButtonElement | null = null;
   private liveTrackNodes = new Map<string, { inGain: Tone.Gain; chain: PluginChainEl }>();
   private ephemeralClipFx: DawPlugin[] = [];
   // ---- view state (rebuilt by render, consumed by the rAF loop) ----
@@ -236,38 +241,56 @@ export class ArrangeTab extends HTMLElement {
       provider: this.liveProvider(),
       fromBar,
     });
-    this.songCycles = [this.activeSong];
+    const cycle0End = startSeconds + (endBar - fromBar) * barSeconds;
     this.cycleStartBeats = 0;
     this.cycleFromBar = fromBar;
-    this.songEndBar = endBar;
+    this.wrapFromBar = 0;
+    this.wrapLenBeats = endBar * 4;
     // the song always loops back to bar 0 when the last clip ends
     this.cycleLenBeats = endBar > fromBar + 1e-9 ? (endBar - fromBar) * 4 : 0;
-    if (this.cycleLenBeats > 0) this.chainNextCycle(tracks, resolved, startSeconds + (endBar - fromBar) * barSeconds);
+    this.songCycles = [{ handle: this.activeSong, until: this.cycleLenBeats > 0 ? cycle0End : Infinity }];
+    if (this.cycleLenBeats > 0) this.chainNextCycle(tracks, resolved, cycle0End, 0, endBar);
     engine.play();
   }
 
   /**
-   * Pre-schedule the next full loop cycle (bar 0 → songEndBar) shortly before
-   * the current one ends, at its exact absolute start time — gapless, no drift.
-   * The cycle before last is disposed only then, so its release tails ring out.
+   * Keep upcoming loop cycles ([fromBar, fromBar+cycleBars)) scheduled at
+   * their exact absolute start times — gapless, no drift. A 3s horizon is
+   * committed ahead because hidden browser tabs clamp setTimeout to >=1s; a
+   * cycle is disposed only 1s after its content ends so tails ring out.
    */
-  private chainNextCycle(tracks: ArrangeTrack[], resolved: ResolvedSong, cycleStartSeconds: number): void {
+  private chainNextCycle(
+    tracks: ArrangeTrack[],
+    resolved: ResolvedSong,
+    cycleStartSeconds: number,
+    fromBar: number,
+    cycleBars: number,
+  ): void {
+    const HORIZON = 3;
     this.loopTimer = window.setTimeout(() => {
       this.loopTimer = null;
       if (this.songCycles.length === 0) return; // stopped in the meantime
       const barSeconds = this.barSeconds();
-      const handle = scheduleSong(tracks, resolved, {
-        songBus: engine.master,
-        startSeconds: cycleStartSeconds,
-        barSeconds,
-        secondsPerStep: engine.secondsPerStep(),
-        provider: this.liveProvider(),
-      });
-      this.songCycles.push(handle);
-      this.activeSong = handle;
-      if (this.songCycles.length > 2) this.songCycles.shift()!.dispose();
-      this.chainNextCycle(tracks, resolved, cycleStartSeconds + this.songEndBar * barSeconds);
-    }, Math.max(0, (cycleStartSeconds - Tone.now() - 0.35) * 1000));
+      const cycleSeconds = cycleBars * barSeconds;
+      let next = cycleStartSeconds;
+      while (next < Tone.now() + HORIZON) {
+        const handle = scheduleSong(tracks, resolved, {
+          songBus: engine.master,
+          startSeconds: next,
+          barSeconds,
+          secondsPerStep: engine.secondsPerStep(),
+          provider: this.liveProvider(),
+          fromBar,
+        });
+        this.songCycles.push({ handle, until: next + cycleSeconds });
+        this.activeSong = handle;
+        next += cycleSeconds;
+      }
+      const cutoff = Tone.now() - 1;
+      for (const c of this.songCycles) if (c.until < cutoff) c.handle.dispose();
+      this.songCycles = this.songCycles.filter((c) => c.until >= cutoff);
+      this.chainNextCycle(tracks, resolved, next, fromBar, cycleBars);
+    }, Math.max(0, (cycleStartSeconds - HORIZON - Tone.now()) * 1000));
   }
 
   /** Bars into the song for the moving playhead, rolling the anchor forward at each loop-back. */
@@ -275,11 +298,66 @@ export class ArrangeTab extends HTMLElement {
     let beats = engine.positionBeats - this.cycleStartBeats;
     while (this.cycleLenBeats > 0 && beats >= this.cycleLenBeats) {
       this.cycleStartBeats += this.cycleLenBeats;
-      this.cycleFromBar = 0;
-      this.cycleLenBeats = this.songEndBar * 4;
+      this.cycleFromBar = this.wrapFromBar;
+      this.cycleLenBeats = this.wrapLenBeats;
       beats = engine.positionBeats - this.cycleStartBeats;
     }
     return this.cycleFromBar + beats / 4;
+  }
+
+  /** Toggle solo-looping of the selected clip (the blue loop button). */
+  private async toggleClipLoop(): Promise<void> {
+    if (this.clipLoopOn) {
+      this.stop();
+      if (engine.started) engine.stop();
+      return;
+    }
+    await this.startClipLoop();
+  }
+
+  private findSelectedClip(): { track: ArrangeTrack; clip: ArrangeClip } | null {
+    if (!this.selectedClipId) return null;
+    for (const track of store.data.arrangement.tracks) {
+      const clip = track.clips.find((c) => c.id === this.selectedClipId);
+      if (clip) return { track, clip };
+    }
+    return null;
+  }
+
+  /** Play the selected clip solo (through its clip + track FX), looping from its start. */
+  private async startClipLoop(): Promise<void> {
+    const sel = this.findSelectedClip();
+    if (!sel) {
+      this.flash('Select a clip to loop');
+      return;
+    }
+    await engine.ensureStarted();
+    this.stop();
+    engine.claimTransport('arrange');
+    const { track, clip } = sel;
+    const soloTracks: ArrangeTrack[] = [{ ...track, muted: false, solo: false, clips: [clip] }];
+    const resolved = await resolveSong(soloTracks);
+    const barSeconds = this.barSeconds();
+    const span = clipSpanBars(clip, barSeconds);
+    const startSeconds = Tone.now() + 0.15;
+    this.activeSong = scheduleSong(soloTracks, resolved, {
+      songBus: engine.master,
+      startSeconds,
+      barSeconds,
+      secondsPerStep: engine.secondsPerStep(),
+      provider: this.liveProvider(),
+      fromBar: clip.bar,
+    });
+    this.songCycles = [{ handle: this.activeSong, until: startSeconds + span * barSeconds }];
+    this.cycleStartBeats = 0;
+    this.cycleFromBar = clip.bar;
+    this.cycleLenBeats = span * 4;
+    this.wrapFromBar = clip.bar;
+    this.wrapLenBeats = span * 4;
+    this.chainNextCycle(soloTracks, resolved, startSeconds + span * barSeconds, clip.bar, span);
+    this.clipLoopOn = true;
+    this.loopBtn?.classList.add('loop-on');
+    engine.play();
   }
 
   /** True while this tab's song is actually sounding — the moving playhead only applies then. */
@@ -331,13 +409,14 @@ export class ArrangeTab extends HTMLElement {
   }
 
   private stop(): void {
+    this.clipLoopOn = false;
+    this.loopBtn?.classList.remove('loop-on');
     if (this.loopTimer !== null) {
       window.clearTimeout(this.loopTimer);
       this.loopTimer = null;
     }
-    for (const c of this.songCycles) if (c !== this.activeSong) c.dispose();
+    for (const c of this.songCycles) c.handle.dispose();
     this.songCycles = [];
-    this.activeSong?.dispose();
     this.activeSong = null;
     for (const p of this.ephemeralClipFx) {
       p.output.disconnect();
@@ -467,7 +546,13 @@ export class ArrangeTab extends HTMLElement {
       if (i >= 0) track.clips.splice(i, 1);
     });
     this.scheduleHistoryCommit();
-    if (this.selectedClipId === clip.id) this.selectedClipId = null;
+    if (this.selectedClipId === clip.id) {
+      this.selectedClipId = null;
+      if (this.clipLoopOn) {
+        this.stop(); // the looped clip is gone
+        if (engine.started) engine.stop();
+      }
+    }
     el.remove();
     this.clipEls.delete(clip.id);
     this.viewDirty = true;
@@ -548,8 +633,11 @@ export class ArrangeTab extends HTMLElement {
   }
 
   private selectClip(id: string | null): void {
+    const changed = id !== this.selectedClipId;
     this.selectedClipId = id;
     for (const [cid, cel] of this.clipEls) cel.classList.toggle('selected', cid === id);
+    // while the loop toggle is on, selecting another clip moves the loop to it
+    if (this.clipLoopOn && changed && id) void this.startClipLoop();
   }
 
   private clipFxTeardown: (() => void) | null = null;
@@ -993,6 +1081,7 @@ export class ArrangeTab extends HTMLElement {
         this.stop();
         if (engine.started) engine.stop();
       }),
+      this.buildLoopButton(iconBtn),
       iconBtn('Play cursor forward one bar', ICONS.stepForward, () => this.stepForward()),
       palette,
       snap,
@@ -1129,6 +1218,14 @@ export class ArrangeTab extends HTMLElement {
 
     wrap.append(head, row);
     return wrap;
+  }
+
+  private buildLoopButton(iconBtn: (title: string, svg: string, fn: () => void) => HTMLButtonElement): HTMLButtonElement {
+    const b = iconBtn('Loop the selected clip — plays it solo on repeat', ICONS.loop, () => void this.toggleClipLoop());
+    b.classList.add('clip-loop-btn');
+    b.classList.toggle('loop-on', this.clipLoopOn);
+    this.loopBtn = b;
+    return b;
   }
 
   private flash(msg: string): void {
