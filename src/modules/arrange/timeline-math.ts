@@ -8,15 +8,15 @@ import type { ClipLoopMode, PadEvent } from '../../core/model';
 export const PX_PER_BAR_STEPS = [4, 6, 8, 12, 16, 24, 32, 48, 64];
 
 export const SNAP_BEATS: { beats: number; label: string }[] = [
-  { beats: 0, label: 'Snap: none' },
-  { beats: 4, label: 'Snap: 4 beats' },
-  { beats: 2, label: 'Snap: 2 beats' },
-  { beats: 1, label: 'Snap: 1 beat' },
-  { beats: 0.5, label: 'Snap: 1/2' },
-  { beats: 0.25, label: 'Snap: 1/4' },
-  { beats: 0.125, label: 'Snap: 1/8' },
-  { beats: 0.0625, label: 'Snap: 1/16' },
-  { beats: 0.03125, label: 'Snap: 1/32' },
+  { beats: 0, label: 'none' },
+  { beats: 4, label: '4 beats' },
+  { beats: 2, label: '2 beats' },
+  { beats: 1, label: '1 beat' },
+  { beats: 0.5, label: '1/2' },
+  { beats: 0.25, label: '1/4' },
+  { beats: 0.125, label: '1/8' },
+  { beats: 0.0625, label: '1/16' },
+  { beats: 0.03125, label: '1/32' },
 ];
 
 export function floorSnapBar(bar: number, snapBeats: number): number {
