@@ -1051,6 +1051,17 @@ button.recording {
   border-radius: 0 4px 4px 0;
 }
 
+.arrange-clip .clip-resize-l {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 7px;
+  height: 100%;
+  cursor: ew-resize;
+  background: rgb(0 0 0 / 25%);
+  border-radius: 4px 0 0 4px;
+}
+
 .arrange-playhead {
   position: absolute;
   top: 22px;

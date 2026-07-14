@@ -502,6 +502,10 @@ export class ArrangeTab extends HTMLElement {
     handle.className = 'clip-resize';
     handle.title = 'Drag to resize — a clip stretched past its length repeats';
     el.appendChild(handle);
+    const handleL = document.createElement('div');
+    handleL.className = 'clip-resize-l';
+    handleL.title = 'Drag to resize from the start — the clip end stays put';
+    el.appendChild(handleL);
     el.appendChild(this.buildClipActions(track, clip, el));
     this.attachClipPointer(track, clip, el, row);
     return el;
@@ -569,8 +573,8 @@ export class ArrangeTab extends HTMLElement {
     };
     el.onpointerdown = (e): void => {
       e.stopPropagation();
-      const handle = el.querySelector('.clip-resize');
-      const resizing = handle !== null && e.target === handle;
+      const resizing = e.target === el.querySelector('.clip-resize');
+      const resizingLeft = e.target === el.querySelector('.clip-resize-l');
       const px = this.pxPerBar();
       const snap = this.snapBeats();
       const barSeconds = this.barSeconds();
@@ -590,7 +594,11 @@ export class ArrangeTab extends HTMLElement {
         el.style.left = `${clip.bar * px}px`;
         el.style.width = `${Math.max(4, clipSpanBars(clip, barSeconds) * px)}px`;
       };
-      el.setPointerCapture(e.pointerId);
+      try {
+        el.setPointerCapture(e.pointerId);
+      } catch {
+        /* synthetic or already-released pointer — moves still bubble to el */
+      }
       el.onpointermove = (m): void => {
         if (!moved && Math.abs(m.clientX - start.x) + Math.abs(m.clientY - start.y) < 4) return;
         moved = true;
@@ -598,6 +606,14 @@ export class ArrangeTab extends HTMLElement {
         if (resizing) {
           const span = Math.max(minSpanBars(snap), nearestSnapBar(start.span + deltaBars, snap));
           clip.bars = Math.min(bars - clip.bar, span);
+          el.style.width = `${Math.max(4, clip.bars * px)}px`;
+        } else if (resizingLeft) {
+          // the end stays put; the start moves
+          const end = start.bar + start.span;
+          const newBar = Math.max(0, Math.min(end - minSpanBars(snap), nearestSnapBar(start.bar + deltaBars, snap)));
+          clip.bar = newBar;
+          clip.bars = end - newBar;
+          el.style.left = `${clip.bar * px}px`;
           el.style.width = `${Math.max(4, clip.bars * px)}px`;
         } else {
           clip.bar = Math.max(0, Math.min(bars - startSpan, floorSnapBar(start.bar + deltaBars, snap)));
@@ -630,7 +646,10 @@ export class ArrangeTab extends HTMLElement {
         });
         this.scheduleHistoryCommit();
         this.render(); // re-parents the clip element into the target row + refreshes maps
-        if (this.activeSong) void this.play(); // hear edits immediately, matching the sequence tab
+        // playback keeps running through edits — the next loop cycle reads the
+        // updated clips. Only an active clip-loop of THIS clip must restart,
+        // because its cycle anchor (fromBar) was captured from the old position.
+        if (this.clipLoopOn && this.selectedClipId === clip.id) void this.startClipLoop();
       };
     };
   }
