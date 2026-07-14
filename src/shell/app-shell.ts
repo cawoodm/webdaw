@@ -9,6 +9,7 @@ import { store } from '../core/project-store';
 import { uiState, updateUi } from '../core/ui-state';
 import { midiInput } from '../midi/midi-input';
 import type { PluginChainEl } from '../plugins/chain';
+import { makeDialogDraggable } from '../ui/draggable-dialog';
 import { openKeymapDialog } from '../ui/keymap-dialog';
 import { knob } from '../ui/knob';
 import { PLAY_ICON, STOP_ICON } from '../ui/transport-buttons';
@@ -276,6 +277,7 @@ export class AppShell extends HTMLElement {
     bus.on('project:diskDirty', (dirty) => saveBtn.classList.toggle('dirty', dirty));
 
     const masterDialog = this.querySelector<HTMLDialogElement>('.master-dialog')!;
+    makeDialogDraggable(masterDialog, masterDialog.querySelector<HTMLElement>('h3')!);
     this.querySelector<HTMLButtonElement>('.master-fx')!.onclick = async (): Promise<void> => {
       await engine.ensureStarted();
       this.ensureMasterChain();
