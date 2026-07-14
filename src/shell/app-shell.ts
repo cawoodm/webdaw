@@ -6,6 +6,7 @@ import { idbGet, idbSet } from '../core/persistence';
 import { projects } from '../core/project-manager';
 import { NEW_PROJECT_SENTINEL } from '../core/project-names';
 import { store } from '../core/project-store';
+import { TapTempo } from '../core/time';
 import { uiState, updateUi } from '../core/ui-state';
 import { midiInput } from '../midi/midi-input';
 import type { PluginChainEl } from '../plugins/chain';
@@ -32,7 +33,7 @@ export class AppShell extends HTMLElement {
         <span class="logo">Web<b>DAW</b></span>
         <nav class="tab-bar"></nav>
         <div class="transport">
-          <label>BPM <input type="number" class="bpm" min="40" max="240" value="120"></label>
+          <label class="bpm-label" title="Tap here 3+ times to set the tempo from your tap intervals">BPM <input type="number" class="bpm" min="40" max="240" value="120"></label>
           <button class="metro icon-btn" title="Metronome" aria-label="Toggle metronome">
             <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
               <path d="M9.2 3.5h5.6L19 20.5H5L9.2 3.5z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
@@ -55,8 +56,20 @@ export class AppShell extends HTMLElement {
           <button class="play-all icon-btn" title="Play/stop everything (Space)" aria-label="Play or stop everything"></button>
         </div>
         <div class="project-menu">
-          <button class="master-fx">Master FX</button>
-          <button class="keys">Keys</button>
+          <button class="master-fx icon-btn" title="Master FX" aria-label="Master FX">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+              <path d="M5 4v6M5 14v6M12 4v10M12 18v2M19 4v2M19 10v10"/>
+              <path d="M2.5 12h5M9.5 16h5M16.5 8h5"/>
+            </svg>
+          </button>
+          <button class="keys icon-btn" title="Keyboard → note mapping (Keys)" aria-label="Keys">
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+              <rect x="3" y="4" width="18" height="16" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.6"/>
+              <path d="M9 20v-7M15 20v-7" stroke="currentColor" stroke-width="1.6"/>
+              <rect x="7.6" y="4.8" width="2.6" height="6.5" fill="currentColor"/>
+              <rect x="13.6" y="4.8" width="2.6" height="6.5" fill="currentColor"/>
+            </svg>
+          </button>
           <button class="reconnect hidden">Reconnect folder</button>
           <button class="folder icon-btn" title="Pick the root folder that holds one subdirectory per project" aria-label="Pick root folder">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true">
@@ -118,6 +131,18 @@ export class AppShell extends HTMLElement {
     bpm.onchange = (): void => {
       const value = Math.min(240, Math.max(40, Number(bpm.value) || 120));
       engine.bpm = value;
+      store.update((d) => (d.bpm = value));
+    };
+    // tap tempo: tapping the "BPM" text 3+ times follows the average of the last two intervals
+    const tapper = new TapTempo();
+    this.querySelector<HTMLElement>('.bpm-label')!.onclick = (e): void => {
+      if (e.target === bpm) return; // clicks in the number field are edits, not taps
+      e.preventDefault(); // a label click would focus the input
+      const tapped = tapper.tap(performance.now());
+      if (tapped === null) return;
+      const value = Math.min(240, Math.max(40, Math.round(tapped)));
+      engine.bpm = value;
+      bpm.value = String(value);
       store.update((d) => (d.bpm = value));
     };
     // master volume: bare mutation + scheduleSave, like other knobs

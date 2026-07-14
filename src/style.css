@@ -1275,6 +1275,11 @@ dialog.collapsed .dialog-titlebar {
 }
 
 /* ---- dialogs ---- */
+.bpm-label {
+  cursor: pointer;
+  user-select: none;
+}
+
 .master-dialog {
   position: fixed;
   top: 12vh;
