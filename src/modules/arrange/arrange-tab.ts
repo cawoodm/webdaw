@@ -10,6 +10,7 @@ import { uiState, updateUi } from '../../core/ui-state';
 import { connectChain, PluginChainEl } from '../../plugins/chain';
 import type { DawPlugin } from '../../plugins/api';
 import { knob } from '../../ui/knob';
+import { dialogTitlebar } from '../../ui/dialog-titlebar';
 import { makeDialogDraggable } from '../../ui/draggable-dialog';
 import { transportButton } from '../../ui/transport-buttons';
 import {
@@ -928,10 +929,16 @@ export class ArrangeTab extends HTMLElement {
     } else {
       const dialog = document.createElement('dialog');
       dialog.className = 'fx-dialog';
-      dialog.innerHTML = `<div class="fx-dialog-head"><h3 class="fx-title"></h3><button class="close-fx" title="Close">✕</button></div><div class="fx-extra"></div><div class="fx-slot"></div>`;
-      dialog.querySelector<HTMLButtonElement>('.close-fx')!.onclick = (): void => dialog.close();
+      const fxTitle = document.createElement('h3');
+      fxTitle.className = 'fx-title';
+      const bar = dialogTitlebar(fxTitle, dialog);
+      const extra = document.createElement('div');
+      extra.className = 'fx-extra';
+      const slot = document.createElement('div');
+      slot.className = 'fx-slot';
+      dialog.append(bar, extra, slot);
       dialog.onclose = (): void => this.closeFxContent();
-      makeDialogDraggable(dialog, dialog.querySelector<HTMLElement>('.fx-dialog-head')!);
+      makeDialogDraggable(dialog, bar);
       this.appendChild(dialog);
     }
 

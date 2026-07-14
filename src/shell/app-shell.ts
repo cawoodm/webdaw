@@ -9,6 +9,7 @@ import { store } from '../core/project-store';
 import { uiState, updateUi } from '../core/ui-state';
 import { midiInput } from '../midi/midi-input';
 import type { PluginChainEl } from '../plugins/chain';
+import { dialogTitlebar } from '../ui/dialog-titlebar';
 import { makeDialogDraggable } from '../ui/draggable-dialog';
 import { openKeymapDialog } from '../ui/keymap-dialog';
 import { knob } from '../ui/knob';
@@ -80,8 +81,7 @@ export class AppShell extends HTMLElement {
         </div>
       </header>
       <main class="tab-panels"></main>
-      <dialog class="master-dialog"><h3>Master FX</h3><div class="master-chain-slot"></div>
-        <div class="toolbar"><button class="close-master">Close</button></div></dialog>`;
+      <dialog class="master-dialog"><div class="master-chain-slot"></div></dialog>`;
 
     const nav = this.querySelector('.tab-bar')!;
     for (const tab of TABS) {
@@ -277,13 +277,14 @@ export class AppShell extends HTMLElement {
     bus.on('project:diskDirty', (dirty) => saveBtn.classList.toggle('dirty', dirty));
 
     const masterDialog = this.querySelector<HTMLDialogElement>('.master-dialog')!;
-    makeDialogDraggable(masterDialog, masterDialog.querySelector<HTMLElement>('h3')!);
+    const masterBar = dialogTitlebar('Master FX', masterDialog);
+    masterDialog.prepend(masterBar);
+    makeDialogDraggable(masterDialog, masterBar);
     this.querySelector<HTMLButtonElement>('.master-fx')!.onclick = async (): Promise<void> => {
       await engine.ensureStarted();
       this.ensureMasterChain();
       masterDialog.show();
     };
-    this.querySelector<HTMLButtonElement>('.close-master')!.onclick = (): void => masterDialog.close();
     // bind Master FX into the live graph as soon as audio exists — previously
     // this only happened the first time the user opened the Master FX dialog,
     // so masterPlugins silently did nothing live (it was still applied

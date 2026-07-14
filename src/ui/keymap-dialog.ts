@@ -1,4 +1,5 @@
 import { getKeyMap, resetKeyMap, setKeyMapping } from '../midi/keymap';
+import { dialogTitlebar } from './dialog-titlebar';
 
 /** Modal for user-defined computer-keyboard note mapping. */
 export function openKeymapDialog(): void {
@@ -15,8 +16,8 @@ export function openKeymapDialog(): void {
     const notes = [...byNote.keys()].sort(
       (a, b) => noteValue(a) - noteValue(b),
     );
-    dialog.innerHTML = `<h3>Keyboard → note mapping</h3>
-      <p class="hint">Click "Set", then press the key you want for that note.</p>`;
+    dialog.innerHTML = `<p class="hint">Click "Set", then press the key you want for that note.</p>`;
+    dialog.prepend(dialogTitlebar('Keyboard → note mapping', dialog));
     const table = document.createElement('table');
     for (const note of notes) {
       const tr = document.createElement('tr');
@@ -49,10 +50,7 @@ export function openKeymapDialog(): void {
       await resetKeyMap();
       render();
     };
-    const closeBtn = document.createElement('button');
-    closeBtn.textContent = 'Close';
-    closeBtn.onclick = (): void => dialog.close();
-    footer.append(resetBtn, closeBtn);
+    footer.append(resetBtn);
     dialog.appendChild(footer);
   };
 
