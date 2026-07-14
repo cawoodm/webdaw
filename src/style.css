@@ -1194,6 +1194,15 @@ button.recording {
   align-items: center;
 }
 
+.viz-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
 .eq2-chip {
   display: inline-flex;
   align-items: center;

@@ -1,7 +1,7 @@
 import * as Tone from '../core/tone';
 import { magnitudeSpectrum } from '../core/dsp';
 import type { DawPlugin, PluginFactory, PluginMeta, PluginUiContext } from './api';
-import { startPluginCanvasLoop } from './spectrum-view';
+import { liveToggle, startPluginCanvasLoop } from './spectrum-view';
 import {
   BAND_LABELS, bandsFromState, bandsToState, combineDb, defaultEqBands, EQ_FMAX, EQ_FMIN,
   freqToX, gainToY, hitTest, isLegacyEqState, migrateLegacyEqState, neutralBandValues, qToY,
@@ -33,6 +33,8 @@ class EqualizerPlugin implements DawPlugin {
   private curves: Float32Array[] = [];
   private averager = new SpectrumAverager();
   private staticSpectrum: { mags: Float32Array; size: number; sampleRate: number } | null = null;
+  /** Checked = show the playing signal; unchecked (default) = the source's static average spectrum. */
+  private liveView = false;
   private redrawUi: (() => void) | null = null;
   private stopLoop: (() => void) | null = null;
 
@@ -132,7 +134,7 @@ class EqualizerPlugin implements DawPlugin {
       cx.strokeStyle = 'rgb(79 209 197 / 45%)';
       cx.lineWidth = 1;
       cx.beginPath();
-      if (this.staticSpectrum) {
+      if (!this.liveView && this.staticSpectrum) {
         const { mags, size, sampleRate } = this.staticSpectrum;
         let started = false;
         for (let k = 1; k < mags.length; k++) {
@@ -200,7 +202,7 @@ class EqualizerPlugin implements DawPlugin {
       }
       cx.fillText('+12', 2, gainToY(12, H) - 2);
       cx.fillText('-12', 2, gainToY(-12, H) - 2);
-      if (!this.staticSpectrum) this.averager.update(this.analyser.getValue() as Float32Array);
+      if (this.liveView || !this.staticSpectrum) this.averager.update(this.analyser.getValue() as Float32Array);
       drawSpectrumBg();
       handles = [];
       this.bands.forEach((b, i) => {
@@ -351,6 +353,7 @@ class EqualizerPlugin implements DawPlugin {
       };
       strip.appendChild(add);
     }
+    strip.appendChild(liveToggle(() => this.liveView, (v) => (this.liveView = v)));
   }
 }
 

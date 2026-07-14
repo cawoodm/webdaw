@@ -203,7 +203,7 @@ export class ArrangeTab extends HTMLElement {
       chain.bind(inGain, songBus, track.plugins, () => {
         store.scheduleSave();
         this.scheduleHistoryCommit();
-      });
+      }, { renderSource: () => this.renderTrackSource(track) });
       nodes = { inGain, chain };
       this.liveTrackNodes.set(track.id, nodes);
     }
@@ -669,6 +669,45 @@ export class ArrangeTab extends HTMLElement {
     this.render(); // refresh has-fx dots
   }
 
+  /**
+   * Offline-render a synthetic solo track (max 30s) — the pre-FX "source"
+   * plugin UIs visualize. Resolved in the LIVE context first, then one
+   * Tone.Offline (never nested), serialized via runExclusive.
+   */
+  private async renderFxSource(srcTrack: ArrangeTrack): Promise<AudioBuffer | null> {
+    const barSeconds = this.barSeconds();
+    const endBar = srcTrack.clips.reduce((m, c) => Math.max(m, c.bar + clipSpanBars(c, barSeconds)), 0);
+    if (endBar <= 0) return null;
+    const resolved = await resolveSong([srcTrack]);
+    const seconds = Math.min(30, endBar * barSeconds + 0.5);
+    return engine.runExclusive(async () => {
+      const rendered = await Tone.Offline(() => {
+        scheduleSong([srcTrack], resolved, {
+          songBus: Tone.getDestination(),
+          startSeconds: 0,
+          barSeconds,
+          secondsPerStep: engine.secondsPerStep(),
+          provider: createOfflineProvider(),
+        });
+      }, seconds);
+      return rendered.get() as AudioBuffer;
+    });
+  }
+
+  /** Pre-track-FX source: the track's clips (with their own gain/FX), shifted to start at 0. */
+  private renderTrackSource(track: ArrangeTrack): Promise<AudioBuffer | null> {
+    if (track.clips.length === 0) return Promise.resolve(null);
+    const minBar = Math.min(...track.clips.map((c) => c.bar));
+    return this.renderFxSource({
+      ...track,
+      gain: 1,
+      muted: false,
+      solo: false,
+      plugins: [],
+      clips: track.clips.map((c) => ({ ...c, bar: c.bar - minBar })),
+    });
+  }
+
   private openTrackFx(track: ArrangeTrack): void {
     // runExclusive: see openClipFx — live nodes can't be built mid-offline-render
     void engine.runExclusive(async () => {
@@ -721,33 +760,15 @@ export class ArrangeTab extends HTMLElement {
       // throwaway audio pair: the chain edits clip.plugins in place; audible on the clip's next play
       const inGain = new Tone.Gain(0).connect(engine.master);
       const chain = document.createElement('plugin-chain') as PluginChainEl;
-      // pre-FX source render for plugin UIs (e.g. the EQ's average spectrum):
-      // the clip alone, at bar 0, without its gain/FX — resolved in the LIVE
-      // context first, then one Tone.Offline (never nested)
-      const renderSource = async (): Promise<AudioBuffer | null> => {
-        const barSeconds = this.barSeconds();
-        const srcTrack: ArrangeTrack = {
+      // pre-FX source for plugin UIs: the clip alone, at bar 0, without its gain/FX
+      const renderSource = (): Promise<AudioBuffer | null> =>
+        this.renderFxSource({
           id: 'fx-src',
           name: 'fx-src',
           gain: 1,
           plugins: [],
           clips: [{ ...clip, bar: 0, gain: 1, plugins: [] }],
-        };
-        const resolved = await resolveSong([srcTrack]);
-        const seconds = Math.min(30, clipSpanBars(clip, barSeconds) * barSeconds + 0.5);
-        return engine.runExclusive(async () => {
-          const rendered = await Tone.Offline(() => {
-            scheduleSong([srcTrack], resolved, {
-              songBus: Tone.getDestination(),
-              startSeconds: 0,
-              barSeconds,
-              secondsPerStep: engine.secondsPerStep(),
-              provider: createOfflineProvider(),
-            });
-          }, seconds);
-          return rendered.get() as AudioBuffer;
         });
-      };
       chain.bind(inGain, engine.master, clip.plugins, () => {
         store.scheduleSave();
         this.scheduleHistoryCommit();

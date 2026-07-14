@@ -1,7 +1,9 @@
 import * as Tone from '../core/tone';
+import { magnitudeSpectrum } from '../core/dsp';
 import { knob } from '../ui/knob';
-import type { DawPlugin, ParamSpec, PluginFactory, PluginMeta } from './api';
-import { drawSpectrum } from './spectrum-view';
+import type { DawPlugin, ParamSpec, PluginFactory, PluginMeta, PluginUiContext } from './api';
+import { drawDbBins, liveToggle, startPluginCanvasLoop } from './spectrum-view';
+import { SpectrumAverager } from './eq-math';
 import { EQ_FACTORY } from './equalizer';
 
 /** Generic wrapper: a Tone effect + knob per parameter. */
@@ -144,8 +146,13 @@ class SpectrumPlugin implements DawPlugin {
   readonly input = this.analyser;
   readonly output = this.analyser;
   private stopLoop: (() => void) | null = null;
+  /** Checked = live FFT of the playing signal; unchecked (default) = the source's static average. */
+  private liveView = false;
+  private averager = new SpectrumAverager();
+  /** dB per bin of the pre-FX source, Tone-tab style — set once renderSource resolves. */
+  private staticDb: Float32Array | null = null;
 
-  createUI(): HTMLElement {
+  createUI(ctx?: PluginUiContext): HTMLElement {
     const wrap = document.createElement('div');
     wrap.className = 'spectrum-wrap';
     const canvas = document.createElement('canvas');
@@ -153,8 +160,26 @@ class SpectrumPlugin implements DawPlugin {
     canvas.height = 120;
     canvas.className = 'spectrum-canvas';
     wrap.appendChild(canvas);
+    if (ctx?.renderSource) {
+      void ctx.renderSource().then((buffer) => {
+        if (!buffer || this.analyser.disposed) return;
+        const { mags } = magnitudeSpectrum(buffer.getChannelData(0));
+        this.staticDb = Float32Array.from(mags, (m) => 20 * Math.log10(m + 1e-12));
+      });
+    }
     this.stopLoop?.();
-    this.stopLoop = drawSpectrum(canvas, this.analyser);
+    this.stopLoop = startPluginCanvasLoop(canvas, () => !this.analyser.disposed, () => {
+      if (this.liveView) {
+        drawDbBins(canvas, this.analyser.getValue() as Float32Array);
+      } else if (this.staticDb) {
+        drawDbBins(canvas, this.staticDb);
+      } else {
+        // no known source (e.g. Master FX): fall back to a running average
+        this.averager.update(this.analyser.getValue() as Float32Array);
+        drawDbBins(canvas, this.averager.current() ?? []);
+      }
+    });
+    wrap.appendChild(liveToggle(() => this.liveView, (v) => (this.liveView = v)));
     return wrap;
   }
 
