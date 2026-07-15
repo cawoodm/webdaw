@@ -1,4 +1,4 @@
-import { midiToNoteName } from '../midi/note-names';
+import {midiToNoteName} from '../midi/note-names';
 
 export type TabId = 'tone' | 'sample' | 'sequence' | 'arrange' | 'produce';
 
@@ -6,9 +6,9 @@ export type OscType = 'sine' | 'sawtooth' | 'triangle' | 'square' | 'noise';
 
 export interface ToneLayer {
   type: OscType;
-  gain: number;    // 0..1
-  detune: number;  // cents
-  phase: number;   // degrees
+  gain: number; // 0..1
+  detune: number; // cents
+  phase: number; // degrees
   muted?: boolean;
   /** Solo: when any unmuted layer is soloed, only soloed layers sound. */
   solo?: boolean;
@@ -35,9 +35,9 @@ export interface PatchFilter {
 }
 
 export interface LfoConfig {
-  rate: number;  // Hz
+  rate: number; // Hz
   depth: number; // 0..1; 0 = inactive
-  on?: boolean;  // undefined = enabled (older projects)
+  on?: boolean; // undefined = enabled (older projects)
   phase?: number; // degrees, -180..180; undefined = 0 (older projects)
 }
 
@@ -62,10 +62,10 @@ export interface TonePatch {
   id: string;
   name: string;
   layers: ToneLayer[];
-  env: { attack: number; decay: number; sustain: number; release: number; shape?: EnvShape; on?: boolean };
+  env: {attack: number; decay: number; sustain: number; release: number; shape?: EnvShape; on?: boolean};
   /** @deprecated single LFO with a target selector; split into lfoPitch/lfoVolume */
-  lfo?: { rate: number; depth: number; target: 'off' | 'pitch' | 'volume'; on?: boolean };
-  lfoPitch?: LfoConfig;  // vibrato: +/- depth semitones on every oscillator
+  lfo?: {rate: number; depth: number; target: 'off' | 'pitch' | 'volume'; on?: boolean};
+  lfoPitch?: LfoConfig; // vibrato: +/- depth semitones on every oscillator
   lfoVolume?: LfoConfig; // tremolo: mix gain between 1-depth and 1
   /** Pitch envelope: a percussive downward glide on top of the played note. */
   pitchEnv?: PitchEnv;
@@ -83,29 +83,28 @@ export interface TonePatch {
 }
 
 export function defaultFilter(): PatchFilter {
-  return { hpf: 20, lpf: 20000 };
+  return {hpf: 20, lpf: 20000};
 }
 
 export function defaultLfo(): LfoConfig {
-  return { rate: 4, depth: 0 };
+  return {rate: 4, depth: 0};
 }
 
 export function defaultPitchEnv(): PitchEnv {
-  return { amount: 0, time: 0.05 };
+  return {amount: 0, time: 0.05};
 }
 
 export function defaultFilterEnv(): FilterEnv {
-  return { amount: 1, time: 0.1 };
+  return {amount: 1, time: 0.1};
 }
 
 /**
  * The patch's pitch + volume LFOs, resolving the legacy single-LFO shape
  * (its target routed it to one of the two slots) at read time.
  */
-export function resolveLfos(patch: TonePatch): { pitch: LfoConfig; volume: LfoConfig } {
+export function resolveLfos(patch: TonePatch): {pitch: LfoConfig; volume: LfoConfig} {
   const legacy = patch.lfo;
-  const fromLegacy = (target: 'pitch' | 'volume'): LfoConfig | null =>
-    legacy && legacy.target === target ? { rate: legacy.rate, depth: legacy.depth, on: legacy.on } : null;
+  const fromLegacy = (target: 'pitch' | 'volume'): LfoConfig | null => (legacy && legacy.target === target ? {rate: legacy.rate, depth: legacy.depth, on: legacy.on} : null);
   return {
     pitch: patch.lfoPitch ?? fromLegacy('pitch') ?? defaultLfo(),
     volume: patch.lfoVolume ?? fromLegacy('volume') ?? defaultLfo(),
@@ -156,7 +155,7 @@ export interface PadConfig {
   color?: string;
   gain: number;
   trimStart: number; // seconds
-  trimEnd: number;   // seconds, 0 = to end
+  trimEnd: number; // seconds, 0 = to end
 }
 
 /** Buffer-cache key for a tone patch's current render. */
@@ -172,8 +171,8 @@ export interface PadEvent {
 }
 
 export interface NoteEvent {
-  step: number;     // 16th-note index
-  note: string;     // e.g. "C4"
+  step: number; // 16th-note index
+  note: string; // e.g. "C4"
   duration: number; // in 16th steps
   velocity: number; // 0..1
 }
@@ -181,10 +180,10 @@ export interface NoteEvent {
 export type SynthKind = 'synth' | 'fm' | 'am';
 
 export type SeqInstrument =
-  | { type: 'synth'; kind: SynthKind }
-  | { type: 'patch'; patchId: string }
-  | { type: 'wav'; file: string; root?: string } // root note, default 'C4'
-  | { type: 'instrument'; name: string }; // loaded from the _instruments library
+  | {type: 'synth'; kind: SynthKind}
+  | {type: 'patch'; patchId: string}
+  | {type: 'wav'; file: string; root?: string} // root note, default 'C4'
+  | {type: 'instrument'; name: string}; // loaded from the _instruments library
 
 export interface Sequence {
   id: string;
@@ -201,7 +200,7 @@ interface LegacySeqTrack {
   name: string;
   kind: 'audio' | 'midi';
   gain: number;
-  source?: { pad?: number; file?: string };
+  source?: {pad?: number; file?: string};
   steps?: number[];
   synth?: SynthKind;
   notes?: NoteEvent[];
@@ -215,10 +214,10 @@ export interface PluginInstanceState {
 }
 
 export type ArrangeClipRef =
-  | { type: 'sequence'; id: string }
-  | { type: 'file'; file: string }
-  | { type: 'pad'; index: number } // index into ProjectData.pads — pads have no id field
-  | { type: 'loop'; id: string }; // PadLoop id — a named Beat from the Sample tab
+  | {type: 'sequence'; id: string}
+  | {type: 'file'; file: string}
+  | {type: 'pad'; index: number} // index into ProjectData.pads — pads have no id field
+  | {type: 'loop'; id: string}; // PadLoop id — a named Beat from the Sample tab
 
 export type ClipLoopMode = 'gapless' | 'bar' | 'resample';
 
@@ -286,7 +285,7 @@ export const MAX_BARS = 800;
  */
 export function isTrackAudible(track: ArrangeTrack, allTracks: ArrangeTrack[]): boolean {
   if (track.muted) return false;
-  const anySolo = allTracks.some((t) => t.solo && !t.muted);
+  const anySolo = allTracks.some(t => t.solo && !t.muted);
   return !anySolo || !!track.solo;
 }
 
@@ -300,16 +299,16 @@ export function uid(): string {
 }
 
 /** Copy of `items` sorted by display name (case-insensitive, locale-aware). */
-export function sortedByName<T extends { name: string }>(items: readonly T[]): T[] {
-  return [...items].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+export function sortedByName<T extends {name: string}>(items: readonly T[]): T[] {
+  return [...items].sort((a, b) => a.name.localeCompare(b.name, undefined, {sensitivity: 'base'}));
 }
 
 export function defaultPatch(): TonePatch {
   return {
     id: uid(),
     name: 'Patch 1',
-    layers: [{ type: 'sine', gain: 0.8, detune: 0, phase: 0, freq: SAMPLE_FREQ_DEFAULT }],
-    env: { attack: 0.01, decay: 0.2, sustain: 0.6, release: 0.4 },
+    layers: [{type: 'sine', gain: 0.8, detune: 0, phase: 0, freq: SAMPLE_FREQ_DEFAULT}],
+    env: {attack: 0.01, decay: 0.2, sustain: 0.6, release: 0.4},
     lfoPitch: defaultLfo(),
     lfoVolume: defaultLfo(),
     pitchEnv: defaultPitchEnv(),
@@ -320,7 +319,7 @@ export function defaultPatch(): TonePatch {
 }
 
 export function defaultLoop(): PadLoop {
-  return { id: uid(), name: 'Loop 1', bars: 2, events: [] };
+  return {id: uid(), name: 'Loop 1', bars: 2, events: []};
 }
 
 export function defaultProject(): ProjectData {
@@ -332,24 +331,24 @@ export function defaultProject(): ProjectData {
     pads: new Array(PAD_COUNT).fill(null),
     padLoops: [defaultLoop()],
     sequences: [],
-    arrangement: { bars: 32, tracks: [], masterPlugins: [] },
+    arrangement: {bars: 32, tracks: [], masterPlugins: []},
     savedAt: 0,
   };
 }
 
 /** Remove a sequence and every arrangement clip that references it. */
 export function removeSequence(data: ProjectData, id: string): void {
-  data.sequences = data.sequences.filter((s) => s.id !== id);
+  data.sequences = data.sequences.filter(s => s.id !== id);
   for (const track of data.arrangement.tracks) {
-    track.clips = track.clips.filter((clip) => !(clip.ref.type === 'sequence' && clip.ref.id === id));
+    track.clips = track.clips.filter(clip => !(clip.ref.type === 'sequence' && clip.ref.id === id));
   }
 }
 
 /** Remove a pad loop ("Beat") and every arrangement clip that references it. */
 export function removeLoop(data: ProjectData, id: string): void {
-  data.padLoops = data.padLoops.filter((l) => l.id !== id);
+  data.padLoops = data.padLoops.filter(l => l.id !== id);
   for (const track of data.arrangement.tracks) {
-    track.clips = track.clips.filter((clip) => !(clip.ref.type === 'loop' && clip.ref.id === id));
+    track.clips = track.clips.filter(clip => !(clip.ref.type === 'loop' && clip.ref.id === id));
   }
 }
 
@@ -378,12 +377,12 @@ export function normalizeProject(data: ProjectData): ProjectData {
   delete data.padEvents;
   if (!Array.isArray(data.sequences)) data.sequences = [];
   for (const seq of data.sequences) {
-    const raw = seq as unknown as { tracks?: LegacySeqTrack[] };
+    const raw = seq as unknown as {tracks?: LegacySeqTrack[]};
     if (raw.tracks && !seq.notes) {
-      const midiTrack = raw.tracks.find((t) => t.kind === 'midi' && t.notes);
+      const midiTrack = raw.tracks.find(t => t.kind === 'midi' && t.notes);
       if (midiTrack) {
         seq.notes = midiTrack.notes ?? [];
-        seq.instrument = { type: 'synth', kind: midiTrack.synth ?? 'synth' };
+        seq.instrument = {type: 'synth', kind: midiTrack.synth ?? 'synth'};
       } else {
         seq.notes = [];
       }
