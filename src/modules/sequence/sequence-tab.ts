@@ -940,6 +940,9 @@ export class SequenceTab extends HTMLElement {
     const prevScroll = this.querySelector<HTMLElement>('.roll-scroll');
     const savedTop = prevScroll?.scrollTop;
     const savedLeft = prevScroll?.scrollLeft;
+    // While hidden (display:none) the panel has no layout, so clientHeight reads 0 and
+    // scrollTop always reads 0 — that's not a real user scroll position, don't trust it.
+    const prevVisible = (prevScroll?.clientHeight ?? 0) > 0;
     this.innerHTML = '';
     const seq = this.seq();
     if (seq) this.seqId = seq.id;
@@ -1175,7 +1178,7 @@ export class SequenceTab extends HTMLElement {
     const scroll = roll.querySelector<HTMLElement>('.roll-scroll')!;
 
     const sameSeq = seq.id === this.renderedSeqId;
-    if (sameSeq && savedTop !== undefined && !this.scrollPending) {
+    if (sameSeq && savedTop !== undefined && !this.scrollPending && prevVisible) {
       // Re-render of the same sequence (e.g. an edit): keep the user's scroll.
       // (Skip while a scroll is still pending — the saved value is from a
       // hidden 0-height render at boot and would strand the wrong octave.)
