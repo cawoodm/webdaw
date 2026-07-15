@@ -6,7 +6,7 @@ import type {NoteEvent, SeqInstrument, Sequence, SynthKind} from '../../core/mod
 import {pianoNotes, removeSequence, sortedByName, STEPS_PER_BAR, uid} from '../../core/model';
 import {projects} from '../../core/project-manager';
 import {uniqueName} from '../../core/project-names';
-import {store} from '../../core/project-store';
+import {resolveSampleImportPath, store} from '../../core/project-store';
 import {buildSeqFile, parseSeqFile} from '../../core/sequence-file';
 import {uiState, updateUi} from '../../core/ui-state';
 import {buildMidiFile, parseMidiFile, type MidiImportResult} from '../../midi/midi-file';
@@ -694,7 +694,8 @@ export class SequenceTab extends HTMLElement {
       if (!file) return;
       await engine.ensureStarted();
       const name = file.name.replace(/\.[^.]+$/, '');
-      const path = `samples/${name.replace(/[^\w-]+/g, '_')}-${uid()}.wav`;
+      const path = await resolveSampleImportPath(name);
+      if (!path) return;
       await store.importAudioFile(file, path);
       this.monitorKey = '';
       store.update(() => (seq.instrument = {type: 'wav', file: path}));
@@ -940,6 +941,9 @@ export class SequenceTab extends HTMLElement {
     const prevScroll = this.querySelector<HTMLElement>('.roll-scroll');
     const savedTop = prevScroll?.scrollTop;
     const savedLeft = prevScroll?.scrollLeft;
+    // While hidden (display:none) the panel has no layout, so clientHeight reads 0 and
+    // scrollTop always reads 0 — that's not a real user scroll position, don't trust it.
+    const prevVisible = (prevScroll?.clientHeight ?? 0) > 0;
     this.innerHTML = '';
     const seq = this.seq();
     if (seq) this.seqId = seq.id;
@@ -1175,7 +1179,7 @@ export class SequenceTab extends HTMLElement {
     const scroll = roll.querySelector<HTMLElement>('.roll-scroll')!;
 
     const sameSeq = seq.id === this.renderedSeqId;
-    if (sameSeq && savedTop !== undefined && !this.scrollPending) {
+    if (sameSeq && savedTop !== undefined && !this.scrollPending && prevVisible) {
       // Re-render of the same sequence (e.g. an edit): keep the user's scroll.
       // (Skip while a scroll is still pending — the saved value is from a
       // hidden 0-height render at boot and would strand the wrong octave.)

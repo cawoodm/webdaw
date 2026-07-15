@@ -7,7 +7,7 @@ import { defaultLoop, defaultPatch, PAD_COUNT, removeLoop, sortedByName, toneBuf
 import { ensurePadBuffers, padBuffer, padSeconds, playPadInto } from '../../core/pad-voice';
 import { renderPatch } from '../../core/patch-voice';
 import { uniqueName } from '../../core/project-names';
-import { store } from '../../core/project-store';
+import { resolveSampleImportPath, store } from '../../core/project-store';
 import { beatsToTransportTime } from '../../core/time';
 import { uiState, updateUi } from '../../core/ui-state';
 import { PLAY_ICON, STOP_ICON, transportButton } from '../../ui/transport-buttons';
@@ -1019,7 +1019,8 @@ export class SampleTab extends HTMLElement {
       const el = document.createElement('button');
       el.className = 'pad' + (pad ? ' loaded' : '') + (i === this.selected ? ' selected' : '');
       const key = i < 8 ? `${i + 1}` : `⇧${i - 7}`;
-      el.innerHTML = `<span class="pad-key">${key}</span>${pad?.name ?? ''}`;
+      el.innerHTML = `<span class="pad-key">${key}</span>`;
+      if (pad?.name) el.append(pad.name);
       el.title = i < 8 ? `Play with key ${i + 1}` : `Play with Shift+${i - 7}`;
       if (pad?.color) {
         el.style.borderColor = pad.color;
@@ -1083,7 +1084,8 @@ export class SampleTab extends HTMLElement {
     const pad = store.data.pads[index];
     const title = document.createElement('div');
     title.className = 'card-head';
-    title.innerHTML = `<span class="card-title">Pad ${index + 1}${pad ? ` — ${pad.name}` : ''}</span>`;
+    title.innerHTML = `<span class="card-title">Pad ${index + 1}</span>`;
+    if (pad) title.querySelector('.card-title')!.append(` — ${pad.name}`);
     editor.appendChild(title);
 
     // link a tone patch — the pad follows the patch's latest render
@@ -1126,7 +1128,8 @@ export class SampleTab extends HTMLElement {
         if (!file) return;
         await engine.ensureStarted();
         const name = file.name.replace(/\.[^.]+$/, '');
-        const path = `samples/${name.replace(/[^\w-]+/g, '_')}-${uid()}.wav`;
+        const path = await resolveSampleImportPath(name);
+        if (!path) return;
         await store.importAudioFile(file, path);
         store.update((d) => {
           const prev = d.pads[index];

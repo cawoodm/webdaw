@@ -35,6 +35,11 @@ export function isFileRef(ref: string): boolean {
   return ref.includes('.');
 }
 
+/** A ref starting with "/" is a file path from the projects root folder (e.g. /_tones/mellow-pad.tone.json). */
+export function isRootPathRef(ref: string): boolean {
+  return ref.startsWith('/');
+}
+
 /** An instrument resolved to playable data: decoded audio buffers or tone patches, per note. */
 export interface LoadedInstrument {
   name: string;

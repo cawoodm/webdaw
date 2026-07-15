@@ -6,6 +6,6 @@
   "envelope": { "attack": 0.01, "release": 0.4 },
   "gain": 1,
   "notes": {
-    "C4": "f2f3f3a1b2c3d4e5"
+    "C4": "/_tones/mellow-pad.tone.json"
   }
 }
