@@ -12,6 +12,7 @@ import { midiInput } from '../midi/midi-input';
 import type { PluginChainEl } from '../plugins/chain';
 import { dialogTitlebar } from '../ui/dialog-titlebar';
 import { makeDialogDraggable } from '../ui/draggable-dialog';
+import { openImportDialog } from '../ui/import-dialog';
 import { openKeymapDialog } from '../ui/keymap-dialog';
 import { knob } from '../ui/knob';
 import { PLAY_ICON, STOP_ICON } from '../ui/transport-buttons';
@@ -71,6 +72,11 @@ export class AppShell extends HTMLElement {
             </svg>
           </button>
           <button class="reconnect hidden">Reconnect folder</button>
+          <button class="import-btn icon-btn" title="Import project from URL" aria-label="Import project from URL">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true">
+              <path d="M7 18a4 4 0 0 1-.6-7.96A5.5 5.5 0 0 1 17.4 8.5 4.5 4.5 0 0 1 17 18H7z"/>
+            </svg>
+          </button>
           <button class="folder icon-btn" title="Pick the root folder that holds one subdirectory per project" aria-label="Pick root folder">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true">
               <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
@@ -243,6 +249,7 @@ export class AppShell extends HTMLElement {
       { capture: true },
     );
     this.querySelector<HTMLButtonElement>('.keys')!.onclick = (): void => openKeymapDialog();
+    this.querySelector<HTMLButtonElement>('.import-btn')!.onclick = (): void => openImportDialog();
     this.querySelector<HTMLButtonElement>('.folder')!.onclick = async (): Promise<void> => {
       await projects.chooseRoot();
     };
