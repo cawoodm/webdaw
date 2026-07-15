@@ -423,14 +423,13 @@ class ProjectManager {
 
     let name = sanitizeProjectName(raw.name ?? '') ?? sanitizeProjectName(fallbackNameFromUrl(url)) ?? 'Imported';
     const existing = await this.listProjects();
-    if (nameCollisionAction(name, existing) === 'ask-overwrite') {
+    while (nameCollisionAction(name, existing) === 'ask-overwrite') {
       const overwrite = confirm(`A project named "${name}" already exists. Overwrite?`);
-      if (!overwrite) {
-        const renamed = prompt('New project name', name);
-        const sanitized = renamed ? sanitizeProjectName(renamed) : null;
-        if (!sanitized) return { ok: false, error: 'Import cancelled.' };
-        name = sanitized;
-      }
+      if (overwrite) break;
+      const renamed = prompt('New project name', name);
+      const sanitized = renamed ? sanitizeProjectName(renamed) : null;
+      if (!sanitized) return { ok: false, error: 'Import cancelled.' };
+      name = sanitized;
     }
 
     const data: ProjectData = { ...defaultProject(), ...raw };
@@ -438,19 +437,27 @@ class ProjectManager {
     const normalized = normalizeProject(data);
 
     const libraryBase = deriveLibraryBase(url);
-    const warnings = await this.resolveImportedInstruments(normalized, libraryBase, name);
+    const { warnings, instruments } = await this.resolveImportedInstruments(normalized, libraryBase, name);
 
     await this.commitProject(name, normalized);
+    // Re-insert after commitProject: commitProject's project:loaded emit runs
+    // sequence-tab's handler, which unconditionally clearInstrumentCache()s.
+    for (const [instName, loaded] of instruments) instrumentCache.set(instName, loaded);
     return { ok: true, warnings };
   }
 
-  /** Resolve every `{type:'instrument', name}` ref in `data.sequences`, caching + (if a folder is connected) saving each into the new project's own instruments/ library. Returns names/ids that couldn't be resolved. */
-  private async resolveImportedInstruments(data: ProjectData, libraryBase: string, projectName: string): Promise<string[]> {
+  /** Resolve every `{type:'instrument', name}` ref in `data.sequences`, and (if a folder is connected) save each into the new project's own instruments/ library. Returns names/ids that couldn't be resolved plus the resolved instruments themselves (caller caches these after commitProject, since commitProject's project:loaded clears the cache). */
+  private async resolveImportedInstruments(
+    data: ProjectData,
+    libraryBase: string,
+    projectName: string,
+  ): Promise<{ warnings: string[]; instruments: Map<string, LoadedInstrument> }> {
     const names = new Set<string>();
     for (const seq of data.sequences) {
       if (seq.instrument?.type === 'instrument') names.add(seq.instrument.name);
     }
-    if (names.size === 0) return [];
+    const instruments = new Map<string, LoadedInstrument>();
+    if (names.size === 0) return { warnings: [], instruments };
 
     const warnings: string[] = [];
     const destDir = await this.projectDir(projectName, true); // null with no folder connected
@@ -479,10 +486,22 @@ class ProjectManager {
         for (const [note, ref] of Object.entries(def.notes)) {
           const raw = samples.get(ref);
           if (!raw) continue;
-          audio.set(note, await store.decodeExternal(raw));
+          try {
+            audio.set(note, await store.decodeExternal(raw));
+          } catch (err) {
+            console.warn(`[import] failed to decode ${name}/${ref}`, err);
+            warnings.push(`${name}: failed to decode ${ref}`);
+          }
         }
-        instrumentCache.set(name, { name: def.name, type: 'audio', envelope, gain: def.gain ?? 1, audio });
-        if (destDir) await this.writeImportedInstrument(destDir, name, rawText, samples);
+        instruments.set(name, { name: def.name, type: 'audio', envelope, gain: def.gain ?? 1, audio });
+        if (destDir) {
+          try {
+            await this.writeImportedInstrument(destDir, name, rawText, samples);
+          } catch (err) {
+            console.warn(`[import] failed to save ${name} to disk`, err);
+            warnings.push(`${name}: failed to save to disk`);
+          }
+        }
       } else {
         const tones = new Map<string, TonePatch>();
         const missing: string[] = [];
@@ -495,7 +514,7 @@ class ProjectManager {
           }
           tones.set(note, patch);
         }
-        instrumentCache.set(name, {
+        instruments.set(name, {
           name: def.name,
           type: 'tone',
           envelope,
@@ -503,10 +522,17 @@ class ProjectManager {
           tones,
           missingTones: missing.length > 0 ? missing : undefined,
         });
-        if (destDir) await this.writeImportedInstrument(destDir, name, rawText, new Map());
+        if (destDir) {
+          try {
+            await this.writeImportedInstrument(destDir, name, rawText, new Map());
+          } catch (err) {
+            console.warn(`[import] failed to save ${name} to disk`, err);
+            warnings.push(`${name}: failed to save to disk`);
+          }
+        }
       }
     }
-    return warnings;
+    return { warnings, instruments };
   }
 
   /** Try both known instrument-def filename conventions at `libraryBase`; returns the first that resolves and parses. */
