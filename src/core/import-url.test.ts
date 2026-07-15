@@ -7,7 +7,7 @@ import {
   instrumentAssetUrl,
   nameCollisionAction,
   normalizeProjectUrl,
-  toneUrl,
+  rootPathUrl,
 } from './import-url';
 
 describe('normalizeProjectUrl', () => {
@@ -62,10 +62,16 @@ describe('instrumentAssetUrl', () => {
   });
 });
 
-describe('toneUrl', () => {
-  it('assumes filename equals the tone id', () => {
-    expect(toneUrl('https://example.com/projects/', 'f2f3f3a1b2c3d4e5')).toBe(
-      'https://example.com/projects/_tones/f2f3f3a1b2c3d4e5.tone.json',
+describe('rootPathUrl', () => {
+  it('resolves a root-relative path against the library base', () => {
+    expect(rootPathUrl('https://example.com/projects/', '/_tones/mellow-pad.tone.json')).toBe(
+      'https://example.com/projects/_tones/mellow-pad.tone.json',
+    );
+  });
+
+  it('encodes a segment containing a space', () => {
+    expect(rootPathUrl('https://example.com/projects/', '/_tones/mellow pad.tone.json')).toBe(
+      'https://example.com/projects/_tones/mellow%20pad.tone.json',
     );
   });
 });

@@ -89,14 +89,17 @@ Runs after step 3 (valid project data), before step 7 (commit):
    instrument's playable notes (same as today's local per-note try/catch) —
    does not add to `warnings` (matches existing per-note-failure handling,
    which only `console.warn`s).
-5. For a resolved `type: 'tone'` def: for each note's tone-id, look it up in
-   the imported project's own `patches` array first (matches local
-   `findTone`'s first fallback leg). If missing there, fetch
-   `${libraryBase}_tones/<id>.tone.json` directly (filename assumed to equal
-   the id — there is no directory listing to scan over a static file host,
-   unlike the local filesystem case). Still unresolved → added to that
+5. For a resolved `type: 'tone'` def: each note's value is a tone *ref*, which
+   is either a project-local patch id or a root-relative file path starting
+   with `/` (e.g. `/_tones/mellow-pad.tone.json`) — the filename-equals-id
+   convention no longer exists. A ref not starting with `/` is looked up only
+   in the imported project's own `patches` array (matches local `findTone`'s
+   first fallback leg; there is no global/remote id scan). A ref starting
+   with `/` is fetched directly as `${libraryBase}<path>` (each path segment
+   URL-encoded) — there is no directory listing to scan over a static file
+   host, unlike the local filesystem case. Still unresolved → added to that
    instrument's `missingTones`, which existing code already surfaces as a
-   non-blocking console warning; also add `"<instrument>: tone <id>"` to the
+   non-blocking console warning; also add `"<instrument>: tone <ref>"` to the
    overall `warnings` list for the post-import alert.
 6. Whatever resolved (defs + fetched audio buffers) is written into the
    *new* project's own `instruments/<name>/` folder when a disk folder is

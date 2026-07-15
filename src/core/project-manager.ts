@@ -1,22 +1,13 @@
-import { engine } from './audio-engine';
-import { bus } from './event-bus';
-import {
-  candidateInstrumentDefUrls,
-  deriveLibraryBase,
-  fallbackNameFromUrl,
-  IMPORT_URL_STORAGE_KEY,
-  instrumentAssetUrl,
-  nameCollisionAction,
-  normalizeProjectUrl,
-  toneUrl,
-} from './import-url';
-import { clearInstrumentCache, instrumentCache, isFileRef, parseInstrumentDef, type InstrumentDef, type LoadedInstrument } from './instruments';
-import { defaultProject, normalizeProject, type ProjectData, type TonePatch } from './model';
-import { idbDel, idbGet, idbKeys, idbSet } from './persistence';
-import { projectDataKey, projectNameFromKey, projectUiKey, sanitizeProjectName } from './project-names';
-import { store } from './project-store';
-import { applyUiState, flushUiState, setUiStatePersister, type UiState } from './ui-state';
-import { applyKeyMap, getKeyMap, type KeyMap } from '../midi/keymap';
+import {applyKeyMap, getKeyMap, type KeyMap} from '../midi/keymap';
+import {engine} from './audio-engine';
+import {bus} from './event-bus';
+import {candidateInstrumentDefUrls, deriveLibraryBase, fallbackNameFromUrl, IMPORT_URL_STORAGE_KEY, instrumentAssetUrl, nameCollisionAction, normalizeProjectUrl, rootPathUrl} from './import-url';
+import {clearInstrumentCache, instrumentCache, isFileRef, isRootPathRef, parseInstrumentDef, type InstrumentDef, type LoadedInstrument} from './instruments';
+import {defaultProject, normalizeProject, type ProjectData, type TonePatch} from './model';
+import {idbDel, idbGet, idbKeys, idbSet} from './persistence';
+import {projectDataKey, projectNameFromKey, projectUiKey, sanitizeProjectName} from './project-names';
+import {store} from './project-store';
+import {applyUiState, flushUiState, setUiStatePersister, type UiState} from './ui-state';
 
 const ROOT_KEY = 'rootDir';
 const ACTIVE_KEY = 'activeProject';
@@ -53,11 +44,13 @@ class ProjectManager {
     const handle = await idbGet<FileSystemDirectoryHandle>(ROOT_KEY);
     if (handle) {
       this.root = handle;
-      const perm = await handle.queryPermission({ mode: 'readwrite' });
+      const perm = await handle.queryPermission({mode: 'readwrite'});
       this.needsPermission = perm !== 'granted';
       if (this.dirAvailable()) store.setRootDir(this.root);
       if (this.needsPermission) {
-        alert(`Project folder "${handle.name}" is disconnected — the browser dropped access after a restart. You are working on the browser copy; files on disk (e.g. samples/) are invisible until you reconnect via the Reload button.`);
+        alert(
+          `Project folder "${handle.name}" is disconnected — the browser dropped access after a restart. You are working on the browser copy; files on disk (e.g. samples/) are invisible until you reconnect via the Reload button.`,
+        );
       }
     }
     this.activeName = (await idbGet<string>(ACTIVE_KEY)) ?? DEFAULT_NAME;
@@ -67,13 +60,13 @@ class ProjectManager {
     // writer still wins, as before).
     if (typeof BroadcastChannel !== 'undefined') {
       const channel = new BroadcastChannel('webdaw-project-sync');
-      store.setOnSaved(() => channel.postMessage({ name: this.activeName }));
-      channel.onmessage = (e: MessageEvent<{ name: string }>): void => {
+      store.setOnSaved(() => channel.postMessage({name: this.activeName}));
+      channel.onmessage = (e: MessageEvent<{name: string}>): void => {
         if (e.data.name !== this.activeName || store.dirty) return;
         void this.refreshFromMirror();
       };
     }
-    setUiStatePersister(async (snapshot) => {
+    setUiStatePersister(async snapshot => {
       await idbSet(projectUiKey(this.activeName), snapshot);
       await store.writeJson('ui.json', snapshot);
     });
@@ -82,7 +75,7 @@ class ProjectManager {
 
   /** Pick (or change) the root folder; the in-memory project is written into it. */
   async chooseRoot(): Promise<void> {
-    this.root = await window.showDirectoryPicker({ id: 'webdaw-root', mode: 'readwrite' });
+    this.root = await window.showDirectoryPicker({id: 'webdaw-root', mode: 'readwrite'});
     this.needsPermission = false;
     await idbSet(ROOT_KEY, this.root);
     store.setRootDir(this.root);
@@ -94,7 +87,7 @@ class ProjectManager {
   /** Re-grant permission for the stored root handle (needs a user gesture). */
   async reconnect(): Promise<void> {
     if (!this.root) return;
-    const perm = await this.root.requestPermission({ mode: 'readwrite' });
+    const perm = await this.root.requestPermission({mode: 'readwrite'});
     if (perm !== 'granted') return;
     this.needsPermission = false;
     store.setRootDir(this.root);
@@ -121,7 +114,7 @@ class ProjectManager {
   }
 
   /** Instrument names from the global `_instruments` library and the active project's `instruments/` dir (project shadows global). */
-  async listInstruments(): Promise<{ name: string; source: 'global' | 'project' }[]> {
+  async listInstruments(): Promise<{name: string; source: 'global' | 'project'}[]> {
     const bySource = new Map<string, 'global' | 'project'>();
     const globalDir = await this.instrumentsDir('global');
     if (globalDir) {
@@ -135,26 +128,24 @@ class ProjectManager {
         if (handle.kind === 'directory') bySource.set(handle.name, 'project');
       }
     }
-    return [...bySource.entries()]
-      .map(([name, source]) => ({ name, source }))
-      .sort((a, b) => a.name.localeCompare(b.name));
+    return [...bySource.entries()].map(([name, source]) => ({name, source})).sort((a, b) => a.name.localeCompare(b.name));
   }
 
   /** Audio files in the active project's `samples/` dir and the global `_samples/` dir (project entries first, each alphabetical). */
-  async listSamples(): Promise<{ path: string; source: 'project' | 'global' }[]> {
+  async listSamples(): Promise<{path: string; source: 'project' | 'global'}[]> {
     if (!this.dirAvailable()) {
       console.warn('[samples] root folder not connected — samples/ scan skipped');
       return [];
     }
     const isAudio = (name: string): boolean => /\.(wav|mp3|ogg|flac|m4a|aiff)$/i.test(name);
-    const scan = async (dir: FileSystemDirectoryHandle | null, prefix: string, source: 'project' | 'global'): Promise<{ path: string; source: 'project' | 'global' }[]> => {
+    const scan = async (dir: FileSystemDirectoryHandle | null, prefix: string, source: 'project' | 'global'): Promise<{path: string; source: 'project' | 'global'}[]> => {
       if (!dir) return [];
       const names: string[] = [];
       for await (const handle of dir.values()) {
         if (handle.kind === 'file' && isAudio(handle.name)) names.push(handle.name);
       }
       names.sort((a, b) => a.localeCompare(b));
-      return names.map((name) => ({ path: `${prefix}${name}`, source }));
+      return names.map(name => ({path: `${prefix}${name}`, source}));
     };
     let projectSamples: FileSystemDirectoryHandle | null = null;
     try {
@@ -186,7 +177,7 @@ class ProjectManager {
     const loaded: LoadedInstrument = {
       name: def.name,
       type: def.type,
-      envelope: { attack: def.envelope?.attack ?? 0, release: def.envelope?.release ?? 1 },
+      envelope: {attack: def.envelope?.attack ?? 0, release: def.envelope?.release ?? 1},
       gain: def.gain ?? 1,
     };
     if (def.type === 'audio') {
@@ -208,11 +199,11 @@ class ProjectManager {
     } else {
       const tones = new Map<string, TonePatch>();
       const missing: string[] = [];
-      for (const [note, id] of Object.entries(def.notes)) {
-        const patch = await this.findTone(id);
+      for (const [note, ref] of Object.entries(def.notes)) {
+        const patch = isRootPathRef(ref) ? await this.readRootTone(ref) : await this.findTone(ref);
         if (!patch) {
-          console.warn(`[instruments] tone id not found: ${name} ${note} -> ${id}`);
-          if (!missing.includes(id)) missing.push(id);
+          console.warn(`[instruments] tone not found: ${name} ${note} -> ${ref}`);
+          if (!missing.includes(ref)) missing.push(ref);
           continue;
         }
         tones.set(note, patch);
@@ -246,26 +237,26 @@ class ProjectManager {
   }
 
   /** Import a `.inst.json` file into the active project's `instruments/` library. */
-  async importInstrument(jsonText: string): Promise<{ ok: true; name: string } | { ok: false; error: string }> {
+  async importInstrument(jsonText: string): Promise<{ok: true; name: string} | {ok: false; error: string}> {
     let def: InstrumentDef | null;
     try {
       def = parseInstrumentDef(JSON.parse(jsonText));
     } catch {
       def = null;
     }
-    if (!def) return { ok: false, error: 'not a valid .inst.json' };
+    if (!def) return {ok: false, error: 'not a valid .inst.json'};
     const dir = await this.projectDir(this.activeName, true);
-    if (!dir) return { ok: false, error: 'no folder — pick a root folder first' };
+    if (!dir) return {ok: false, error: 'no folder — pick a root folder first'};
     const safeName = def.name.replace(/[^\w -]+/g, '').trim();
-    if (!safeName) return { ok: false, error: 'not a valid .inst.json' };
-    const instrumentsDir = await dir.getDirectoryHandle('instruments', { create: true });
-    const instrumentDir = await instrumentsDir.getDirectoryHandle(safeName, { create: true });
-    const fh = await instrumentDir.getFileHandle(`${safeName}.inst.json`, { create: true });
+    if (!safeName) return {ok: false, error: 'not a valid .inst.json'};
+    const instrumentsDir = await dir.getDirectoryHandle('instruments', {create: true});
+    const instrumentDir = await instrumentsDir.getDirectoryHandle(safeName, {create: true});
+    const fh = await instrumentDir.getFileHandle(`${safeName}.inst.json`, {create: true});
     const writable = await fh.createWritable();
     await writable.write(jsonText);
     await writable.close();
     clearInstrumentCache();
-    return { ok: true, name: safeName };
+    return {ok: true, name: safeName};
   }
 
   /** The `_instruments` (global) or active project's `instruments/` directory, if available. */
@@ -318,24 +309,37 @@ class ProjectManager {
     }
   }
 
-  /** Find a TonePatch by id: the active project's in-memory patches, then the global then project tone libraries. */
+  /** Find a TonePatch by id: the active project's in-memory patches, then its own `tones/` dir. Ids are project-local only — a tone outside the project must be referenced by a root-relative path (see readRootTone). */
   private async findTone(id: string): Promise<TonePatch | null> {
-    const local = store.data.patches.find((p) => p.id === id);
+    const local = store.data.patches.find(p => p.id === id);
     if (local) return local;
-    const globalTones = await this.toneDir('global');
-    const fromGlobal = globalTones ? await this.searchToneDir(globalTones, id) : null;
-    if (fromGlobal) return fromGlobal;
-    const projectTones = await this.toneDir('project');
+    const projectTones = await this.projectTonesDir();
     return projectTones ? await this.searchToneDir(projectTones, id) : null;
   }
 
-  /** The global `_tones` dir or the active project's `tones/` dir, if available. */
-  private async toneDir(scope: 'global' | 'project'): Promise<FileSystemDirectoryHandle | null> {
+  /** The active project's `tones/` directory, if available. */
+  private async projectTonesDir(): Promise<FileSystemDirectoryHandle | null> {
     if (!this.dirAvailable()) return null;
     try {
-      if (scope === 'global') return await this.root!.getDirectoryHandle('_tones');
       const dir = await this.projectDir(this.activeName, false);
       return dir ? await dir.getDirectoryHandle('tones') : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /** Read a `.tone.json` at a root-relative path (leading "/" = the projects ROOT folder). */
+  private async readRootTone(rootPath: string): Promise<TonePatch | null> {
+    if (!this.dirAvailable()) return null;
+    const segments = rootPath.replace(/^\//, '').split('/').filter(Boolean);
+    const filename = segments.pop();
+    if (!filename) return null;
+    try {
+      let dir = this.root!;
+      for (const part of segments) dir = await dir.getDirectoryHandle(part);
+      const fh = await dir.getFileHandle(filename);
+      const patch = JSON.parse(await (await fh.getFile()).text()) as TonePatch;
+      return patch.id ? patch : null;
     } catch {
       return null;
     }
@@ -370,7 +374,7 @@ class ProjectManager {
       alert('Invalid project name.');
       return false;
     }
-    const existing = (await this.listProjects()).map((n) => n.toLowerCase());
+    const existing = (await this.listProjects()).map(n => n.toLowerCase());
     if (existing.includes(name.toLowerCase())) {
       alert(`A project named "${name}" already exists.`);
       return false;
@@ -403,7 +407,7 @@ class ProjectManager {
    * Fetch a project.json from a URL, resolve its `_instruments`/`_tones`
    * references from the sibling library, and land it as a new project.
    */
-  async importFromUrl(rawUrl: string): Promise<{ ok: true; warnings: string[] } | { ok: false; error: string }> {
+  async importFromUrl(rawUrl: string): Promise<{ok: true; warnings: string[]} | {ok: false; error: string}> {
     const url = normalizeProjectUrl(rawUrl);
     await idbSet(IMPORT_URL_STORAGE_KEY, rawUrl);
 
@@ -411,28 +415,28 @@ class ProjectManager {
     try {
       res = await fetch(url);
     } catch {
-      return { ok: false, error: 'Network error fetching that URL.' };
+      return {ok: false, error: 'Network error fetching that URL.'};
     }
-    if (!res.ok) return { ok: false, error: `Fetch failed: ${res.status} ${res.statusText}` };
+    if (!res.ok) return {ok: false, error: `Fetch failed: ${res.status} ${res.statusText}`};
 
     let parsed: unknown;
     try {
       parsed = JSON.parse(await res.text());
     } catch {
-      return { ok: false, error: 'That URL did not return valid JSON.' };
+      return {ok: false, error: 'That URL did not return valid JSON.'};
     }
     if (typeof parsed !== 'object' || parsed === null) {
-      return { ok: false, error: 'Not a valid project.json.' };
+      return {ok: false, error: 'Not a valid project.json.'};
     }
     const raw = parsed as Partial<ProjectData>;
     const finalUrl = res.url || url;
 
     try {
       if (!hasArrayShape(raw.patches) || !hasArrayShape(raw.pads) || !hasArrayShape(raw.sequences)) {
-        return { ok: false, error: 'Not a valid project.json.' };
+        return {ok: false, error: 'Not a valid project.json.'};
       }
       if (raw.arrangement !== undefined && (typeof raw.arrangement !== 'object' || raw.arrangement === null || Array.isArray(raw.arrangement))) {
-        return { ok: false, error: 'Not a valid project.json.' };
+        return {ok: false, error: 'Not a valid project.json.'};
       }
 
       let name = sanitizeProjectName(String(raw.name ?? '')) ?? sanitizeProjectName(fallbackNameFromUrl(finalUrl)) ?? 'Imported';
@@ -442,39 +446,35 @@ class ProjectManager {
         if (overwrite) break;
         const renamed = prompt('New project name', name);
         const sanitized = renamed ? sanitizeProjectName(renamed) : null;
-        if (!sanitized) return { ok: false, error: 'Import cancelled.' };
+        if (!sanitized) return {ok: false, error: 'Import cancelled.'};
         name = sanitized;
       }
 
-      const data: ProjectData = { ...defaultProject(), ...raw };
+      const data: ProjectData = {...defaultProject(), ...raw};
       data.name = name;
       const normalized = normalizeProject(data);
 
       const libraryBase = deriveLibraryBase(finalUrl);
-      const { warnings, instruments } = await this.resolveImportedInstruments(normalized, libraryBase, name);
+      const {warnings, instruments} = await this.resolveImportedInstruments(normalized, libraryBase, name);
 
       await this.commitProject(name, normalized);
       // Re-insert after commitProject: commitProject's project:loaded emit runs
       // sequence-tab's handler, which unconditionally clearInstrumentCache()s.
       for (const [instName, loaded] of instruments) instrumentCache.set(instName, loaded);
-      return { ok: true, warnings };
+      return {ok: true, warnings};
     } catch {
-      return { ok: false, error: 'Not a valid project.json.' };
+      return {ok: false, error: 'Not a valid project.json.'};
     }
   }
 
   /** Resolve every `{type:'instrument', name}` ref in `data.sequences`, and (if a folder is connected) save each into the new project's own instruments/ library. Returns names/ids that couldn't be resolved plus the resolved instruments themselves (caller caches these after commitProject, since commitProject's project:loaded clears the cache). */
-  private async resolveImportedInstruments(
-    data: ProjectData,
-    libraryBase: string,
-    projectName: string,
-  ): Promise<{ warnings: string[]; instruments: Map<string, LoadedInstrument> }> {
+  private async resolveImportedInstruments(data: ProjectData, libraryBase: string, projectName: string): Promise<{warnings: string[]; instruments: Map<string, LoadedInstrument>}> {
     const names = new Set<string>();
     for (const seq of data.sequences) {
       if (seq.instrument?.type === 'instrument') names.add(seq.instrument.name);
     }
     const instruments = new Map<string, LoadedInstrument>();
-    if (names.size === 0) return { warnings: [], instruments };
+    if (names.size === 0) return {warnings: [], instruments};
 
     const warnings: string[] = [];
     const destDir = await this.projectDir(projectName, true); // null with no folder connected
@@ -484,8 +484,8 @@ class ProjectManager {
         warnings.push(name);
         continue;
       }
-      const { def, rawText } = fetched;
-      const envelope = { attack: def.envelope?.attack ?? 0, release: def.envelope?.release ?? 1 };
+      const {def, rawText} = fetched;
+      const envelope = {attack: def.envelope?.attack ?? 0, release: def.envelope?.release ?? 1};
 
       if (def.type === 'audio') {
         const samples = new Map<string, ArrayBuffer>();
@@ -510,7 +510,7 @@ class ProjectManager {
             warnings.push(`${name}: failed to decode ${ref}`);
           }
         }
-        instruments.set(name, { name: def.name, type: 'audio', envelope, gain: def.gain ?? 1, audio });
+        instruments.set(name, {name: def.name, type: 'audio', envelope, gain: def.gain ?? 1, audio});
         if (destDir) {
           try {
             await this.writeImportedInstrument(destDir, name, rawText, samples);
@@ -522,11 +522,11 @@ class ProjectManager {
       } else {
         const tones = new Map<string, TonePatch>();
         const missing: string[] = [];
-        for (const [note, id] of Object.entries(def.notes)) {
-          const patch = data.patches.find((p) => p.id === id) ?? (await this.fetchRemoteTone(libraryBase, id));
+        for (const [note, ref] of Object.entries(def.notes)) {
+          const patch = isRootPathRef(ref) ? await this.fetchRemoteTone(libraryBase, ref) : (data.patches.find(p => p.id === ref) ?? null);
           if (!patch) {
-            missing.push(id);
-            warnings.push(`${name}: tone ${id}`);
+            missing.push(ref);
+            warnings.push(`${name}: tone ${ref}`);
             continue;
           }
           tones.set(note, patch);
@@ -549,18 +549,18 @@ class ProjectManager {
         }
       }
     }
-    return { warnings, instruments };
+    return {warnings, instruments};
   }
 
   /** Try both known instrument-def filename conventions at `libraryBase`; returns the first that resolves and parses. */
-  private async fetchInstrumentDef(libraryBase: string, name: string): Promise<{ def: InstrumentDef; rawText: string } | null> {
+  private async fetchInstrumentDef(libraryBase: string, name: string): Promise<{def: InstrumentDef; rawText: string} | null> {
     for (const candidate of candidateInstrumentDefUrls(libraryBase, name)) {
       try {
         const res = await fetch(candidate);
         if (!res.ok) continue;
         const rawText = await res.text();
         const def = parseInstrumentDef(JSON.parse(rawText));
-        if (def) return { def, rawText };
+        if (def) return {def, rawText};
       } catch {
         continue;
       }
@@ -568,10 +568,10 @@ class ProjectManager {
     return null;
   }
 
-  /** A `_tones/<id>.tone.json` lookup, by filename-equals-id convention (no directory listing is possible over a static file host). */
-  private async fetchRemoteTone(libraryBase: string, id: string): Promise<TonePatch | null> {
+  /** Fetch a tone by its root-relative path ref (e.g. "/_tones/mellow-pad.tone.json"), resolved against the library base. */
+  private async fetchRemoteTone(libraryBase: string, rootPath: string): Promise<TonePatch | null> {
     try {
-      const res = await fetch(toneUrl(libraryBase, id));
+      const res = await fetch(rootPathUrl(libraryBase, rootPath));
       if (!res.ok) return null;
       const patch = JSON.parse(await res.text()) as TonePatch;
       return patch.id ? patch : null;
@@ -581,20 +581,15 @@ class ProjectManager {
   }
 
   /** Write a resolved instrument's def + sample files into the new project's own instruments/ library, mirroring importInstrument()'s on-disk layout. */
-  private async writeImportedInstrument(
-    destDir: FileSystemDirectoryHandle,
-    name: string,
-    defRawText: string,
-    samples: Map<string, ArrayBuffer>,
-  ): Promise<void> {
-    const instrumentsDir = await destDir.getDirectoryHandle('instruments', { create: true });
-    const instrumentDir = await instrumentsDir.getDirectoryHandle(name, { create: true });
-    const defFh = await instrumentDir.getFileHandle(`${name}.inst.json`, { create: true });
+  private async writeImportedInstrument(destDir: FileSystemDirectoryHandle, name: string, defRawText: string, samples: Map<string, ArrayBuffer>): Promise<void> {
+    const instrumentsDir = await destDir.getDirectoryHandle('instruments', {create: true});
+    const instrumentDir = await instrumentsDir.getDirectoryHandle(name, {create: true});
+    const defFh = await instrumentDir.getFileHandle(`${name}.inst.json`, {create: true});
     const defWritable = await defFh.createWritable();
     await defWritable.write(defRawText);
     await defWritable.close();
     for (const [filename, raw] of samples) {
-      const fh = await instrumentDir.getFileHandle(filename, { create: true });
+      const fh = await instrumentDir.getFileHandle(filename, {create: true});
       const writable = await fh.createWritable();
       await writable.write(raw);
       await writable.close();
@@ -632,7 +627,7 @@ class ProjectManager {
   private async projectDir(name: string, create: boolean): Promise<FileSystemDirectoryHandle | null> {
     if (!this.dirAvailable()) return null;
     try {
-      return await this.root!.getDirectoryHandle(name, { create });
+      return await this.root!.getDirectoryHandle(name, {create});
     } catch {
       return null;
     }
@@ -642,7 +637,7 @@ class ProjectManager {
   private async refreshFromMirror(): Promise<void> {
     const data = await idbGet<ProjectData>(projectDataKey(this.activeName));
     if (!data) return;
-    const resolved: ProjectData = { ...defaultProject(), ...data };
+    const resolved: ProjectData = {...defaultProject(), ...data};
     resolved.name = this.activeName;
     store.resetTo(normalizeProject(resolved));
     void store.preloadBuffers();
@@ -651,7 +646,7 @@ class ProjectManager {
   }
 
   /** Load a project (newer of folder copy and IndexedDB mirror, unless `preferDisk`) and notify the UI. */
-  private async load(name: string, opts?: { preferDisk?: boolean }): Promise<void> {
+  private async load(name: string, opts?: {preferDisk?: boolean}): Promise<void> {
     this.activeName = name;
     const dir = await this.projectDir(name, this.dirAvailable());
     store.setDir(dir);
@@ -668,7 +663,7 @@ class ProjectManager {
     } else if (mirrorData && (!diskData || (mirrorData.savedAt ?? 0) > (diskData.savedAt ?? 0))) {
       data = mirrorData;
     }
-    const resolved: ProjectData = { ...defaultProject(), ...(data ?? {}) };
+    const resolved: ProjectData = {...defaultProject(), ...(data ?? {})};
     resolved.name = name;
     store.resetTo(normalizeProject(resolved));
     if (opts?.preferDisk && diskData) await idbSet(projectDataKey(name), store.data);
@@ -690,7 +685,7 @@ class ProjectManager {
   /** Discard in-memory and mirror state and re-read the active project from disk. */
   async reloadFromDisk(): Promise<void> {
     if (this.root && this.needsPermission) {
-      const perm = await this.root.requestPermission({ mode: 'readwrite' });
+      const perm = await this.root.requestPermission({mode: 'readwrite'});
       if (perm === 'granted') {
         this.needsPermission = false;
         store.setRootDir(this.root);
@@ -699,7 +694,7 @@ class ProjectManager {
       }
     }
     engine.stop();
-    await this.load(this.activeName, { preferDisk: true });
+    await this.load(this.activeName, {preferDisk: true});
   }
 
   /** One-time move from the single-project keys to the per-project layout. */

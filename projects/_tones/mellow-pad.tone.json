@@ -1,0 +1,15 @@
+{
+  "id": "f2f3f3a1b2c3d4e5",
+  "name": "Mellow Pad",
+  "layers": [
+    { "type": "sine", "gain": 0.8, "detune": 0, "phase": 0, "freq": 261.63 },
+    { "type": "triangle", "gain": 0.4, "detune": -5, "phase": 0, "freq": 261.63 }
+  ],
+  "env": { "attack": 0.02, "decay": 0.3, "sustain": 0.6, "release": 0.5 },
+  "lfoPitch": { "rate": 4, "depth": 0 },
+  "lfoVolume": { "rate": 4, "depth": 0 },
+  "pitchEnv": { "amount": 0, "time": 0.05 },
+  "filterEnv": { "amount": 1, "time": 0.1 },
+  "filter": { "hpf": 20, "lpf": 6000 },
+  "drive": 0
+}

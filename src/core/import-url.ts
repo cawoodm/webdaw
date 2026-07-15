@@ -38,9 +38,10 @@ export function instrumentAssetUrl(libraryBase: string, name: string, filename: 
   return `${libraryBase}_instruments/${encodeURIComponent(name)}/${encodeURIComponent(filename)}`;
 }
 
-/** A `_tones` library entry, assuming (as the real repo does) the filename equals the tone id. */
-export function toneUrl(libraryBase: string, id: string): string {
-  return `${libraryBase}_tones/${encodeURIComponent(id)}.tone.json`;
+/** Resolve a root-relative ref (e.g. "/_tones/mellow-pad.tone.json") against the library base, encoding each path segment. */
+export function rootPathUrl(libraryBase: string, rootPath: string): string {
+  const segments = rootPath.replace(/^\//, '').split('/').map(encodeURIComponent);
+  return `${libraryBase}${segments.join('/')}`;
 }
 
 /** Fallback project name when the fetched JSON has no usable `name` field: the URL's own project-directory segment. */
