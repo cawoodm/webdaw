@@ -22,6 +22,11 @@ const ROOT_KEY = 'rootDir';
 const ACTIVE_KEY = 'activeProject';
 const DEFAULT_NAME = 'default';
 
+/** True when `value` is absent (fine — normalizeProject fills defaults) or actually an array. */
+function hasArrayShape(value: unknown): boolean {
+  return value === undefined || Array.isArray(value);
+}
+
 /**
  * Owns the ROOT folder (one subdirectory per project) and the active
  * project's lifecycle: restore at boot, switch, create, and full flush
@@ -420,30 +425,42 @@ class ProjectManager {
       return { ok: false, error: 'Not a valid project.json.' };
     }
     const raw = parsed as Partial<ProjectData>;
+    const finalUrl = res.url || url;
 
-    let name = sanitizeProjectName(raw.name ?? '') ?? sanitizeProjectName(fallbackNameFromUrl(url)) ?? 'Imported';
-    const existing = await this.listProjects();
-    while (nameCollisionAction(name, existing) === 'ask-overwrite') {
-      const overwrite = confirm(`A project named "${name}" already exists. Overwrite?`);
-      if (overwrite) break;
-      const renamed = prompt('New project name', name);
-      const sanitized = renamed ? sanitizeProjectName(renamed) : null;
-      if (!sanitized) return { ok: false, error: 'Import cancelled.' };
-      name = sanitized;
+    try {
+      if (!hasArrayShape(raw.patches) || !hasArrayShape(raw.pads) || !hasArrayShape(raw.sequences)) {
+        return { ok: false, error: 'Not a valid project.json.' };
+      }
+      if (raw.arrangement !== undefined && (typeof raw.arrangement !== 'object' || raw.arrangement === null || Array.isArray(raw.arrangement))) {
+        return { ok: false, error: 'Not a valid project.json.' };
+      }
+
+      let name = sanitizeProjectName(String(raw.name ?? '')) ?? sanitizeProjectName(fallbackNameFromUrl(finalUrl)) ?? 'Imported';
+      const existing = await this.listProjects();
+      while (nameCollisionAction(name, existing) === 'ask-overwrite') {
+        const overwrite = confirm(`A project named "${name}" already exists. Overwrite?`);
+        if (overwrite) break;
+        const renamed = prompt('New project name', name);
+        const sanitized = renamed ? sanitizeProjectName(renamed) : null;
+        if (!sanitized) return { ok: false, error: 'Import cancelled.' };
+        name = sanitized;
+      }
+
+      const data: ProjectData = { ...defaultProject(), ...raw };
+      data.name = name;
+      const normalized = normalizeProject(data);
+
+      const libraryBase = deriveLibraryBase(finalUrl);
+      const { warnings, instruments } = await this.resolveImportedInstruments(normalized, libraryBase, name);
+
+      await this.commitProject(name, normalized);
+      // Re-insert after commitProject: commitProject's project:loaded emit runs
+      // sequence-tab's handler, which unconditionally clearInstrumentCache()s.
+      for (const [instName, loaded] of instruments) instrumentCache.set(instName, loaded);
+      return { ok: true, warnings };
+    } catch {
+      return { ok: false, error: 'Not a valid project.json.' };
     }
-
-    const data: ProjectData = { ...defaultProject(), ...raw };
-    data.name = name;
-    const normalized = normalizeProject(data);
-
-    const libraryBase = deriveLibraryBase(url);
-    const { warnings, instruments } = await this.resolveImportedInstruments(normalized, libraryBase, name);
-
-    await this.commitProject(name, normalized);
-    // Re-insert after commitProject: commitProject's project:loaded emit runs
-    // sequence-tab's handler, which unconditionally clearInstrumentCache()s.
-    for (const [instName, loaded] of instruments) instrumentCache.set(instName, loaded);
-    return { ok: true, warnings };
   }
 
   /** Resolve every `{type:'instrument', name}` ref in `data.sequences`, and (if a folder is connected) save each into the new project's own instruments/ library. Returns names/ids that couldn't be resolved plus the resolved instruments themselves (caller caches these after commitProject, since commitProject's project:loaded clears the cache). */

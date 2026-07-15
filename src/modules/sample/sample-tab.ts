@@ -1019,7 +1019,8 @@ export class SampleTab extends HTMLElement {
       const el = document.createElement('button');
       el.className = 'pad' + (pad ? ' loaded' : '') + (i === this.selected ? ' selected' : '');
       const key = i < 8 ? `${i + 1}` : `⇧${i - 7}`;
-      el.innerHTML = `<span class="pad-key">${key}</span>${pad?.name ?? ''}`;
+      el.innerHTML = `<span class="pad-key">${key}</span>`;
+      if (pad?.name) el.append(pad.name);
       el.title = i < 8 ? `Play with key ${i + 1}` : `Play with Shift+${i - 7}`;
       if (pad?.color) {
         el.style.borderColor = pad.color;
@@ -1083,7 +1084,8 @@ export class SampleTab extends HTMLElement {
     const pad = store.data.pads[index];
     const title = document.createElement('div');
     title.className = 'card-head';
-    title.innerHTML = `<span class="card-title">Pad ${index + 1}${pad ? ` — ${pad.name}` : ''}</span>`;
+    title.innerHTML = `<span class="card-title">Pad ${index + 1}</span>`;
+    if (pad) title.querySelector('.card-title')!.append(` — ${pad.name}`);
     editor.appendChild(title);
 
     // link a tone patch — the pad follows the patch's latest render
