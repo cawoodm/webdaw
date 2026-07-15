@@ -6,7 +6,7 @@ import type {NoteEvent, SeqInstrument, Sequence, SynthKind} from '../../core/mod
 import {pianoNotes, removeSequence, sortedByName, STEPS_PER_BAR, uid} from '../../core/model';
 import {projects} from '../../core/project-manager';
 import {uniqueName} from '../../core/project-names';
-import {store} from '../../core/project-store';
+import {resolveSampleImportPath, store} from '../../core/project-store';
 import {buildSeqFile, parseSeqFile} from '../../core/sequence-file';
 import {uiState, updateUi} from '../../core/ui-state';
 import {buildMidiFile, parseMidiFile, type MidiImportResult} from '../../midi/midi-file';
@@ -694,7 +694,8 @@ export class SequenceTab extends HTMLElement {
       if (!file) return;
       await engine.ensureStarted();
       const name = file.name.replace(/\.[^.]+$/, '');
-      const path = `samples/${name.replace(/[^\w-]+/g, '_')}-${uid()}.wav`;
+      const path = await resolveSampleImportPath(name);
+      if (!path) return;
       await store.importAudioFile(file, path);
       this.monitorKey = '';
       store.update(() => (seq.instrument = {type: 'wav', file: path}));

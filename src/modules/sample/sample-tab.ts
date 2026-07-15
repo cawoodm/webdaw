@@ -7,7 +7,7 @@ import { defaultLoop, defaultPatch, PAD_COUNT, removeLoop, sortedByName, toneBuf
 import { ensurePadBuffers, padBuffer, padSeconds, playPadInto } from '../../core/pad-voice';
 import { renderPatch } from '../../core/patch-voice';
 import { uniqueName } from '../../core/project-names';
-import { store } from '../../core/project-store';
+import { resolveSampleImportPath, store } from '../../core/project-store';
 import { beatsToTransportTime } from '../../core/time';
 import { uiState, updateUi } from '../../core/ui-state';
 import { PLAY_ICON, STOP_ICON, transportButton } from '../../ui/transport-buttons';
@@ -1128,7 +1128,8 @@ export class SampleTab extends HTMLElement {
         if (!file) return;
         await engine.ensureStarted();
         const name = file.name.replace(/\.[^.]+$/, '');
-        const path = `samples/${name.replace(/[^\w-]+/g, '_')}-${uid()}.wav`;
+        const path = await resolveSampleImportPath(name);
+        if (!path) return;
         await store.importAudioFile(file, path);
         store.update((d) => {
           const prev = d.pads[index];

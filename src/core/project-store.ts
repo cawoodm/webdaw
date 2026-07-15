@@ -196,6 +196,19 @@ class ProjectStore {
     return this.decode(raw);
   }
 
+  /** True if a WAV at this path is cached in memory or present in the project folder. */
+  async wavExists(path: string): Promise<boolean> {
+    if (this.buffers.has(path)) return true;
+    const loc = await this.resolveDir(path, false);
+    if (!loc) return false;
+    try {
+      await loc.dir.getFileHandle(loc.name);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   /** Decode a user-picked file and copy it into the project folder. */
   async importAudioFile(file: File, destPath: string): Promise<AudioBuffer> {
     const raw = await file.arrayBuffer();
@@ -276,3 +289,19 @@ class ProjectStore {
 }
 
 export const store = new ProjectStore();
+
+/**
+ * Pick a destination path in samples/ for an imported audio file.
+ * On a name clash, asks to overwrite or re-name. Returns null if aborted.
+ */
+export async function resolveSampleImportPath(rawName: string): Promise<string | null> {
+  let name = rawName;
+  for (;;) {
+    const path = `samples/${name.replace(/[^\w-]+/g, '_')}.wav`;
+    if (!(await store.wavExists(path))) return path;
+    if (confirm(`A sample file named "${name}" already exists.\nOK: overwrite it — Cancel: import under a new name`)) return path;
+    const renamed = prompt('New sample name', name);
+    if (renamed === null) return null;
+    name = renamed.trim() || name;
+  }
+}
