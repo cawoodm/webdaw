@@ -134,10 +134,12 @@ function triggerNote(
       const src = new Tone.ToneBufferSource(new Tone.ToneAudioBuffer(resolved.buffer!));
       src.playbackRate.value = rate;
       src.connect(gain);
-      src.onended = (): void => {
-        src.dispose();
-        gain.dispose();
-      };
+      if (disposeLive) {
+        src.onended = (): void => {
+          src.dispose();
+          gain.dispose();
+        };
+      }
       src.start(time);
       break;
     }

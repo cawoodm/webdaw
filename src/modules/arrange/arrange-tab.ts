@@ -5,6 +5,7 @@ import type { ArrangeClip, ArrangeTrack, ClipLoopMode, ProjectData } from '../..
 import { MAX_BARS, uid } from '../../core/model';
 import { projects } from '../../core/project-manager';
 import { store } from '../../core/project-store';
+import { encodeWav } from '../../core/wav';
 import { SnapshotHistory } from '../../core/history';
 import { uiState, updateUi } from '../../core/ui-state';
 import { connectChain, PluginChainEl } from '../../plugins/chain';
@@ -48,7 +49,17 @@ const ICONS = {
   toStart: `<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><rect x="5" y="5" width="2" height="14"/><path d="M19 5 9 12l10 7z"/></svg>`,
   stepBack: `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>`,
   stepForward: `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>`,
+  download: `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
 };
+
+/** Trigger a browser download of a generated file. */
+function download(filename: string, blob: Blob): void {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
 
 export class ArrangeTab extends HTMLElement {
   private palette = '';
@@ -448,9 +459,13 @@ export class ArrangeTab extends HTMLElement {
         provider: createOfflineProvider(),
       });
     }, seconds);
-    const path = `exports/${store.data.name.replace(/[^\w-]+/g, '_')}-song.wav`;
-    const written = await store.saveWav(path, rendered.get() as AudioBuffer);
-    this.flash(written ? `Exported ${path}` : `Rendered ${path} in memory — connect a project folder to write files`);
+    const base = store.data.name.replace(/[^\w-]+/g, '_');
+    const path = `exports/${base}-song.wav`;
+    const buffer = rendered.get() as AudioBuffer;
+    const written = await store.saveWav(path, buffer);
+    const filename = `${base}-song.wav`;
+    download(filename, new Blob([encodeWav(buffer)], { type: 'audio/wav' }));
+    this.flash(`Downloaded ${filename}${written ? ` and wrote ${path}` : ' — connect a project folder to also write exports/'}`);
   }
 
   // ---- interactions (Tasks 5-7) ----
@@ -1125,8 +1140,9 @@ export class ArrangeTab extends HTMLElement {
     };
 
     const exportBtn = document.createElement('button');
-    exportBtn.textContent = 'Export song WAV';
-    exportBtn.title = 'Render the whole song offline and write it to exports/';
+    exportBtn.className = 'btn-with-icon';
+    exportBtn.innerHTML = `${ICONS.download} .wav`;
+    exportBtn.title = 'Export song: render the whole song offline, download it as .wav and write it to exports/';
     exportBtn.onclick = (): void => void this.exportSong();
 
     bar.append(

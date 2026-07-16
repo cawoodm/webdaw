@@ -1,0 +1,17 @@
+{
+  "format": "webdaw-instrument",
+  "version": 1,
+  "name": "Chiffer Lead",
+  "type": "audio",
+  "attribution": "GeneralUser GS 2.0.3 BETA — 1997-2025 by S. Christian Collins",
+  "envelope": {
+    "attack": 0,
+    "release": 0.3
+  },
+  "gain": 1,
+  "notes": {
+    "C4": "C4.ogg",
+    "C6": "C6.ogg",
+    "D4": "D4.ogg"
+  }
+}

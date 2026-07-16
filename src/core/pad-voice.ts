@@ -38,10 +38,14 @@ export function playPadInto(
     const cap = durationBeats * engine.secondsPerBeat();
     duration = duration === undefined ? cap : Math.min(duration, cap);
   }
-  src.onended = (): void => {
-    src.dispose();
-    gainNode.dispose();
-  };
+  // self-dispose only live: in Tone.Offline, onended fires during the scheduling
+  // sweep (before rendering) and would disconnect the nodes into silence
+  if (!src.context.isOffline) {
+    src.onended = (): void => {
+      src.dispose();
+      gainNode.dispose();
+    };
+  }
   src.start(time ?? Tone.immediate(), pad.trimStart, duration);
   return src;
 }

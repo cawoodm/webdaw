@@ -1,0 +1,26 @@
+{
+  "activeTab": "tone",
+  "metronomeOn": false,
+  "tone": {
+    "patchId": "ba9d2928",
+    "live": false,
+    "loop": false
+  },
+  "sample": {
+    "selectedPad": 0,
+    "countIn": false,
+    "overdub": false,
+    "quantize": 0.25,
+    "loopId": "9666ac93"
+  },
+  "sequence": {
+    "seqId": "",
+    "quantize": 0.25
+  },
+  "arrange": {
+    "palette": "",
+    "snapBeats": 1,
+    "pxPerBar": 16,
+    "cursorBar": 0
+  }
+}

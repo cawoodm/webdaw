@@ -1,0 +1,81 @@
+{
+  "version": 1,
+  "name": "default",
+  "bpm": 120,
+  "patches": [
+    {
+      "id": "ba9d2928",
+      "name": "Patch 1",
+      "layers": [
+        {
+          "type": "sine",
+          "gain": 0.8,
+          "detune": 0,
+          "phase": 0,
+          "freq": 261.63
+        }
+      ],
+      "env": {
+        "attack": 0.01,
+        "decay": 0.2,
+        "sustain": 0.6,
+        "release": 0.4
+      },
+      "lfoPitch": {
+        "rate": 4,
+        "depth": 0
+      },
+      "lfoVolume": {
+        "rate": 4,
+        "depth": 0
+      },
+      "pitchEnv": {
+        "amount": 0,
+        "time": 0.05
+      },
+      "filterEnv": {
+        "amount": 1,
+        "time": 0.1
+      },
+      "filter": {
+        "hpf": 20,
+        "lpf": 20000
+      },
+      "drive": 0,
+      "wavFile": "tones/Patch_1.wav"
+    }
+  ],
+  "pads": [
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null
+  ],
+  "padLoops": [
+    {
+      "id": "9666ac93",
+      "name": "Loop 1",
+      "bars": 2,
+      "events": []
+    }
+  ],
+  "sequences": [],
+  "arrangement": {
+    "bars": 32,
+    "tracks": [],
+    "masterPlugins": []
+  },
+  "savedAt": 1784193481092
+}

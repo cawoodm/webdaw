@@ -1,121 +1,674 @@
 {
   "version": 1,
-  "name": "demo 1",
-  "bpm": 120,
+  "name": "Marc",
+  "bpm": 88,
   "patches": [
     {
-      "id": "d1a01e01",
-      "name": "Kick",
+      "id": "57b245f7",
+      "name": "Snare",
       "layers": [
         {
-          "type": "sine",
-          "gain": 1,
-          "detune": 0,
-          "phase": 90
-        },
-        {
-          "type": "triangle",
-          "gain": 0.05,
-          "detune": 1200,
-          "phase": 0
+          "type": "noise",
+          "gain": 0.8,
+          "detune": 12,
+          "phase": 0,
+          "noiseSeed": 82721604,
+          "freq": 34.5
         }
       ],
       "env": {
-        "attack": 0.001,
-        "decay": 0.2,
-        "sustain": 0,
-        "release": 0.08
+        "attack": 0,
+        "decay": 0.03561497244605406,
+        "sustain": 0.6,
+        "release": 0.4,
+        "shape": "fallingSine"
       },
       "lfo": {
         "rate": 4,
         "depth": 0,
         "target": "off"
       },
+      "filter": {
+        "hpf": 20,
+        "lpf": 1811,
+        "hpfOn": false,
+        "lpfOn": false
+      },
+      "sampleSeconds": 0.2,
+      "sampleFreq": 85,
+      "wavFile": "tones/Snare.wav",
+      "lfoPitch": {
+        "rate": 4,
+        "depth": 1,
+        "on": false
+      },
+      "lfoVolume": {
+        "rate": 4,
+        "depth": 1,
+        "on": false
+      },
       "pitchEnv": {
-        "amount": 24,
-        "time": 0.045
+        "amount": 0,
+        "time": 0.05,
+        "on": false
+      },
+      "filterEnv": {
+        "amount": 1,
+        "time": 0.1
+      },
+      "drive": 0
+    },
+    {
+      "id": "67b146bf",
+      "name": "Hat",
+      "layers": [
+        {
+          "type": "noise",
+          "gain": 0.36,
+          "detune": 0,
+          "phase": 0,
+          "noiseSeed": 1301655873
+        },
+        {
+          "type": "noise",
+          "gain": 0.73,
+          "detune": 28,
+          "phase": 0,
+          "noiseSeed": 174518016
+        }
+      ],
+      "env": {
+        "attack": 0,
+        "decay": 0.35,
+        "sustain": 0,
+        "release": 0.52
+      },
+      "lfo": {
+        "rate": 3.9,
+        "depth": 0.78,
+        "target": "off"
+      },
+      "filter": {
+        "hpf": 10000,
+        "lpf": 20000
+      },
+      "sampleFreq": 786,
+      "sampleSeconds": 0.3,
+      "wavFile": "tones/Hat.wav",
+      "pitchEnv": {
+        "amount": 0,
+        "time": 0.05
+      },
+      "lfoPitch": {
+        "rate": 4,
+        "depth": 0
+      },
+      "lfoVolume": {
+        "rate": 4,
+        "depth": 0
+      },
+      "filterEnv": {
+        "amount": 1,
+        "time": 0.1
+      }
+    },
+    {
+      "id": "728e2904",
+      "name": "Patch 4",
+      "layers": [
+        {
+          "type": "sine",
+          "gain": 0.8,
+          "detune": 0,
+          "phase": 0,
+          "freq": 261.63
+        }
+      ],
+      "env": {
+        "attack": 0.01,
+        "decay": 0.2,
+        "sustain": 0.6,
+        "release": 0.4
+      },
+      "lfoPitch": {
+        "rate": 1.8,
+        "depth": 1
+      },
+      "lfoVolume": {
+        "rate": 5.1,
+        "depth": 0.95,
+        "on": true
+      },
+      "filter": {
+        "hpf": 20,
+        "lpf": 20000
+      },
+      "sampleNote": "F3",
+      "sampleSeconds": 0.55,
+      "wavFile": "tones/Patch_4.wav"
+    },
+    {
+      "id": "a8c33d2d",
+      "name": "Flute",
+      "layers": [
+        {
+          "type": "sine",
+          "gain": 0.75,
+          "detune": 0,
+          "phase": 0,
+          "freq": 523.25
+        },
+        {
+          "type": "triangle",
+          "gain": 0.2,
+          "detune": 0,
+          "phase": 0,
+          "freq": 523.25
+        },
+        {
+          "type": "noise",
+          "gain": 0.04,
+          "detune": 0,
+          "phase": 0,
+          "noiseSeed": 12
+        }
+      ],
+      "env": {
+        "attack": 0.09,
+        "decay": 0.1,
+        "sustain": 0.9,
+        "release": 0.25
+      },
+      "lfoPitch": {
+        "rate": 5,
+        "depth": 0.03
+      },
+      "lfoVolume": {
+        "rate": 4,
+        "depth": 0
+      },
+      "filter": {
+        "hpf": 250,
+        "lpf": 4500
+      },
+      "sampleSeconds": 2,
+      "wavFile": "tones/Flute.wav"
+    },
+    {
+      "id": "2e4306ef",
+      "name": "Organ",
+      "layers": [
+        {
+          "type": "sine",
+          "gain": 0.36,
+          "detune": 0,
+          "phase": 0,
+          "freq": 261.63
+        },
+        {
+          "type": "sine",
+          "gain": 0.25,
+          "detune": 0,
+          "phase": 0,
+          "freq": 523.25
+        },
+        {
+          "type": "sine",
+          "gain": 0.16,
+          "detune": 0,
+          "phase": 0,
+          "freq": 784.89
+        },
+        {
+          "type": "sine",
+          "gain": 0.14,
+          "detune": 0,
+          "phase": 0,
+          "freq": 1046.5
+        },
+        {
+          "type": "sine",
+          "gain": 0.05,
+          "detune": 0,
+          "phase": 0,
+          "freq": 2093
+        }
+      ],
+      "env": {
+        "attack": 0.005,
+        "decay": 0.05,
+        "sustain": 1,
+        "release": 0.06
+      },
+      "lfoPitch": {
+        "rate": 4,
+        "depth": 0,
+        "on": false
+      },
+      "lfoVolume": {
+        "rate": 3.6,
+        "depth": 0.1
+      },
+      "filter": {
+        "hpf": 20,
+        "lpf": 20000
+      },
+      "sampleSeconds": 1.5,
+      "wavFile": "tones/Organ.wav",
+      "pitchEnv": {
+        "amount": 0,
+        "time": 0.05
+      },
+      "filterEnv": {
+        "amount": 1,
+        "time": 0.1
+      },
+      "sampleNote": "C3"
+    },
+    {
+      "id": "c21c11aa",
+      "name": "Pluck",
+      "layers": [
+        {
+          "type": "triangle",
+          "gain": 0.8,
+          "detune": 0,
+          "phase": 0,
+          "freq": 261.63
+        },
+        {
+          "type": "square",
+          "gain": 0.15,
+          "detune": 0,
+          "phase": 0,
+          "freq": 523.25
+        }
+      ],
+      "env": {
+        "attack": 0.001,
+        "decay": 0.22,
+        "sustain": 0,
+        "release": 0.08
+      },
+      "lfoPitch": {
+        "rate": 4,
+        "depth": 0
+      },
+      "lfoVolume": {
+        "rate": 4,
+        "depth": 0
+      },
+      "filter": {
+        "hpf": 20,
+        "lpf": 3800
+      },
+      "sampleSeconds": 0.6,
+      "wavFile": "tones/Pluck.wav"
+    },
+    {
+      "id": "62509a7d",
+      "name": "Saw Lead",
+      "layers": [
+        {
+          "type": "sawtooth",
+          "gain": 0.32,
+          "detune": 0,
+          "phase": 0,
+          "freq": 261.63
+        },
+        {
+          "type": "sawtooth",
+          "gain": 0.24,
+          "detune": 12,
+          "phase": 0,
+          "freq": 261.63
+        },
+        {
+          "type": "sawtooth",
+          "gain": 0.24,
+          "detune": -12,
+          "phase": 0,
+          "freq": 261.63
+        }
+      ],
+      "env": {
+        "attack": 0.01,
+        "decay": 0.15,
+        "sustain": 0.7,
+        "release": 0.2
+      },
+      "lfoPitch": {
+        "rate": 5.5,
+        "depth": 0.04
+      },
+      "lfoVolume": {
+        "rate": 4,
+        "depth": 0
+      },
+      "filter": {
+        "hpf": 20,
+        "lpf": 6000
+      },
+      "sampleSeconds": 1.5,
+      "wavFile": "tones/Saw_Lead.wav",
+      "pitchEnv": {
+        "amount": 0,
+        "time": 0.05
+      },
+      "filterEnv": {
+        "amount": 1,
+        "time": 0.1
+      }
+    },
+    {
+      "id": "dc875341",
+      "name": "Strings",
+      "layers": [
+        {
+          "type": "sawtooth",
+          "gain": 0.25,
+          "detune": 0,
+          "phase": 0,
+          "freq": 261.63
+        },
+        {
+          "type": "sawtooth",
+          "gain": 0.22,
+          "detune": 8,
+          "phase": 0,
+          "freq": 261.63
+        },
+        {
+          "type": "sawtooth",
+          "gain": 0.22,
+          "detune": -8,
+          "phase": 0,
+          "freq": 261.63
+        },
+        {
+          "type": "sawtooth",
+          "gain": 0.14,
+          "detune": 0,
+          "phase": 0,
+          "freq": 130.81
+        }
+      ],
+      "env": {
+        "attack": 0.35,
+        "decay": 0.2,
+        "sustain": 0.85,
+        "release": 0.7
+      },
+      "lfoPitch": {
+        "rate": 5,
+        "depth": 0.05
+      },
+      "lfoVolume": {
+        "rate": 4,
+        "depth": 0
+      },
+      "filter": {
+        "hpf": 80,
+        "lpf": 5000
+      },
+      "sampleSeconds": 3,
+      "wavFile": "tones/Strings.wav",
+      "pitchEnv": {
+        "amount": 0,
+        "time": 0.05
+      },
+      "filterEnv": {
+        "amount": 1,
+        "time": 0.1
+      }
+    },
+    {
+      "id": "0d5a64b4",
+      "name": "Sub Bass",
+      "layers": [
+        {
+          "type": "sine",
+          "gain": 0.9,
+          "detune": 0,
+          "phase": 0,
+          "freq": 65.41
+        },
+        {
+          "type": "triangle",
+          "gain": 0.2,
+          "detune": 0,
+          "phase": 0,
+          "freq": 130.81
+        }
+      ],
+      "env": {
+        "attack": 0.005,
+        "decay": 0.15,
+        "sustain": 0.8,
+        "release": 0.15
+      },
+      "lfoPitch": {
+        "rate": 4,
+        "depth": 0
+      },
+      "lfoVolume": {
+        "rate": 4,
+        "depth": 0
       },
       "filter": {
         "hpf": 20,
         "lpf": 400
       },
-      "sampleFreq": 50,
-      "sampleSeconds": 0.8
+      "sampleSeconds": 1.5,
+      "wavFile": "tones/Sub_Bass.wav"
     },
     {
-      "id": "d1a01e02",
-      "name": "Snare",
+      "id": "66a7aea9",
+      "name": "Warm Pad",
       "layers": [
         {
-          "type": "triangle",
-          "gain": 0.55,
-          "detune": 0,
-          "phase": 0
-        },
-        {
-          "type": "triangle",
-          "gain": 0.3,
-          "detune": 1002,
-          "phase": 0
-        },
-        {
-          "type": "noise",
-          "gain": 0.75,
+          "type": "sawtooth",
+          "gain": 0.32,
           "detune": 0,
           "phase": 0,
-          "noiseSeed": 42
+          "freq": 261.63
+        },
+        {
+          "type": "sawtooth",
+          "gain": 0.25,
+          "detune": 9,
+          "phase": 0,
+          "freq": 261.63
+        },
+        {
+          "type": "sawtooth",
+          "gain": 0.25,
+          "detune": -9,
+          "phase": 0,
+          "freq": 261.63
+        },
+        {
+          "type": "triangle",
+          "gain": 0.16,
+          "detune": 0,
+          "phase": 0,
+          "freq": 523.25
+        }
+      ],
+      "env": {
+        "attack": 0.6,
+        "decay": 0.3,
+        "sustain": 0.8,
+        "release": 1.2
+      },
+      "lfoPitch": {
+        "rate": 4,
+        "depth": 0
+      },
+      "lfoVolume": {
+        "rate": 0.5,
+        "depth": 0.15
+      },
+      "filter": {
+        "hpf": 60,
+        "lpf": 2200
+      },
+      "sampleSeconds": 4,
+      "wavFile": "tones/Warm_Pad.wav"
+    },
+    {
+      "id": "8fa251f3",
+      "name": "Wobble Bass",
+      "layers": [
+        {
+          "type": "square",
+          "gain": 0.6,
+          "detune": 0,
+          "phase": 0,
+          "freq": 65.41
+        },
+        {
+          "type": "sawtooth",
+          "gain": 0.5,
+          "detune": 5,
+          "phase": 0,
+          "freq": 130.81
+        }
+      ],
+      "env": {
+        "attack": 0.005,
+        "decay": 0.1,
+        "sustain": 0.9,
+        "release": 0.1
+      },
+      "lfoPitch": {
+        "rate": 4,
+        "depth": 0
+      },
+      "lfoVolume": {
+        "rate": 2,
+        "depth": 0.7
+      },
+      "filter": {
+        "hpf": 20,
+        "lpf": 900
+      },
+      "sampleSeconds": 2,
+      "wavFile": "tones/Wobble_Bass.wav"
+    },
+    {
+      "id": "a5dec115",
+      "name": "E-Piano",
+      "layers": [
+        {
+          "type": "sine",
+          "gain": 0.85,
+          "detune": 0,
+          "phase": 0,
+          "freq": 261.63
+        },
+        {
+          "type": "triangle",
+          "gain": 0.2,
+          "detune": 0,
+          "phase": 0,
+          "freq": 523.25
+        },
+        {
+          "type": "sine",
+          "gain": 0.12,
+          "detune": 0,
+          "phase": 0,
+          "freq": 1308.15
+        }
+      ],
+      "env": {
+        "attack": 0.002,
+        "decay": 1.1,
+        "sustain": 0.25,
+        "release": 0.35
+      },
+      "lfoPitch": {
+        "rate": 4,
+        "depth": 0
+      },
+      "lfoVolume": {
+        "rate": 4.5,
+        "depth": 0.12
+      },
+      "filter": {
+        "hpf": 20,
+        "lpf": 5000
+      },
+      "sampleSeconds": 2.5,
+      "wavFile": "tones/E-Piano.wav"
+    },
+    {
+      "id": "3b018eee",
+      "name": "Kick",
+      "layers": [
+        {
+          "type": "sine",
+          "gain": 1,
+          "detune": 91,
+          "phase": 90,
+          "freq": 36.5
+        },
+        {
+          "type": "triangle",
+          "gain": 0.15,
+          "detune": 1200,
+          "phase": 0,
+          "freq": 97.5
         }
       ],
       "env": {
         "attack": 0.001,
-        "decay": 0.18,
+        "decay": 0.07,
         "sustain": 0,
-        "release": 0.06
+        "release": 0.08,
+        "shape": "fallingSine"
+      },
+      "lfoPitch": {
+        "rate": 6.4,
+        "depth": 1,
+        "on": false
+      },
+      "lfoVolume": {
+        "rate": 9.4,
+        "depth": 0.96,
+        "on": false
+      },
+      "filter": {
+        "hpf": 20,
+        "lpf": 20000,
+        "bpfOn": true,
+        "bpf": 274,
+        "bpfGain": 16.5,
+        "lpfOn": true,
+        "hpfOn": true
       },
       "lfo": {
         "rate": 4,
         "depth": 0,
         "target": "off"
       },
-      "filter": {
-        "hpf": 150,
-        "lpf": 9000
+      "sampleFreq": 50,
+      "sampleSeconds": 0.1,
+      "wavFile": "tones/Kick.wav",
+      "pitchEnv": {
+        "amount": 0,
+        "time": 0.05
       },
-      "sampleFreq": 185,
-      "sampleSeconds": 0.5
+      "filterEnv": {
+        "amount": 1,
+        "time": 0.1
+      },
+      "drive": 0,
+      "sampleNote": "C4"
     },
     {
-      "id": "d1a01e03",
-      "name": "Clap",
-      "layers": [
-        {
-          "type": "noise",
-          "gain": 0.9,
-          "detune": 0,
-          "phase": 0,
-          "noiseSeed": 7
-        }
-      ],
-      "env": {
-        "attack": 0.004,
-        "decay": 0.28,
-        "sustain": 0,
-        "release": 0.08
-      },
-      "lfo": {
-        "rate": 45,
-        "depth": 0.6,
-        "target": "volume"
-      },
-      "filter": {
-        "hpf": 900,
-        "lpf": 4500
-      },
-      "sampleFreq": 261.63,
-      "sampleSeconds": 0.6
-    },
-    {
-      "id": "d1a01e04",
+      "id": "cd54293a",
       "name": "Closed Hat",
       "layers": [
         {
@@ -132,196 +685,160 @@
         "sustain": 0,
         "release": 0.015
       },
-      "lfo": {
+      "lfoPitch": {
         "rate": 4,
-        "depth": 0,
-        "target": "off"
+        "depth": 0
+      },
+      "lfoVolume": {
+        "rate": 4,
+        "depth": 0
       },
       "filter": {
         "hpf": 6500,
         "lpf": 20000
       },
-      "sampleFreq": 261.63,
-      "sampleSeconds": 0.25
-    },
-    {
-      "id": "d1a01e05",
-      "name": "Open Hat",
-      "layers": [
-        {
-          "type": "noise",
-          "gain": 0.8,
-          "detune": 0,
-          "phase": 0,
-          "noiseSeed": 3
-        }
-      ],
-      "env": {
-        "attack": 0.001,
-        "decay": 0.6,
-        "sustain": 0,
-        "release": 0.25
-      },
       "lfo": {
         "rate": 4,
         "depth": 0,
         "target": "off"
       },
-      "filter": {
-        "hpf": 6000,
-        "lpf": 20000
-      },
       "sampleFreq": 261.63,
-      "sampleSeconds": 1.2
+      "sampleSeconds": 0.25,
+      "wavFile": "tones/Closed_Hat.wav"
     },
     {
-      "id": "d1a01e06",
-      "name": "Crash",
-      "layers": [
-        {
-          "type": "noise",
-          "gain": 0.85,
-          "detune": 0,
-          "phase": 0,
-          "noiseSeed": 11
-        },
-        {
-          "type": "square",
-          "gain": 0.05,
-          "detune": 0,
-          "phase": 0
-        },
-        {
-          "type": "square",
-          "gain": 0.04,
-          "detune": 702,
-          "phase": 0
-        },
-        {
-          "type": "square",
-          "gain": 0.04,
-          "detune": -498,
-          "phase": 0
-        }
-      ],
-      "env": {
-        "attack": 0.001,
-        "decay": 2.2,
-        "sustain": 0,
-        "release": 0.8
-      },
-      "lfo": {
-        "rate": 4,
-        "depth": 0,
-        "target": "off"
-      },
-      "filter": {
-        "hpf": 3800,
-        "lpf": 16000
-      },
-      "sampleFreq": 987,
-      "sampleSeconds": 3.5
-    },
-    {
-      "id": "d1a01e07",
-      "name": "Low Tom",
+      "id": "f19d6675",
+      "name": "Patch 15",
       "layers": [
         {
           "type": "sine",
-          "gain": 0.9,
-          "detune": 0,
-          "phase": 90
-        },
-        {
-          "type": "triangle",
-          "gain": 0.35,
-          "detune": 0,
-          "phase": 0
-        },
-        {
-          "type": "noise",
-          "gain": 0.07,
+          "gain": 0.8,
           "detune": 0,
           "phase": 0,
-          "noiseSeed": 5
+          "freq": 58.5
         }
       ],
       "env": {
-        "attack": 0.001,
-        "decay": 0.35,
-        "sustain": 0,
-        "release": 0.1
+        "attack": 0.01,
+        "decay": 0.05,
+        "sustain": 0.1,
+        "release": 0.4
       },
-      "lfo": {
+      "lfoPitch": {
+        "rate": 20,
+        "depth": 1
+      },
+      "lfoVolume": {
         "rate": 4,
-        "depth": 0,
-        "target": "off"
+        "depth": 0
+      },
+      "pitchEnv": {
+        "amount": 0,
+        "time": 0.05
+      },
+      "filterEnv": {
+        "amount": 1,
+        "time": 0.1
       },
       "filter": {
         "hpf": 20,
-        "lpf": 2500
+        "lpf": 20000
       },
-      "sampleFreq": 98,
-      "sampleSeconds": 0.7
+      "drive": 0,
+      "sampleSeconds": 0.2,
+      "wavFile": "tones/Patch_15.wav"
+    },
+    {
+      "id": "db604ba7",
+      "name": "Patch 16",
+      "layers": [
+        {
+          "type": "square",
+          "gain": 0.4,
+          "detune": -63,
+          "phase": 222,
+          "freq": 472.5,
+          "noiseSeed": 1740491922,
+          "muted": false
+        },
+        {
+          "type": "sine",
+          "gain": 0.8,
+          "detune": 0,
+          "phase": 90,
+          "freq": 195,
+          "noiseSeed": 1740491922,
+          "muted": false
+        }
+      ],
+      "env": {
+        "attack": 0.04,
+        "decay": 0.12,
+        "sustain": 0.66,
+        "release": 0.83,
+        "on": false
+      },
+      "lfoPitch": {
+        "rate": 4,
+        "depth": 0
+      },
+      "lfoVolume": {
+        "rate": 4,
+        "depth": 0.93
+      },
+      "pitchEnv": {
+        "amount": 18,
+        "time": 0.035,
+        "on": true
+      },
+      "filterEnv": {
+        "amount": 1,
+        "time": 0.1
+      },
+      "filter": {
+        "hpf": 20,
+        "lpf": 20000
+      },
+      "drive": 0,
+      "sampleSeconds": 0.4,
+      "wavFile": "tones/Patch_16.wav"
     }
   ],
   "pads": [
     {
       "name": "Kick",
-      "toneId": "d1a01e01",
-      "color": "#e05555",
-      "gain": 1,
+      "toneId": "3b018eee",
+      "color": "#9900ff",
+      "gain": 1.29,
       "trimStart": 0,
       "trimEnd": 0
+    },
+    {
+      "name": "Hat",
+      "toneId": "67b146bf",
+      "gain": 1,
+      "trimStart": 0,
+      "trimEnd": 0,
+      "color": "#bcd251"
     },
     {
       "name": "Snare",
-      "toneId": "d1a01e02",
-      "color": "#e0a755",
-      "gain": 1,
-      "trimStart": 0,
-      "trimEnd": 0
-    },
-    {
-      "name": "Clap",
-      "toneId": "d1a01e03",
-      "color": "#d4c94f",
-      "gain": 1,
+      "toneId": "57b245f7",
+      "gain": 0.86,
       "trimStart": 0,
       "trimEnd": 0
     },
     {
       "name": "Closed Hat",
-      "toneId": "d1a01e04",
+      "gain": 1,
+      "trimStart": 0,
+      "trimEnd": 0,
       "color": "#6fbf63",
-      "gain": 1,
-      "trimStart": 0,
-      "trimEnd": 0
+      "toneId": "cd54293a"
     },
-    {
-      "name": "Open Hat",
-      "toneId": "d1a01e05",
-      "color": "#55b8c9",
-      "gain": 1,
-      "trimStart": 0,
-      "trimEnd": 0
-    },
-    {
-      "name": "Crash",
-      "toneId": "d1a01e06",
-      "color": "#7a7ae0",
-      "gain": 1,
-      "trimStart": 0,
-      "trimEnd": 0
-    },
-    {
-      "name": "Low Tom",
-      "toneId": "d1a01e07",
-      "color": "#c06fd4",
-      "gain": 1,
-      "trimStart": 0,
-      "trimEnd": 0
-    },
+    null,
+    null,
+    null,
     null,
     null,
     null,
@@ -332,307 +849,707 @@
     null,
     null
   ],
-  "padLoopBars": 2,
-  "padEvents": [],
+  "padLoops": [
+    {
+      "id": "c1610c57",
+      "name": "Techno",
+      "bars": 2,
+      "events": [
+        {
+          "pad": 0,
+          "time": 0,
+          "duration": 0.25
+        },
+        {
+          "pad": 0,
+          "time": 2,
+          "duration": 0.25
+        },
+        {
+          "pad": 0,
+          "time": 3,
+          "duration": 0.25
+        },
+        {
+          "pad": 0,
+          "time": 5,
+          "duration": 0.25
+        },
+        {
+          "pad": 0,
+          "time": 6,
+          "duration": 0.25
+        },
+        {
+          "pad": 2,
+          "time": 1,
+          "duration": 0.25
+        },
+        {
+          "pad": 2,
+          "time": 3,
+          "duration": 0.25
+        },
+        {
+          "pad": 2,
+          "time": 5,
+          "duration": 0.25
+        },
+        {
+          "pad": 2,
+          "time": 7,
+          "duration": 0.25
+        },
+        {
+          "pad": 0,
+          "time": 7,
+          "duration": 0.25
+        },
+        {
+          "pad": 1,
+          "time": 3.5,
+          "duration": 0.25
+        },
+        {
+          "pad": 1,
+          "time": 5.5,
+          "duration": 0.25
+        },
+        {
+          "pad": 1,
+          "time": 7.5,
+          "duration": 0.25
+        },
+        {
+          "pad": 2,
+          "time": 5.75,
+          "duration": 0.25
+        },
+        {
+          "pad": 2,
+          "time": 6.5,
+          "duration": 0.25
+        },
+        {
+          "pad": 3,
+          "time": 0.5,
+          "duration": 0.25
+        },
+        {
+          "pad": 3,
+          "time": 2.5,
+          "duration": 0.25
+        },
+        {
+          "pad": 3,
+          "time": 4.5,
+          "duration": 0.25
+        },
+        {
+          "pad": 3,
+          "time": 6.25,
+          "duration": 0.25
+        },
+        {
+          "pad": 3,
+          "time": 1.5,
+          "duration": 0.25
+        },
+        {
+          "pad": 0,
+          "time": 1.75,
+          "duration": 0.25
+        },
+        {
+          "pad": 0,
+          "time": 4.5,
+          "duration": 0.25
+        },
+        {
+          "pad": 0,
+          "time": 4.75,
+          "duration": 0.25
+        },
+        {
+          "pad": 0,
+          "time": 4,
+          "duration": 0.25
+        },
+        {
+          "pad": 3,
+          "time": 0.75,
+          "duration": 0.25
+        },
+        {
+          "pad": 3,
+          "time": 4.75,
+          "duration": 0.25
+        }
+      ]
+    },
+    {
+      "id": "7f371f1c",
+      "name": "Loop 2",
+      "bars": 2,
+      "events": [
+        {
+          "pad": 0,
+          "time": 0,
+          "duration": 0.25
+        },
+        {
+          "pad": 0,
+          "time": 2,
+          "duration": 0.25
+        },
+        {
+          "pad": 0,
+          "time": 4.5,
+          "duration": 0.5
+        },
+        {
+          "pad": 0,
+          "time": 6,
+          "duration": 0.5
+        },
+        {
+          "pad": 0,
+          "time": 1,
+          "duration": 0.25
+        },
+        {
+          "pad": 1,
+          "time": 1,
+          "duration": 0.25
+        },
+        {
+          "pad": 1,
+          "time": 0,
+          "duration": 0.25
+        },
+        {
+          "pad": 1,
+          "time": 2,
+          "duration": 0.25
+        },
+        {
+          "pad": 1,
+          "time": 3,
+          "duration": 0.25
+        },
+        {
+          "pad": 1,
+          "time": 4,
+          "duration": 0.25
+        },
+        {
+          "pad": 1,
+          "time": 5,
+          "duration": 0.25
+        },
+        {
+          "pad": 1,
+          "time": 6,
+          "duration": 0.25
+        },
+        {
+          "pad": 2,
+          "time": 2,
+          "duration": 0.25
+        },
+        {
+          "pad": 2,
+          "time": 5,
+          "duration": 0.25
+        },
+        {
+          "pad": 2,
+          "time": 6,
+          "duration": 0.25
+        }
+      ]
+    },
+    {
+      "id": "da8a00c9",
+      "name": "Happy",
+      "bars": 1,
+      "events": [
+        {
+          "pad": 0,
+          "time": 0,
+          "duration": 0.25
+        },
+        {
+          "pad": 1,
+          "time": 0.5,
+          "duration": 0.25
+        },
+        {
+          "pad": 0,
+          "time": 1,
+          "duration": 0.25
+        },
+        {
+          "pad": 1,
+          "time": 2.5,
+          "duration": 0.25
+        },
+        {
+          "pad": 0,
+          "time": 2,
+          "duration": 0.25
+        },
+        {
+          "pad": 0,
+          "time": 3,
+          "duration": 0.25
+        },
+        {
+          "pad": 1,
+          "time": 1.5,
+          "duration": 0.25
+        },
+        {
+          "pad": 1,
+          "time": 3.5,
+          "duration": 0.25
+        },
+        {
+          "pad": 3,
+          "time": 0.25,
+          "duration": 0.125
+        },
+        {
+          "pad": 3,
+          "time": 0,
+          "duration": 0.125
+        },
+        {
+          "pad": 3,
+          "time": 1,
+          "duration": 0.125
+        },
+        {
+          "pad": 3,
+          "time": 2,
+          "duration": 0.125
+        },
+        {
+          "pad": 3,
+          "time": 2.25,
+          "duration": 0.125
+        },
+        {
+          "pad": 3,
+          "time": 3,
+          "duration": 0.125
+        }
+      ]
+    }
+  ],
   "sequences": [
     {
-      "id": "433f3645",
-      "name": "Demo 1",
-      "bars": 1,
-      "instrument": {
-        "type": "instrument",
-        "name": "mellow-keys"
-      },
-      "notes": [
-        {
-          "step": 0,
-          "note": "C4",
-          "duration": 16,
-          "velocity": 0.7
-        },
-        {
-          "step": 0,
-          "note": "E4",
-          "duration": 16,
-          "velocity": 0.7
-        },
-        {
-          "step": 0,
-          "note": "G4",
-          "duration": 16,
-          "velocity": 0.7
-        }
-      ]
-    },
-    {
-      "id": "49131af5",
-      "name": "Demo 2",
-      "bars": 2,
-      "instrument": {
-        "type": "instrument",
-        "name": "mellow-keys"
-      },
-      "notes": [
-        {
-          "step": 0,
-          "note": "C4",
-          "duration": 16,
-          "velocity": 0.7
-        },
-        {
-          "step": 0,
-          "note": "E4",
-          "duration": 16,
-          "velocity": 0.7
-        },
-        {
-          "step": 0,
-          "note": "G4",
-          "duration": 16,
-          "velocity": 0.7
-        },
-        {
-          "step": 16,
-          "note": "F4",
-          "duration": 16,
-          "velocity": 0.7
-        },
-        {
-          "step": 16,
-          "note": "A4",
-          "duration": 16,
-          "velocity": 0.7
-        },
-        {
-          "step": 16,
-          "note": "C5",
-          "duration": 16,
-          "velocity": 0.7
-        }
-      ]
-    },
-    {
-      "id": "f877f2ad",
-      "name": "Demo 3",
-      "bars": 3,
-      "instrument": {
-        "type": "instrument",
-        "name": "mellow-keys"
-      },
-      "notes": [
-        {
-          "step": 0,
-          "note": "C4",
-          "duration": 16,
-          "velocity": 0.7
-        },
-        {
-          "step": 0,
-          "note": "E4",
-          "duration": 16,
-          "velocity": 0.7
-        },
-        {
-          "step": 0,
-          "note": "G4",
-          "duration": 16,
-          "velocity": 0.7
-        },
-        {
-          "step": 16,
-          "note": "F4",
-          "duration": 16,
-          "velocity": 0.7
-        },
-        {
-          "step": 16,
-          "note": "A4",
-          "duration": 16,
-          "velocity": 0.7
-        },
-        {
-          "step": 16,
-          "note": "C5",
-          "duration": 16,
-          "velocity": 0.7
-        },
-        {
-          "step": 32,
-          "note": "G4",
-          "duration": 16,
-          "velocity": 0.7
-        },
-        {
-          "step": 32,
-          "note": "B4",
-          "duration": 16,
-          "velocity": 0.7
-        },
-        {
-          "step": 32,
-          "note": "D5",
-          "duration": 16,
-          "velocity": 0.7
-        }
-      ]
-    },
-    {
-      "id": "881a0b69",
-      "name": "Demo 4",
-      "bars": 4,
-      "instrument": {
-        "type": "instrument",
-        "name": "piano"
-      },
-      "notes": [
-        {
-          "step": 0,
-          "note": "C4",
-          "duration": 16,
-          "velocity": 0.7
-        },
-        {
-          "step": 0,
-          "note": "E4",
-          "duration": 16,
-          "velocity": 0.7
-        },
-        {
-          "step": 0,
-          "note": "G4",
-          "duration": 16,
-          "velocity": 0.7
-        },
-        {
-          "step": 16,
-          "note": "A4",
-          "duration": 16,
-          "velocity": 0.7
-        },
-        {
-          "step": 16,
-          "note": "C5",
-          "duration": 16,
-          "velocity": 0.7
-        },
-        {
-          "step": 16,
-          "note": "E5",
-          "duration": 16,
-          "velocity": 0.7
-        },
-        {
-          "step": 32,
-          "note": "F4",
-          "duration": 16,
-          "velocity": 0.7
-        },
-        {
-          "step": 32,
-          "note": "A4",
-          "duration": 16,
-          "velocity": 0.7
-        },
-        {
-          "step": 32,
-          "note": "C5",
-          "duration": 16,
-          "velocity": 0.7
-        },
-        {
-          "step": 48,
-          "note": "G4",
-          "duration": 16,
-          "velocity": 0.7
-        },
-        {
-          "step": 48,
-          "note": "B4",
-          "duration": 16,
-          "velocity": 0.7
-        },
-        {
-          "step": 48,
-          "note": "D5",
-          "duration": 16,
-          "velocity": 0.7
-        }
-      ]
-    },
-    {
-      "id": "865ff06c",
-      "name": "Sequence 6",
+      "id": "6a29b091",
+      "name": "Sequence 1",
       "bars": 1,
       "notes": [
         {
-          "step": 0,
-          "note": "A#3",
-          "duration": 1,
-          "velocity": 0.8
-        },
-        {
-          "step": 2,
-          "note": "G#3",
-          "duration": 1,
-          "velocity": 0.8
-        },
-        {
-          "step": 4,
-          "note": "F#3",
-          "duration": 1,
-          "velocity": 0.8
-        },
-        {
-          "step": 6,
-          "note": "E3",
-          "duration": 1,
-          "velocity": 0.8
-        },
-        {
-          "step": 8,
-          "note": "E3",
-          "duration": 1,
-          "velocity": 0.8
-        },
-        {
-          "step": 10,
-          "note": "F#3",
-          "duration": 1,
-          "velocity": 0.8
-        },
-        {
-          "step": 12,
-          "note": "G#3",
-          "duration": 1,
-          "velocity": 0.8
-        },
-        {
-          "step": 14,
-          "note": "G#3",
-          "duration": 1,
-          "velocity": 0.8
-        },
-        {
-          "step": 9,
-          "note": "G#3",
+          "step": 1,
+          "note": "E4",
           "duration": 1,
           "velocity": 0.8
         },
         {
           "step": 3,
-          "note": "C#4",
+          "note": "E4",
+          "duration": 1,
+          "velocity": 0.8
+        },
+        {
+          "step": 5,
+          "note": "A4",
+          "duration": 1,
+          "velocity": 0.8
+        },
+        {
+          "step": 7,
+          "note": "A4",
+          "duration": 1,
+          "velocity": 0.8
+        },
+        {
+          "step": 9,
+          "note": "E4",
+          "duration": 1,
+          "velocity": 0.8
+        },
+        {
+          "step": 12,
+          "note": "A4",
+          "duration": 1,
+          "velocity": 0.8
+        },
+        {
+          "step": 14,
+          "note": "A4",
+          "duration": 1,
+          "velocity": 0.8
+        },
+        {
+          "step": 8,
+          "note": "E4",
+          "duration": 1,
+          "velocity": 0.8
+        },
+        {
+          "step": 10,
+          "note": "E4",
+          "duration": 1,
+          "velocity": 0.8
+        },
+        {
+          "step": 15,
+          "note": "A4",
+          "duration": 1,
+          "velocity": 0.8
+        },
+        {
+          "step": 1,
+          "note": "G3",
+          "duration": 1,
+          "velocity": 0.8
+        },
+        {
+          "step": 1,
+          "note": "G3",
+          "duration": 1,
+          "velocity": 0.8
+        },
+        {
+          "step": 1,
+          "note": "G3",
+          "duration": 1,
+          "velocity": 0.8
+        },
+        {
+          "step": 3,
+          "note": "G3",
+          "duration": 1,
+          "velocity": 0.8
+        },
+        {
+          "step": 5,
+          "note": "C5",
+          "duration": 1,
+          "velocity": 0.8
+        },
+        {
+          "step": 12,
+          "note": "C5",
+          "duration": 1,
+          "velocity": 0.8
+        },
+        {
+          "step": 14,
+          "note": "C5",
+          "duration": 1,
+          "velocity": 0.8
+        },
+        {
+          "step": 9,
+          "note": "G3",
+          "duration": 1,
+          "velocity": 0.8
+        },
+        {
+          "step": 8,
+          "note": "G3",
+          "duration": 1,
+          "velocity": 0.8
+        },
+        {
+          "step": 6,
+          "note": "D4",
           "duration": 1,
           "velocity": 0.8
         }
       ],
       "instrument": {
         "type": "instrument",
-        "name": "mellow-keys"
+        "name": "celeste"
+      }
+    },
+    {
+      "id": "233348ad",
+      "name": "Sequence 2",
+      "bars": 1,
+      "notes": [
+        {
+          "step": 1,
+          "note": "E4",
+          "duration": 1,
+          "velocity": 0.8
+        },
+        {
+          "step": 3,
+          "note": "E4",
+          "duration": 1,
+          "velocity": 0.8
+        },
+        {
+          "step": 6,
+          "note": "A4",
+          "duration": 1,
+          "velocity": 0.8
+        },
+        {
+          "step": 7,
+          "note": "A4",
+          "duration": 1,
+          "velocity": 0.8
+        },
+        {
+          "step": 9,
+          "note": "E4",
+          "duration": 1,
+          "velocity": 0.8
+        },
+        {
+          "step": 12,
+          "note": "A4",
+          "duration": 1,
+          "velocity": 0.8
+        },
+        {
+          "step": 14,
+          "note": "A4",
+          "duration": 1,
+          "velocity": 0.8
+        },
+        {
+          "step": 8,
+          "note": "E4",
+          "duration": 1,
+          "velocity": 0.8
+        },
+        {
+          "step": 10,
+          "note": "E4",
+          "duration": 1,
+          "velocity": 0.8
+        },
+        {
+          "step": 15,
+          "note": "A4",
+          "duration": 1,
+          "velocity": 0.8
+        },
+        {
+          "step": 1,
+          "note": "G3",
+          "duration": 1,
+          "velocity": 0.8
+        },
+        {
+          "step": 1,
+          "note": "G3",
+          "duration": 1,
+          "velocity": 0.8
+        },
+        {
+          "step": 1,
+          "note": "G3",
+          "duration": 1,
+          "velocity": 0.8
+        },
+        {
+          "step": 3,
+          "note": "G3",
+          "duration": 1,
+          "velocity": 0.8
+        },
+        {
+          "step": 4,
+          "note": "C5",
+          "duration": 1,
+          "velocity": 0.8
+        },
+        {
+          "step": 12,
+          "note": "C5",
+          "duration": 1,
+          "velocity": 0.8
+        },
+        {
+          "step": 14,
+          "note": "C5",
+          "duration": 1,
+          "velocity": 0.8
+        },
+        {
+          "step": 9,
+          "note": "G3",
+          "duration": 1,
+          "velocity": 0.8
+        },
+        {
+          "step": 8,
+          "note": "G3",
+          "duration": 1,
+          "velocity": 0.8
+        },
+        {
+          "step": 6,
+          "note": "D4",
+          "duration": 1,
+          "velocity": 0.8
+        }
+      ],
+      "instrument": {
+        "type": "instrument",
+        "name": "chiffer-lead"
       }
     }
   ],
   "arrangement": {
-    "tracks": [],
-    "masterPlugins": []
-  }
+    "tracks": [
+      {
+        "id": "dae283a4",
+        "name": "Track 1",
+        "gain": 0.45,
+        "plugins": [
+          {
+            "id": "ede0c7f1",
+            "pluginId": "eq",
+            "state": {
+              "hpFreq": 91,
+              "peakFreq": 367,
+              "peakGain": 5,
+              "lpFreq": 7938
+            },
+            "bypassed": false
+          }
+        ],
+        "clips": [
+          {
+            "id": "57e61992",
+            "bar": 0,
+            "ref": {
+              "type": "sequence",
+              "id": "6a29b091"
+            },
+            "gain": 1,
+            "plugins": [],
+            "bars": 12
+          },
+          {
+            "id": "15c0544f",
+            "bar": 12,
+            "ref": {
+              "type": "sequence",
+              "id": "6a29b091"
+            },
+            "gain": 1,
+            "plugins": [
+              {
+                "id": "f3884e05",
+                "pluginId": "reverb",
+                "state": {
+                  "decay": 2,
+                  "wet": 0.73
+                },
+                "bypassed": false
+              }
+            ],
+            "bars": 1
+          }
+        ]
+      },
+      {
+        "id": "fc44ea30",
+        "name": "Track 3",
+        "gain": 0.9,
+        "plugins": [
+          {
+            "id": "45f8f101",
+            "pluginId": "eq",
+            "state": {
+              "bands": 2,
+              "b0Type": 0,
+              "b0On": 1,
+              "b0Freq": 40,
+              "b0Q": 0.7,
+              "b0Gain": 0,
+              "b0Slope": 12,
+              "b1Type": 3,
+              "b1On": 1,
+              "b1Freq": 18000,
+              "b1Q": 0.7,
+              "b1Gain": 0,
+              "b1Slope": 12
+            },
+            "bypassed": false
+          }
+        ],
+        "clips": [
+          {
+            "id": "8a9dc31d",
+            "bar": 4,
+            "ref": {
+              "type": "file",
+              "file": "samples/Techno.wav"
+            },
+            "gain": 1,
+            "plugins": [],
+            "bars": 4
+          },
+          {
+            "id": "ba313864",
+            "bar": 9,
+            "ref": {
+              "type": "loop",
+              "id": "da8a00c9"
+            },
+            "gain": 1,
+            "plugins": [],
+            "bars": 2
+          }
+        ],
+        "solo": false
+      },
+      {
+        "id": "8a4576ec",
+        "name": "Track 4",
+        "gain": 0.9,
+        "plugins": [],
+        "clips": [
+          {
+            "id": "860c23a9",
+            "bar": 2,
+            "ref": {
+              "type": "sequence",
+              "id": "233348ad"
+            },
+            "gain": 1,
+            "plugins": [],
+            "bars": 6
+          }
+        ]
+      }
+    ],
+    "masterPlugins": [
+      {
+        "id": "35a072ac",
+        "pluginId": "reverb",
+        "state": {
+          "decay": 4.2,
+          "wet": 0.71
+        },
+        "bypassed": true
+      }
+    ],
+    "bars": 16
+  },
+  "savedAt": 1784144493733,
+  "masterVolume": 0.35
 }

@@ -1,25 +1,28 @@
 {
-  "activeTab": "sequence",
+  "activeTab": "arrange",
   "metronomeOn": false,
   "tone": {
-    "patchId": "52e7b49a",
+    "patchId": "67b146bf",
     "live": false,
-    "loop": false
+    "loop": true
   },
   "sample": {
-    "selectedPad": 0,
-    "countIn": false,
+    "selectedPad": 6,
+    "countIn": true,
     "overdub": false,
-    "quantize": 0.125,
-    "loopId": "41b5b7a7"
+    "quantize": 0.25,
+    "loopId": "c1610c57"
   },
   "sequence": {
-    "seqId": "7fdac885",
+    "seqId": "6a29b091",
     "quantize": 0.25,
     "trackId": ""
   },
   "arrange": {
-    "palette": "",
+    "palette": "loop:da8a00c9",
+    "snapBeats": 1,
+    "pxPerBar": 64,
+    "cursorBar": 0,
     "openFx": []
   }
 }
